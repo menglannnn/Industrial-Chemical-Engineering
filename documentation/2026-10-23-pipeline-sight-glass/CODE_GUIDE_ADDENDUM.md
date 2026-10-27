@@ -1,0 +1,37 @@
+# Pipeline sight glass — branch contracts
+
+Snapshot: `b3b7a347` (`claude/floating-roof-tanks-81d68b`), 2026-10-23; sight-glass code `465f8af8`, `e1bffe54`, `065683c6`, integrated from `codex/pipeline-sight-glass` by fast-forward from `29ff371b`. Consolidate these facts into the canonical guide at the future main merge, preserving other branch changes.
+
+## Equipment and item contracts (`equipment.md`)
+
+- `ModItems.PIPELINE_SIGHT_GLASS`: ID `icheme:pipeline_sight_glass`, `PipelineSightGlassItem`, stack size 64; creative Functional Blocks listing and commands, no recipe. Its model uses the existing `icheme:fluid_device` loader with `sight_glass_accessory=true` to show the housing alone.
+- `FluidDeviceBlock.SIGHT_GLASS` is a vanilla boolean blockstate property defaulting false. `SIGHT_GLASS_AXIS` persists a separate `sight_glass_axis` enum property (`x`, `y`, `z`, default `z`) with vanilla enum validation. Both have visual/item meaning only for PIPE; they add no fluid-device kind, registration, spec, material inventory or checkpoint field.
+- `supportsSightGlass(state)` and `SightGlassGeometry.supports(mask)` accept zero/one connected face or exactly one opposite pair (masks 3, 12, 48). `hasSightGlass` includes both eligibility and the stored flag. Corners and junctions are ineligible.
+- The item handles either hand before ordinary block use, validates build/spectator/interaction/item-use permission on the server, changes the same block's flag and refreshes existing geometry. Successful survival use shrinks one item; creative/duplicate/rejected use consumes none.
+- When neighbor changes make an installed section ineligible, `updateShape` schedules one normal block tick. That tick rechecks shape/flag, clears only the flag, refreshes neighboring flanges and drops one accessory. Further pending ticks cannot duplicate the drop. Ordinary pipe connection/engine behavior proceeds independently.
+- The pipe loot table adds an accessory pool conditioned on `sight_glass=true`, preserving the ordinary pipe drop. Static flag changes do not enter the fluid register/remove/edit paths.
+- `FluidDeviceBlockEntity.computeFaces` flanges both sides of a joint involving an eligible equipped pipe, retaining existing bore/reducer sizing and geometry synchronization.
+- `SightGlassGeometry.build` produces separate metal/glass/liquid polygon lists. Ineligible keys return ordinary `LineGeometry` and empty glass/liquid lists.
+- Body half-width is `R=0.09+0.37*drawnOD`, chamber half-depth `0.04+0.34*drawnOD`, window radius `0.60*R`; the cover, circular seat, washers/nuts/studs scale with R. Existing OD floor/quantization/cap are retained. Covers are chamfered squares around round bevelled/recessed windows.
+- Installation computes `SightGlassGeometry.towards` from connected faces (or facing for an unconnected pipe) and the player's eye offset from block centre. Pick the largest absolute perpendicular coordinate, retaining the default horizontal axis on ties. Store the chosen axis without changing `FACING` or queuing a hydraulic edit. Either of the paired windows faces the installer; horizontal pipes allow top/bottom windows, vertical pipes select either horizontal axis.
+- `SightGlassGeometry.Key(pipe, window)` is an immutable composite visual key. It keeps the window perpendicular to the current run, using the default perpendicular axis if a connection change or command made the stored axis parallel. This is a geometry constraint, not save migration. Frames for vertical window normals use a horizontal reference vector. Existing line arms retain reducers, square flange shoulders, seams and end caps; collision stays the ordinary pipe shape.
+- `Mesh.Material.GLASS` is appended to the material list and resolves to the vanilla glass texture in the pipe model.
+
+## Client, rendering and GUI contracts (`client-gui.md`)
+
+- `FluidDeviceModel` caches by `(SightGlassGeometry.Key, sightGlass)` in its concurrent chunk-bake cache, including the effective window axis. Metal uses solid terrain, static glass translucent terrain. The accessory item uses the default window orientation at the existing item size.
+- `SightGlassRenderer` draws only the changing liquid discs at `AFTER_BLOCK_ENTITIES`, before translucent terrain glass, using the block atlas/white sprite, light and entity-translucent layer as the tank display does. No per-pipe block-entity renderer is added.
+- `FluidDeviceBlockEntity` tracks eligible equipped client entities in a client-thread weak set. Blockstate transitions, load/unload and removal maintain it and forget old subscriptions. The renderer shares `FluidDeviceModel.sightGlassKey` so resizing/orientation updates both chunk housing and liquid surfaces.
+- Once per 20 client ticks, nearest-first selection requests at most 64 equipped cells within 120 blocks. `SightGlassDisplays` holds identity/position-bound ephemeral ARGB and watch sets on the client thread; incoming replies require a current matching eligible pipe. No data means clear windows.
+- Removal, unload, range/identity/dimension change or disconnect removes client state and requests unwatch where connected. Server revalidates subscriptions on publication.
+- No new GUI. Normal use of individual pipes remains inactive; the existing Fluid Debugger opens diagnostics, and Pipeline Tool resize and Shift+right-click settings retain their existing contracts.
+
+## Runtime, watch protocol and formats (`fluid-runtime.md`)
+
+- `SightGlassNetwork`, protocol `sight-glass-1`, handles MAIN-thread C2S watch/unwatch lists (each <=64 unique position+positive-identity targets) and S2C one-target packed ARGB displays. Colours contain no process composition or inventory.
+- `FluidWorldAuthority.watchSightGlasses` validates loaded position, installed/eligible PIPE state, block-entity identity, registration cell/dimension and 128-block player distance. Separate `TankWatchers` bookkeeping supplies a per-player bound, alongside existing tank watches.
+- A new watch replays `publishedSightGlasses` only when cached. `FluidPresentation.observe/unobserve` marks a future bucket and repeats scheduled presentation only while requested. There is no solve/view calculation during request or replay; no unsolicited client delivery.
+- Scheduled `PresentationHost.present` derives one `SightGlassDisplay` from the accepted `FluidView`. Its `PipeInfo.contents` supplies transported phase composition/volume/solids; existing previous-100-online-tick bulk speed gates passing liquid. Observed buckets continue while idle, so an old nonzero colour cannot persist indefinitely after flow stops.
+- `SightGlassDisplay` sums both liquid mole vectors before `TankDisplay.mix` mass-weighted Beer-Lambert appearance blending. Alpha floor 200; haze `h=clamp(2*(1-sum(phi^2)),0,1)` over oil/water/gas/combined-solid transported volume fractions; RGB moves 25%*h toward white and alpha h toward 255. No liquid or no recent accepted flow returns ARGB zero.
+- Unload/removal invalidates watchers and colour cache; topology recompilation invalidates cached colour/rekeys observed buckets. Player logout removes both watch families. The owning server thread mutates all these maps/sets.
+- Checkpoint VERSION 14 / UNIT_FORMAT 7 and existing fluid menu/display protocols remain unchanged. Vanilla blockstate persistence stores installation and window axis; display colours and watches are not saved. Ordinary block update tags still contain identity/drawn geometry only.

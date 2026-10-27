@@ -1,0 +1,1057 @@
+commit f44930f50a8baa1780cb397374d465d2f64cd286
+Author:     wormzjl <wormzjl@gmail.com>
+AuthorDate: Sat Oct 24 21:17:57 2026 +0800
+Commit:     wormzjl <wormzjl@gmail.com>
+CommitDate: Sat Oct 24 21:17:57 2026 +0800
+
+    Unify fluid equipment units and phase displays
+
+diff --git a/src/main/java/com/wormzjl/icheme/client/gui/common/DisplayUnit.java b/src/main/java/com/wormzjl/icheme/client/gui/common/DisplayUnit.java
+new file mode 100644
+index 00000000..94c4c852
+--- /dev/null
++++ b/src/main/java/com/wormzjl/icheme/client/gui/common/DisplayUnit.java
+@@ -0,0 +1,7 @@
++package com.wormzjl.icheme.client.gui.common;
++
++/** A presentation unit. Controls cross the network in their original SI quantity. */
++public interface DisplayUnit {
++    double display(double si);
++    double si(double displayed);
++}
+diff --git a/src/main/java/com/wormzjl/icheme/client/gui/common/FlowRateUnit.java b/src/main/java/com/wormzjl/icheme/client/gui/common/FlowRateUnit.java
+index 907d3927..247f80bb 100644
+--- a/src/main/java/com/wormzjl/icheme/client/gui/common/FlowRateUnit.java
++++ b/src/main/java/com/wormzjl/icheme/client/gui/common/FlowRateUnit.java
+@@ -1,7 +1,7 @@
+ package com.wormzjl.icheme.client.gui.common;
+ 
+ /** Presentation time basis only. Network controls and process rates always use seconds. */
+-public enum FlowRateUnit {
++public enum FlowRateUnit implements DisplayUnit {
+     PER_SECOND(1,"/s"),PER_HOUR(3600,"/h");
+ 
+     private final double seconds;
+@@ -9,6 +9,7 @@ public enum FlowRateUnit {
+     FlowRateUnit(double seconds,String suffix){this.seconds=seconds;this.suffix=suffix;}
+     public double display(double perSecond){return perSecond*seconds;}
+     public double perSecond(double displayed){return displayed/seconds;}
++    @Override public double si(double displayed){return perSecond(displayed);}
+     public String unit(String quantity){return quantity+suffix;}
+     public String suffix(){return suffix;}
+     public FlowRateUnit next(){return this==PER_SECOND?PER_HOUR:PER_SECOND;}
+diff --git a/src/main/java/com/wormzjl/icheme/client/gui/common/FluidGuiLayout.java b/src/main/java/com/wormzjl/icheme/client/gui/common/FluidGuiLayout.java
+new file mode 100644
+index 00000000..d6a0a109
+--- /dev/null
++++ b/src/main/java/com/wormzjl/icheme/client/gui/common/FluidGuiLayout.java
+@@ -0,0 +1,29 @@
++package com.wormzjl.icheme.client.gui.common;
++
++import java.util.ArrayList;
++import java.util.Arrays;
++import java.util.List;
++
++/** Shared fluid-screen control positions, including the minimum supported 300px GUI width. */
++public final class FluidGuiLayout {
++    private FluidGuiLayout(){}
++    public record Slot(int x,int width){}
++    /** Close, Apply, composition/flow basis, temperature, pressure and flow-time unit. */
++    public static List<Slot> footer(int width) {
++        if(width<300)throw new IllegalArgumentException("Fluid GUI width below minimum");
++        int[] natural={50,60,90,70,80,60},minimum={38,40,44,32,38,32};
++        int available=width-50,total=Arrays.stream(natural).sum(),floor=Arrays.stream(minimum).sum();
++        int[] sizes=natural.clone();
++        if(available<total)for(int i=0;i<sizes.length;i++)sizes[i]=minimum[i]+(natural[i]-minimum[i])*(available-floor)/(total-floor);
++        var slots=new ArrayList<Slot>();slots.add(new Slot(10,sizes[0]));slots.add(new Slot(16+sizes[0],sizes[1]));
++        int x=width-10;for(int i=2;i<6;i++)x-=sizes[i];x-=18;
++        for(int i=2;i<6;i++){slots.add(new Slot(x,sizes[i]));x+=sizes[i]+6;}
++        return List.copyOf(slots);
++    }
++    public static List<Slot> tabs(int width,int count) {
++        if(width<300||count<1||count>4)throw new IllegalArgumentException("Invalid fluid tabs");
++        int size=Math.min(130,(width-20-6*(count-1))/count);var slots=new ArrayList<Slot>();
++        for(int i=0;i<count;i++)slots.add(new Slot(10+i*(size+6),size));
++        return List.copyOf(slots);
++    }
++}
+diff --git a/src/main/java/com/wormzjl/icheme/client/gui/common/PhaseRatioBasis.java b/src/main/java/com/wormzjl/icheme/client/gui/common/PhaseRatioBasis.java
+new file mode 100644
+index 00000000..4ae0aaaa
+--- /dev/null
++++ b/src/main/java/com/wormzjl/icheme/client/gui/common/PhaseRatioBasis.java
+@@ -0,0 +1,34 @@
++package com.wormzjl.icheme.client.gui.common;
++
++import com.wormzjl.icheme.science.fluid.state.SolidInventory;
++import java.util.List;
++
++/** Phase fractions from cached amounts only; custom solids have no molecular identity in the material model. */
++public enum PhaseRatioBasis {
++    VOLUME,MOLAR,MASS;
++    public PhaseRatioBasis next(){return switch(this){case VOLUME->MOLAR;case MOLAR->MASS;case MASS->VOLUME;};}
++    public String key(){return switch(this){case VOLUME->"volume";case MOLAR->"mole";case MASS->"mass";};}
++    public double[] amounts(double[] volumes,double[][] moles,SolidInventory solids,List<String> components,List<Double> weights) {
++        if(volumes.length!=3||moles.length!=3||weights.size()!=components.size())throw new IllegalArgumentException("Invalid phase ratio axis");
++        for(double weight:weights)if(!Double.isFinite(weight)||weight<=0)throw new IllegalArgumentException("Invalid molecular weight");
++        var values=new double[4];
++        for(int p=0;p<3;p++) {
++            if(moles[p].length!=weights.size())throw new IllegalArgumentException("Invalid phase ratio axis");
++            if(!Double.isFinite(volumes[p])||volumes[p]<0)throw new IllegalArgumentException("Invalid phase volume");
++            for(double amount:moles[p])if(!Double.isFinite(amount)||amount<0)throw new IllegalArgumentException("Invalid phase amount");
++            if(this==VOLUME)values[p]=volumes[p];
++            else for(int c=0;c<weights.size();c++)values[p]+=moles[p][c]*(this==MASS?weights.get(c):1);
++        }
++        if(this==VOLUME)values[3]=solids.volume();
++        else if(this==MASS)values[3]=solids.massKg();
++        else for(var population:solids.populations()) {
++            var crystal=population.material().crystal();if(crystal==null)continue;
++            int component=components.indexOf(crystal.component());
++            if(component<0)throw new IllegalArgumentException("Unknown crystal component");
++            values[3]+=population.massKg()/weights.get(component);
++        }
++        for(double value:values)if(!Double.isFinite(value)||value<0)throw new IllegalArgumentException("Invalid phase total");
++        return values;
++    }
++    public boolean excludesCustomSolids(SolidInventory solids){return this==MOLAR&&solids.populations().stream().anyMatch(p->p.material().crystal()==null);}
++}
+diff --git a/src/main/java/com/wormzjl/icheme/client/gui/common/PressureUnit.java b/src/main/java/com/wormzjl/icheme/client/gui/common/PressureUnit.java
+new file mode 100644
+index 00000000..2a545522
+--- /dev/null
++++ b/src/main/java/com/wormzjl/icheme/client/gui/common/PressureUnit.java
+@@ -0,0 +1,22 @@
++package com.wormzjl.icheme.client.gui.common;
++
++import java.util.Locale;
++
++/** Preserve the existing 0.1 Pa gauge resolution in every selected unit. */
++public enum PressureUnit implements DisplayUnit {
++    PASCAL(1,"Pa",1),KILOPASCAL(1000,"kPa",4),BAR(100000,"bar",6),MEGAPASCAL(1000000,"MPa",7);
++    private final double pascals;
++    private final String symbol;
++    private final int decimals;
++    PressureUnit(double pascals,String symbol,int decimals){this.pascals=pascals;this.symbol=symbol;this.decimals=decimals;}
++    @Override public double display(double si){return si/pascals;}
++    @Override public double si(double displayed){return displayed*pascals;}
++    public String symbol(){return symbol;}
++    public PressureUnit next(){return switch(this){case PASCAL->KILOPASCAL;case KILOPASCAL->BAR;case BAR->MEGAPASCAL;case MEGAPASCAL->PASCAL;};}
++    public String number(double si){
++        if(!Double.isFinite(si))return "—";
++        double steps=Math.rint(si/ProcessUi.PRESSURE_RESOLUTION);
++        return String.format(Locale.ROOT,"%."+decimals+"f",display(steps==0?0:steps*ProcessUi.PRESSURE_RESOLUTION));
++    }
++    public String format(double si){return Double.isFinite(si)?number(si)+" "+symbol:"—";}
++}
+diff --git a/src/main/java/com/wormzjl/icheme/client/gui/common/ProcessUi.java b/src/main/java/com/wormzjl/icheme/client/gui/common/ProcessUi.java
+index 74d8af10..69ecf3e6 100644
+--- a/src/main/java/com/wormzjl/icheme/client/gui/common/ProcessUi.java
++++ b/src/main/java/com/wormzjl/icheme/client/gui/common/ProcessUi.java
+@@ -31,9 +31,7 @@ public final class ProcessUi {
+      * half the resolution reads as zero.
+      */
+     public static String pressure(double pascal){
+-        if(!Double.isFinite(pascal))return "—";
+-        double steps=Math.rint(pascal/PRESSURE_RESOLUTION);
+-        return String.format(Locale.ROOT,"%.4f kPa",steps==0?0.0:steps*PRESSURE_RESOLUTION/1000);
++        return PressureUnit.KILOPASCAL.format(pascal);
+     }
+     /** Resource-pack translations over server-owned bounded scientific naming descriptors. */
+     public static String materialName(MaterialName n) {
+@@ -76,7 +74,7 @@ public final class ProcessUi {
+     }
+ 
+     /** Temperatures cross the wire in kelvin; display defaults to Celsius. */
+-    public enum TemperatureUnit {
++    public enum TemperatureUnit implements DisplayUnit {
+         CELSIUS("C",273.15), KELVIN("K",0);
+         private final String symbol;
+         private final double offset;
+@@ -84,15 +82,22 @@ public final class ProcessUi {
+         public String symbol(){return symbol;}
+         public double display(double kelvin){return kelvin-offset;}
+         public double kelvin(double displayed){return displayed+offset;}
++        @Override public double si(double displayed){return kelvin(displayed);}
+         public TemperatureUnit next(){return this==CELSIUS?KELVIN:CELSIUS;}
+     }
+ 
+     /** Keeps untouched full-precision input values behind concise text. */
+     public static final class NumericDraft {
+         private final double exact;
++        private final double exactSi;
++        private final DisplayUnit unit;
+         private final String initial;
+         private String text;
+-        public NumericDraft(double value){exact=value;initial=value!=0&&Math.abs(value)<1?String.format(java.util.Locale.ROOT,"%.4g",value):number(value);text=initial;}
++        public NumericDraft(double value){this(value,null);}
++        public NumericDraft(double si,DisplayUnit unit){
++            this.unit=unit;exactSi=si;exact=unit==null?si:unit.display(si);
++            initial=exact!=0&&Math.abs(exact)<1?String.format(java.util.Locale.ROOT,"%.4g",exact):number(exact);text=initial;
++        }
+         public String text(){return text;}
+         public void text(String value){text=value;}
+         public double value(){
+@@ -100,6 +105,13 @@ public final class ProcessUi {
+             if(!Double.isFinite(value))throw new IllegalArgumentException("Enter a finite number");
+             return value;
+         }
++        /** Untouched drafts retain the original SI bits across repeated display-unit changes. */
++        public double si(){
++            double value=text.equals(initial)?exactSi:unit==null?value():unit.si(value());
++            if(!Double.isFinite(value))throw new IllegalArgumentException("Enter a finite number");
++            return value;
++        }
++        public NumericDraft in(DisplayUnit next){return new NumericDraft(si(),java.util.Objects.requireNonNull(next));}
+     }
+ 
+     /** Draggable row scrollbar, independent of a screen's data source. */
+diff --git a/src/main/java/com/wormzjl/icheme/client/gui/screens/inventory/FluidDeviceScreen.java b/src/main/java/com/wormzjl/icheme/client/gui/screens/inventory/FluidDeviceScreen.java
+index d8c901ff..611ed466 100644
+--- a/src/main/java/com/wormzjl/icheme/client/gui/screens/inventory/FluidDeviceScreen.java
++++ b/src/main/java/com/wormzjl/icheme/client/gui/screens/inventory/FluidDeviceScreen.java
+@@ -26,18 +26,23 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
+     private final ProcessScroll scroll=new ProcessScroll();
+     private RelativeComposition composition;
+     private ComponentDropdown componentDropdown;
+-    private TemperatureUnit temperatureUnit=TemperatureUnit.CELSIUS;
++    private static TemperatureUnit preferredTemperatureUnit=TemperatureUnit.CELSIUS;
++    private TemperatureUnit temperatureUnit=preferredTemperatureUnit;
++    private static PressureUnit preferredPressureUnit=PressureUnit.KILOPASCAL;
++    private PressureUnit pressureUnit=preferredPressureUnit;
+     /** Client UI thread only; keep one time basis when moving between equipment screens this session. */
+     private static FlowRateUnit preferredFlowRateUnit=FlowRateUnit.PER_SECOND;
+     private FlowRateUnit flowRateUnit=preferredFlowRateUnit;
+-    /** Independent of composition-entry basis; a client-session preference for the generator's phase bar. */
+-    private static boolean preferredPhaseMass;
+-    private boolean phaseMass=preferredPhaseMass;
++    /** Ratio basis and table/flow basis are separate client-session preferences. */
++    private static PhaseRatioBasis preferredPhaseBasis=PhaseRatioBasis.VOLUME;
++    private PhaseRatioBasis phaseBasis=preferredPhaseBasis;
++    private static boolean preferredMass;
++    private boolean mass=preferredMass;
+     private Button phaseBasisButton;
+     private String[][] particles=new String[64][3];
+     private long revision=Long.MIN_VALUE,messageRevision;
+     private int page,phase=2;
+-    private boolean mass,templates,rebuildNext,hasConnections,powerOn=true,phaseSelected;
++    private boolean templates,rebuildNext,hasConnections,powerOn=true,phaseSelected;
+     private String search="",message="",hovered;
+     private V3ClientPresets library;
+     private V3ClientPresets.Snapshot mixtureSnapshot;
+@@ -74,7 +79,7 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
+     private static final int RAIL_STEP=10,RAIL_CONTROL=42,RAIL_LINE=30;
+     private final ProcessScroll railScroll=new ProcessScroll();
+     private int railBuiltOffset,hoverX=-1,hoverY=-1,clipTop=Integer.MIN_VALUE,clipBottom=Integer.MAX_VALUE;
+-    private int railTop(){return pipe()?78:90;}
++    private int railTop(){return 90;}
+     private int railBottom(){return imageHeight-52;}
+     private int railOffset(){return railScroll.value()*RAIL_STEP;}
+     private boolean inRail(int y,int height){return y>=railTop()&&y+height<=railBottom();}
+@@ -84,7 +89,7 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
+     // other tables, so the list is readable at every GUI scale (it was on the rail, below the tank's values, and did
+     // not fit below about 323 scaled pixels of height). Page 5 is an equipment datasheet, scrolled the same way.
+     private boolean tank(){return menu.clientData()!=null&&menu.clientData().kind()==TopologyCompiler.Kind.RESERVOIR;}
+-    private int tableTop(){return page==0?(pipe()?110:130):page==1?166:page==3?104:page==4||page==5?100:142;}
++    private int tableTop(){return page==0?130:page==1?166:page==3?116:page==4||page==5?100:142;}
+     private int rowHeight(){return page==0||page==3?18:page==4?24:page==5?12:25;}
+     private int visibleRows(){return Math.max(1,(imageHeight-64-tableTop())/rowHeight());}
+     private void refresh(){
+@@ -106,9 +111,9 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
+         if(data.view().inputRevision()==revision)return;
+         revision=data.view().inputRevision();var c=data.controls();
+         powerOn=c.power()==FluidNetwork.Power.ON;
+-        fields.clear();fields.put("temperature",new NumericDraft(temperatureUnit.display(c.temperature())));
+-        fields.put("pressure",new NumericDraft(c.pressure()));fields.put("diameter",new NumericDraft(c.diameter()));
+-        fields.put("volumeFlow",new NumericDraft(flowRateUnit.display(c.volumeFlow())));fields.put("maximumAddedPressure",new NumericDraft(c.maximumAddedPressure()));
++        fields.clear();fields.put("temperature",new NumericDraft(c.temperature(),temperatureUnit));
++        fields.put("pressure",new NumericDraft(c.pressure(),pressureUnit));fields.put("diameter",new NumericDraft(c.diameter()));
++        fields.put("volumeFlow",new NumericDraft(c.volumeFlow(),flowRateUnit));fields.put("maximumAddedPressure",new NumericDraft(c.maximumAddedPressure(),pressureUnit));
+         fields.put("maximumPressureRatio",new NumericDraft(c.maximumPressureRatio()));
+         composition=new RelativeComposition(data.components(),data.molecularWeights(),c.composition());
+         if(mass)composition.toggleBasis();
+@@ -135,12 +140,6 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
+     }
+     /** A field of the scrolled rail: its label is clipped with the rail, the box shows only when it lies wholly inside. */
+     private void railField(String key,String label,int y){field(key,label,12,y,rail()-4).visible=inRail(y+12,18);}
+-    private int[] bottomButtons(){
+-        int[] widths={50,60,100,90,75},minimum={42,45,50,45,40};
+-        int natural=Arrays.stream(widths).sum(),floor=Arrays.stream(minimum).sum(),room=imageWidth-44;
+-        if(room<natural)for(int i=0;i<widths.length;i++)widths[i]=minimum[i]+(widths[i]-minimum[i])*(room-floor)/(natural-floor);
+-        return widths;
+-    }
+     /** Rail controls above the values: the fields a device's page edits, or a filter's recover button. */
+     private int railControls(){
+         var data=menu.clientData();if(data==null||!canEdit())return 0;
+@@ -148,75 +147,65 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
+     }
+     private void changePage(int target){page=target;templates=false;scroll.reset();rebuild();}
+     private void toggleBasis(){
+-        try{if(composition!=null){composition.toggleBasis();mass=composition.mass();}else mass=!mass;rebuild();}
++        try{if(composition!=null){composition.toggleBasis();mass=composition.mass();}else mass=!mass;preferredMass=mass;rebuild();}
+         catch(IllegalArgumentException e){message=tr("invalid_composition");}
+     }
+-    private void toggleTemperature(){
++    /** Validate all affected drafts first, so a refused unit change loses no input or precision. */
++    private boolean convertUnit(DisplayUnit next,String... keys){
+         try{
+-            if(fields.containsKey("temperature")){
+-                double kelvin=temperatureUnit.kelvin(fields.get("temperature").value());
+-                temperatureUnit=temperatureUnit.next();fields.put("temperature",new NumericDraft(temperatureUnit.display(kelvin)));
+-            }else temperatureUnit=temperatureUnit.next();
+-            rebuild();
+-        }catch(IllegalArgumentException e){message=tr("invalid_number");}
++            var converted=new LinkedHashMap<String,NumericDraft>();
++            for(var key:keys)if(fields.containsKey(key))converted.put(key,fields.get(key).in(next));
++            fields.putAll(converted);return true;
++        }catch(IllegalArgumentException e){message=tr("invalid_unit");return false;}
++    }
++    private void toggleTemperature(){
++        var next=temperatureUnit.next();if(convertUnit(next,"temperature")){temperatureUnit=preferredTemperatureUnit=next;rebuild();}
+     }
+     private void toggleFlowRate(){
+-        try{
+-            var next=flowRateUnit.next();
+-            if(fields.containsKey("volumeFlow")){
+-                double perSecond=flowRateUnit.perSecond(fields.get("volumeFlow").value());
+-                fields.put("volumeFlow",new NumericDraft(next.display(perSecond)));
+-            }
+-            flowRateUnit=preferredFlowRateUnit=next;rebuild();
+-        }catch(IllegalArgumentException e){message=tr("invalid_flow_unit");}
++        var next=flowRateUnit.next();if(convertUnit(next,"volumeFlow")){flowRateUnit=preferredFlowRateUnit=next;rebuild();}
++    }
++    private void togglePressure(){
++        var next=pressureUnit.next();if(convertUnit(next,"pressure","maximumAddedPressure")){pressureUnit=preferredPressureUnit=next;rebuild();}
+     }
+     private void rebuild(){
+         rebuildNext=false;String focused=editors.entrySet().stream().filter(e->e.getValue()==getFocused()).map(Map.Entry::getKey).findFirst().orElse(null);
+         int cursor=focused==null?0:editors.get(focused).getCursorPosition();
+         boolean dropdownOpen=componentDropdown!=null&&componentDropdown.expanded();
+         clearWidgets();editors.clear();labels.clear();componentDropdown=null;phaseBasisButton=null;
+-        action("overview",10,29,100,()->changePage(0)).active=page!=0;
+-        if(generator()&&canEdit()){
+-            action("composition",116,29,112,()->changePage(1)).active=page!=1;
+-            action("solids",234,29,100,()->changePage(2)).active=page!=2;
+-        }
+-        // Compact labels and minimum widths keep all five controls usable at the smallest supported GUI width.
+-        int[] bottom=bottomButtons();int by=imageHeight-27;boolean compact=imageWidth<400;
+-        int flowX=imageWidth-10-bottom[4],temperatureX=flowX-6-bottom[3],basisX=temperatureX-6-bottom[2];
+-        button(compact?flowRateUnit.suffix():tr("flow_unit",flowRateUnit.suffix()),flowX,by,bottom[4],this::toggleFlowRate)
+-            .setTooltip(Tooltip.create(Component.translatable("gui.icheme.fluid.flow_unit.hint")));
+-        button(compact?temperatureUnit.symbol():tr("temperature_unit",temperatureUnit.symbol()),temperatureX,by,bottom[3],this::toggleTemperature)
++        var data=menu.clientData();
++        var tabs=new ArrayList<String>();var pages=new ArrayList<Integer>();tabs.add("overview");pages.add(0);
++        if(generator()&&canEdit()){tabs.add("composition");pages.add(1);tabs.add("solids");pages.add(2);}
++        if(pipe()&&data.view().pipeInfo().connections().size()>1){tabs.add("connections");pages.add(3);}
++        if(tank()){tabs.add("outlets");pages.add(4);}
++        if(!datasheet.isEmpty()){tabs.add("datasheet");pages.add(5);}
++        var tabSlots=FluidGuiLayout.tabs(imageWidth,tabs.size());
++        for(int i=0;i<tabs.size();i++){int target=pages.get(i);var slot=tabSlots.get(i);action(tabs.get(i),slot.x(),29,slot.width(),()->changePage(target)).active=page!=target;}
++        var footer=FluidGuiLayout.footer(imageWidth);int by=imageHeight-27;boolean compact=imageWidth<500;
++        var close=footer.get(0);action("close",close.x(),by,close.width(),this::onClose);
++        var basis=footer.get(2);button(tr(compact?(mass?"mass_basis_short":"mole_basis_short"):(mass?"mass_basis":"mole_basis")),basis.x(),by,basis.width(),this::toggleBasis)
++            .setTooltip(Tooltip.create(Component.translatable("gui.icheme.fluid.table_basis.hint")));
++        var temperature=footer.get(3);button(compact?temperatureUnit.symbol():tr("temperature_unit",temperatureUnit.symbol()),temperature.x(),by,temperature.width(),this::toggleTemperature)
+             .setTooltip(Tooltip.create(Component.translatable("gui.icheme.column.temperature_unit.hint")));
+-        button(tr(compact?(mass?"mass_basis_short":"mole_basis_short"):(mass?"mass_basis":"mole_basis")),basisX,by,bottom[2],this::toggleBasis)
+-            .setTooltip(Tooltip.create(Component.translatable("gui.icheme.column.composition_basis.hint")));
+-        action("close",10,by,bottom[0],this::onClose);
+-        var data=menu.clientData();if(data==null)return;
+-        if(generator()) {
+-            phaseBasisButton=button(tr(phaseMass?"phase_ratio.mass_basis":"phase_ratio.volume_basis"),12,0,rail()-4,()->{
+-                phaseMass=preferredPhaseMass=!phaseMass;
+-                phaseBasisButton.setMessage(Component.literal(tr(phaseMass?"phase_ratio.mass_basis":"phase_ratio.volume_basis")));
+-            });
+-            phaseBasisButton.setTooltip(Tooltip.create(Component.translatable("gui.icheme.fluid.phase_ratio.basis_hint")));
+-            layoutPhaseBasisButton();
+-        }
+-        if(canEdit()&&data.kind()!=TopologyCompiler.Kind.RESERVOIR&&data.kind()!=TopologyCompiler.Kind.FILTER)
+-            action("apply",16+bottom[0],by,bottom[1],this::apply);
+-        if(pipe()&&data.view().pipeInfo().connections().size()>1)
+-            action("connections",116,29,112,()->changePage(3)).active=page!=3;
+-        // The tab's hover hint is the outlets hint (the D11 rule), key "outlets.hint".
+-        if(tank())action("outlets",116,29,130,()->changePage(4)).active=page!=4;
+-        int datasheetX=tank()?252:116;
+-        if(!datasheet.isEmpty())action("datasheet",datasheetX,29,Math.min(100,imageWidth-datasheetX-10),()->changePage(5)).active=page!=5;
++        var pressure=footer.get(4);button(compact?pressureUnit.symbol():tr("pressure_unit",pressureUnit.symbol()),pressure.x(),by,pressure.width(),this::togglePressure)
++            .setTooltip(Tooltip.create(Component.translatable("gui.icheme.fluid.pressure_unit.hint")));
++        var rate=footer.get(5);button(compact?flowRateUnit.suffix():tr("flow_unit",flowRateUnit.suffix()),rate.x(),by,rate.width(),this::toggleFlowRate)
++            .setTooltip(Tooltip.create(Component.translatable("gui.icheme.fluid.flow_unit.hint")));
++        if(data==null)return;
++        phaseBasisButton=button(tr("phase_ratio."+phaseBasis.key()+"_basis"),12,0,rail()-4,()->{
++            phaseBasis=preferredPhaseBasis=phaseBasis.next();phaseBasisButton.setMessage(Component.literal(tr("phase_ratio."+phaseBasis.key()+"_basis")));
++        });
++        phaseBasisButton.setTooltip(Tooltip.create(Component.translatable("gui.icheme.fluid.phase_ratio.basis_hint")));layoutPhaseBasisButton();
++        if(canEdit()&&data.kind()!=TopologyCompiler.Kind.RESERVOIR&&data.kind()!=TopologyCompiler.Kind.FILTER){var apply=footer.get(1);action("apply",apply.x(),by,apply.width(),this::apply);}
+         railBuiltOffset=railOffset();int y=railTop()-railBuiltOffset;
+         if(canEdit()&&switchable()) {
+             var power=action(powerOn?"power_on":"power_off",12,y,rail()-4,()->{powerOn=!powerOn;rebuild();});
+             power.visible=inRail(y,20);y+=RAIL_CONTROL;
+         }
+         if(canEdit())switch(data.kind()){
+-            case GENERATOR->{railField("pressure",tr("pressure_input"),y);railField("temperature",tr("temperature_input",temperatureUnit.symbol()),y+RAIL_CONTROL);}
+-            case PUMP->{railField("volumeFlow",tr("flow_input",flowRateUnit.unit("m³")),y);railField("maximumAddedPressure",tr("head_input"),y+RAIL_CONTROL);}
++            case GENERATOR->{railField("pressure",tr("pressure_input",pressureUnit.symbol()),y);railField("temperature",tr("temperature_input",temperatureUnit.symbol()),y+RAIL_CONTROL);}
++            case PUMP->{railField("volumeFlow",tr("flow_input",flowRateUnit.unit("m³")),y);railField("maximumAddedPressure",tr("head_input",pressureUnit.symbol()),y+RAIL_CONTROL);}
+             case COMPRESSOR->{railField("volumeFlow",tr("flow_input",flowRateUnit.unit("m³")),y);railField("maximumPressureRatio",tr("ratio_input"),y+RAIL_CONTROL);}
+-            case VALVE,VOID->railField("pressure",tr("pressure_input"),y);
++            case VALVE,VOID->railField("pressure",tr("pressure_input",pressureUnit.symbol()),y);
+             case PIPE->railField("diameter",tr("diameter_input"),y);
+             default->{}
+         }
+@@ -232,7 +221,10 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
+     }
+     private void buildContents(){
+         int w=(tableWidth()-12)/4;
+-        for(int i=0;i<4;i++){int selected=i;button(tr("phase."+i),tableX()+i*(w+4),pipe()?62:82,w,()->{phase=selected;phaseSelected=true;scroll.reset();rebuild();}).active=phase!=i;}
++        for(int i=0;i<4;i++){
++            int selected=i;var tab=button(tr((tableWidth()<240?"phase_tab.":"phase.")+i),tableX()+i*(w+4),82,w,()->{phase=selected;phaseSelected=true;scroll.reset();rebuild();});
++            tab.active=phase!=i;tab.setTooltip(Tooltip.create(Component.literal(tr("phase."+i))));
++        }
+         configureScroll(phase==3?shownSolids().size():present().size());
+     }
+     private void configureScroll(int size){scroll.configure(leftPos+imageWidth-16,topPos+tableTop(),imageHeight-64-tableTop(),visibleRows(),size);}
+@@ -264,9 +256,10 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
+     private void buildComposition(){
+         int x=tableX(),w=tableWidth();
+         if(templates){
+-            action("back",x,82,76,()->{templates=false;scroll.reset();rebuild();});
+-            action("refresh",x+82,82,90,this::openTemplates);
+-            action("folder",x+178,82,100,()->net.minecraft.Util.getPlatform().openPath(library.directory(V3ClientPresets.Kind.MIXTURE)));
++            int bw=(w-12)/3;
++            action("back",x,82,bw,()->{templates=false;scroll.reset();rebuild();});
++            action("refresh",x+bw+6,82,bw,this::openTemplates);
++            action("folder",x+2*(bw+6),82,bw,()->net.minecraft.Util.getPlatform().openPath(library.directory(V3ClientPresets.Kind.MIXTURE)));
+             configureScroll(choices.size());
+             for(int i=scroll.value();i<Math.min(choices.size(),scroll.value()+visibleRows());i++){
+                 var choice=choices.get(i);button(choice.label(),x,tableTop()+(i-scroll.value())*25,w-4,choice.select());
+@@ -319,9 +312,9 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
+             if(!FluidNetwork.pressureRatioAllowed(ratio)){message=tr("invalid_ratio",(Object[])FluidNetwork.pressureRatioBoundsText());return;}
+         }
+         try{
+-            var controls=new FluidNetwork.Controls(temperatureUnit.kelvin(fields.get("temperature").value()),fields.get("pressure").value(),
+-                fields.get("diameter").value(),PipeResistance.DEFAULT_ROUGHNESS_METRES,flowRateUnit.perSecond(fields.get("volumeFlow").value()),
+-                fields.get("maximumAddedPressure").value(),composition.moleFractions(),solids(),fields.get("maximumPressureRatio").value(),powerOn?FluidNetwork.Power.ON:FluidNetwork.Power.OFF);
++            var controls=new FluidNetwork.Controls(fields.get("temperature").si(),fields.get("pressure").si(),
++                fields.get("diameter").value(),PipeResistance.DEFAULT_ROUGHNESS_METRES,fields.get("volumeFlow").si(),
++                fields.get("maximumAddedPressure").si(),composition.moleFractions(),solids(),fields.get("maximumPressureRatio").value(),powerOn?FluidNetwork.Power.ON:FluidNetwork.Power.OFF);
+             FluidNetwork.sendEdit(menu,revision,controls);message=tr("waiting");
+         }catch(IllegalArgumentException e){message=tr("invalid_input");}
+     }
+@@ -343,6 +336,7 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
+             double moles=0;for(var phase:stream.phaseMoles())for(double amount:phase)moles+=amount;
+             return flowRateUnit.display(moles/1000/view.intervalSeconds());
+         }
++        if(tank())return flowRateUnit.display(mass?view.outlets().stream().mapToDouble(com.wormzjl.icheme.runtime.fluid.FluidView.Outlet::massFlow).sum():view.outlets().stream().mapToDouble(com.wormzjl.icheme.runtime.fluid.FluidView.Outlet::moleFlow).sum()/1000);
+         double flow=view.massFlow()*(data.kind()==TopologyCompiler.Kind.VOID?-1:1);
+         if(mass||flow==0)return flowRateUnit.display(flow);
+         if(view.state()==null)return Double.NaN;
+@@ -387,12 +381,11 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
+         }
+         if(componentDropdown!=null)componentDropdown.renderSuggestions(g,mouseX,mouseY);
+     }
+-    /** The generator rail has power, temperature, pressure and last-flow rows before its phase selector. */
++    private int readingsTop(){return railTop()-railOffset()+(railControls()==0?4:railControls()*RAIL_CONTROL)+(pipe()&&menu.clientData().view().pipeInfo().junction()?18:0);}
+     private void layoutPhaseBasisButton() {
+         if(phaseBasisButton==null)return;
+-        int y=railTop()-railOffset()+(railControls()==0?4:railControls()*RAIL_CONTROL)+4*RAIL_LINE+2;
+-        phaseBasisButton.setPosition(leftPos+12,topPos+y);
+-        phaseBasisButton.visible=menu.clientData().view().state()!=null&&inRail(y,20);
++        int y=readingsTop()+readings().size()*RAIL_LINE+2;
++        phaseBasisButton.setPosition(leftPos+12,topPos+y);phaseBasisButton.visible=inRail(y,18);
+     }
+     @Override protected void renderBg(GuiGraphics g,float partialTick,int mouseX,int mouseY){
+         g.fill(leftPos,topPos,leftPos+imageWidth,topPos+imageHeight,BG);
+@@ -404,16 +397,16 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
+         var data=menu.clientData();
+         if(data==null){text(g,tr("waiting"),10,62,MUTED,imageWidth-20);return;}
+         // A refused mover's reason ("ERROR: pump inlet not liquid ...") and a hold read in the warning colour.
+-        // A pipe and a tank show their status on the rail (renderStatus).
+-        var view=data.view();if(!pipe()&&!tank())text(g,view.status(),10,59,warning(view.status())?WARN:MUTED,imageWidth-20);
+-        g.vLine(rail()+14,pipe()?60:78,imageHeight-52,LINE);g.hLine(8,imageWidth-8,imageHeight-49,LINE);
+-        text(g,tr("operating"),12,pipe()?62:77,ACCENT,rail());
++        // Every device repeats the full status on its scrollable rail (renderStatus).
++        var view=data.view();text(g,statusText(view.status()),10,59,warning(view.status())?WARN:MUTED,imageWidth-20);
++        g.vLine(rail()+14,78,imageHeight-52,LINE);g.hLine(8,imageWidth-8,imageHeight-49,LINE);
++        text(g,tr("operating"),12,77,ACCENT,rail());
+         for(var label:labels)if(label.x()>=tableX())text(g,label.text(),label.x(),label.y(),MUTED,label.width());
+         // The rail column (see railTop): drawn clipped to its area, its length sets the rail's scrollbar.
+         int top=railTop(),bottom=railBottom(),start=top-railOffset();
+         g.enableScissor(leftPos+1,topPos+top,leftPos+rail()+10,topPos+bottom);clipTop=top;clipBottom=bottom;
+         for(var label:labels)if(label.x()<tableX())text(g,label.text(),label.x(),label.y(),MUTED,label.width());
+-        int end=pipe()?renderPipeRail(g,hoverX,hoverY,start):renderDeviceRail(g,start+(railControls()==0?4:railControls()*RAIL_CONTROL));
++        int end=renderDeviceRail(g);
+         g.disableScissor();clipTop=Integer.MIN_VALUE;clipBottom=Integer.MAX_VALUE;
+         int visible=Math.max(1,(bottom-top)/RAIL_STEP),overflow=end-start-(bottom-top);
+         railScroll.configure(leftPos+rail()+10,topPos+top,bottom-top,visible,visible+(overflow>0?(overflow+RAIL_STEP-1)/RAIL_STEP:0));
+@@ -432,49 +425,56 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
+         // Scrollbars store screen coordinates because all mouse events arrive there.
+         g.pose().pushPose();g.pose().translate(-leftPos,-topPos,0);scroll.draw(g);railScroll.draw(g);g.pose().popPose();
+     }
+-    /** A device's values on the rail from y (unscrolled: below its controls); returns the bottom of the last line. */
+-    private int renderDeviceRail(GuiGraphics g,int y){
+-        var data=menu.clientData();var view=data.view();
+-        if(switchable()){railLine(g,"power_state",tr(data.controls().power()==FluidNetwork.Power.ON?"state_on":"state_off"),y);y+=RAIL_LINE;}
+-        if(view.state()!=null){
+-            var state=view.state();
+-            if(data.kind()!=TopologyCompiler.Kind.VOID){railLine(g,"temperature",number(temperatureUnit.display(state.temperature()))+" "+temperatureUnit.symbol(),y);y+=RAIL_LINE;}
+-            railLine(g,"pressure",pressure(state.pressure()),y);y+=RAIL_LINE;
+-            if(data.kind()==TopologyCompiler.Kind.RESERVOIR){
+-                String volume=number(state.volume()*1000)+" / "+number(state.capacity()*1000)+" L";
+-                railLine(g,"volume",volume,y);
+-                if(railHover(hoverX,hoverY,y,y+27))hovered=tr("volume_capacity.hint")+"\n"+volume;y+=RAIL_LINE;
+-                railLine(g,"fill",number(state.fill()*100)+" %",y);y+=RAIL_LINE;
+-                railLine(g,"mass",number(state.mass())+" kg",y);y+=RAIL_LINE;
+-            }
+-        }
+-        if(data.kind()==TopologyCompiler.Kind.PIPE||data.kind()==TopologyCompiler.Kind.PUMP||data.kind()==TopologyCompiler.Kind.COMPRESSOR||data.kind()==TopologyCompiler.Kind.VOID||generator()){
+-            double flow=displayedFlow();
+-            railLine(g,"last_flow",(Double.isFinite(flow)?number(flow):"—")+" "+flowUnit(),y);y+=RAIL_LINE;
++    private record Reading(String key,String value,String hint){
++        Reading(String key,String value){this(key,value,null);}
++    }
++    private String displayPressure(Double value){return value==null?"—":pressureUnit.format(value);}
++    private String quantity(double value,String unit){return (Double.isFinite(value)?number(value):"—")+" "+unit;}
++    /** One row plan drives both drawing and the phase selector's scroll position for every equipment kind. */
++    private List<Reading> readings(){
++        var data=menu.clientData();var view=data.view();var state=view.state();var rows=new ArrayList<Reading>();
++        if(switchable())rows.add(new Reading("power_state",tr(data.controls().power()==FluidNetwork.Power.ON?"state_on":"state_off")));
++        if(tank()){
++            var vessel=view.tank();boolean empty=vessel!=null&&state==null;
++            rows.add(new Reading("temperature",state==null?"—":quantity(temperatureUnit.display(state.temperature()),temperatureUnit.symbol())));
++            rows.add(new Reading("top_pressure",displayPressure(vessel==null?(state==null?null:state.pressure()):vessel.topPressure()),tr("top_pressure.hint")));
++            rows.add(new Reading("bottom_pressure",displayPressure(vessel==null?null:vessel.bottomPressure()),tr("bottom_pressure.hint")));
++            double capacity=vessel!=null?vessel.capacity():state==null?Double.NaN:state.capacity();
++            String volume=(state!=null?number(state.volume()*1000):empty?number(0):"—")+" / "+(Double.isFinite(capacity)?number(capacity*1000):"—")+" L";
++            rows.add(new Reading("volume",volume,tr("volume_capacity.hint")+"\n"+volume));
++            rows.add(new Reading("fill",quantity(state!=null?state.fill()*100:empty?0:Double.NaN,"%")));
++            rows.add(new Reading("mass",quantity(state!=null?state.mass():empty?0:Double.NaN,"kg")));
++        }else if(!pipe()&&data.kind()!=TopologyCompiler.Kind.FILTER){
++            if(data.kind()!=TopologyCompiler.Kind.VOID)rows.add(new Reading("temperature",state==null?"—":quantity(temperatureUnit.display(state.temperature()),temperatureUnit.symbol())));
++            String key=data.kind()==TopologyCompiler.Kind.PUMP||data.kind()==TopologyCompiler.Kind.COMPRESSOR?"suction_pressure":data.kind()==TopologyCompiler.Kind.VALVE?"inlet_pressure":"pressure";
++            rows.add(new Reading(key,displayPressure(state==null?null:state.pressure())));
+         }
+-        if(view.filter()!=null){
+-            railLine(g,"filter_load",number(view.filter().loading()*100)+" %",y);y+=RAIL_LINE;
+-            railLine(g,"captured",number(view.filter().captured().massKg())+" kg",y);y+=RAIL_LINE;
++        rows.add(new Reading(tank()?"net_flow":"throughput",quantity(displayedFlow(),flowUnit()),tr(tank()?"net_flow.hint":"throughput.hint")));
++        if(pipe()){
++            var info=view.pipeInfo();
++            rows.add(new Reading("velocity",metricRange(info.connections(),com.wormzjl.icheme.runtime.fluid.FluidView.PipeConnection::velocityMetresPerSecond," m/s"),tr("velocity.hint")));
++            rows.add(new Reading("gradient",pressureRange(info.connections()),tr("gradient.hint")));
+         }
+-        if(view.devicePressureChange()!=null){railLine(g,"pressure_change",pressure(view.devicePressureChange()),y);y+=RAIL_LINE;}
+-        // The compressor's rise over its suction (its own junction, the state this rail shows): the quantity its ratio limits.
+-        if(data.kind()==TopologyCompiler.Kind.COMPRESSOR&&view.devicePressureChange()!=null&&view.state()!=null&&view.state().pressure()>0){
+-            railLine(g,"pressure_ratio",number((view.state().pressure()+view.devicePressureChange())/view.state().pressure()),y);y+=RAIL_LINE;}
+-        if(generator()&&view.state()!=null){
+-            var state=view.state();double[] phases=state.phaseVolumes();double solids=state.solids().volume();
+-            if(phaseMass) {
+-                phases=new double[3];var n=state.phaseMoles();var weights=data.molecularWeights();
+-                for(int p=0;p<3;p++)for(int c=0;c<n[p].length;c++)phases[p]+=n[p][c]*weights.get(c);
+-                solids=state.solids().massKg();
+-            }
+-            y+=26;y=renderPhaseRatio(g,hoverX,hoverY,y,phases,solids,"phase_ratio.generator_hint",phaseMass);
++        if(data.kind()==TopologyCompiler.Kind.FILTER){
++            var filter=view.filter();rows.add(new Reading("filter_load",quantity(filter==null?Double.NaN:filter.loading()*100,"%")));
++            rows.add(new Reading("captured",quantity(filter==null?Double.NaN:filter.captured().massKg(),"kg")));
+         }
+-        // A tank reads like a pipe below its values: the phase ratio of what it holds, then the full status (its errors).
+-        if(tank()){
+-            y+=2;if(view.state()!=null)y=renderPhaseRatio(g,hoverX,hoverY,y,view.state().phaseVolumes(),view.state().solids().volume(),"phase_ratio.tank_hint");
+-            return renderStatus(g,hoverX,hoverY,y,statusText(view.status()),view.status());
++        if(view.devicePressureChange()!=null)rows.add(new Reading("pressure_change",displayPressure(view.devicePressureChange())));
++        if(data.kind()==TopologyCompiler.Kind.COMPRESSOR&&view.devicePressureChange()!=null&&state!=null&&state.pressure()>0)
++            rows.add(new Reading("pressure_ratio",number((state.pressure()+view.devicePressureChange())/state.pressure())));
++        return List.copyOf(rows);
++    }
++    private int renderDeviceRail(GuiGraphics g){
++        var view=menu.clientData().view();int y=readingsTop();
++        if(pipe()&&view.pipeInfo().junction())text(g,tr("junction",view.pipeInfo().connections().size()),12,y-16,ACCENT,rail());
++        for(var row:readings()){
++            railLine(g,row.key(),row.value(),y);
++            if(row.hint()!=null&&railHover(hoverX,hoverY,y,y+27))hovered=row.hint();
++            y+=RAIL_LINE;
+         }
+-        return y-(RAIL_LINE-21);
++        y=renderPhaseRatio(g,hoverX,hoverY,y+24);
++        var status=pipe()&&view.pipeInfo().changedDirection()?tr("reversed_interval")+" ":"";
++        return renderStatus(g,hoverX,hoverY,y,status+statusText(view.status()),view.status());
+     }
+     private static boolean warning(String status){return status.contains("HELD")||status.contains("ERROR");}
+     /**
+@@ -506,7 +506,7 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
+         return switch(outlet.port()){
+             case VAPOR->tr("outlet.top",face);
+             case BULK->tr("outlet.side",face);
+-            case LIQUID->outlet.head()>0?tr("outlet.bottom_head",face,number(outlet.head()/1000)):tr("outlet.bottom",face);
++            case LIQUID->outlet.head()>0?tr("outlet.bottom_head",face,pressureUnit.format(outlet.head())):tr("outlet.bottom",face);
+             case OVERFLOW->tr("outlet.overflow",face);
+         };
+     }
+@@ -520,39 +520,28 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
+             :outlet.drawn()==1?tr("outlet.drawing_water"):outlet.drawn()==0?tr("outlet.drawing_oil"):"—";
+         return drawing+" · "+number(flow)+unit;
+     }
+-    /** A pipe's rail from base (the scrolled rail top); returns the bottom of its last status line. */
+-    private int renderPipeRail(GuiGraphics g,int mx,int my,int base){
+-        var view=menu.clientData().view();var info=view.pipeInfo();int y=base+46;
+-        if(info.junction()){text(g,tr("junction",info.connections().size()),12,base+34,ACCENT,rail());y=base+58;}
+-        double flow=displayedFlow();
+-        railLine(g,"throughput",(Double.isFinite(flow)?number(flow):"—")+" "+flowUnit(),y);
+-        if(railHover(mx,my,y,y+27))hovered=tr("throughput.hint");
+-        y+=30;
+-        railLine(g,"velocity",metricRange(info.connections(),com.wormzjl.icheme.runtime.fluid.FluidView.PipeConnection::velocityMetresPerSecond," m/s"),y);
+-        if(railHover(mx,my,y,y+27))hovered=tr("velocity.hint");
+-        y+=30;
+-        railLine(g,"gradient",metricRange(info.connections(),com.wormzjl.icheme.runtime.fluid.FluidView.PipeConnection::pressureDropPascalPerMetre," Pa/m"),y);
+-        if(railHover(mx,my,y,y+27))hovered=tr("gradient.hint");
+-        y+=32;y=renderPhaseRatio(g,mx,my,y,info.contents().phaseVolumes(),info.contents().solids().volume(),"phase_ratio.hint");
+-        return renderStatus(g,mx,my,y,(info.changedDirection()?tr("reversed_interval")+" ":"")+statusText(view.status()),view.status());
+-    }
+-    /**
+-     * The phase ratio block (pipe and tank rail) from y: a bar of the organic, aqueous, vapor and solid volumes and their
+-     * percentages; returns the y below it. A pipe's volumes are what it carried over the last interval, a tank's what it holds.
+-     */
+-    private int renderPhaseRatio(GuiGraphics g,int mx,int my,int y,double[] phaseVolumes,double solidsVolume,String hint){
+-        return renderPhaseRatio(g,mx,my,y,phaseVolumes,solidsVolume,hint,false);
+-    }
+-    /** Both arrays use the same selected basis: m3 for volume or kg for mass, including the solids. */
+-    private int renderPhaseRatio(GuiGraphics g,int mx,int my,int y,double[] phaseValues,double solidsValue,String hint,boolean massBasis){
+-        text(g,tr(massBasis?"phase_ratio.mass":"phase_ratio"),12,y,MUTED,rail());y+=14;
+-        double[] values=Arrays.copyOf(phaseValues,4);values[3]=solidsValue;
++    /** A shared phase block: accepted passing material, stored vessel contents, or configured generator feed. */
++    private int renderPhaseRatio(GuiGraphics g,int mx,int my,int y){
++        var data=menu.clientData();var view=data.view();var state=view.state();var info=view.pipeInfo();
++        double[] volumes=info!=null?info.contents().phaseVolumes():state!=null?state.phaseVolumes():new double[3];
++        var solids=info!=null?info.contents().solids():state!=null?state.solids():SolidInventory.EMPTY;
++        var values=phaseBasis.amounts(volumes,amounts(),solids,data.components(),data.molecularWeights());
++        boolean excludes=phaseBasis.excludesCustomSolids(solids);
++        text(g,tr(phaseBasis==PhaseRatioBasis.VOLUME?"phase_ratio":"phase_ratio."+phaseBasis.key()),12,y,MUTED,rail());y+=14;
+         double total=Arrays.stream(values).sum();int at=12;int[] colors={0xffd6a65a,0xff549bd2,0xffb3c0ca,0xffa28565};
+-        for(int i=0;i<4;i++){int end=i==3?rail()+8:at+(total>0?(int)Math.round((rail()-4)*values[i]/total):0);if(total>0)g.fill(at,y,end,y+5,colors[i]);at=end;}
++        int[] edges=new int[5];edges[0]=12;double accumulated=0;
++        for(int i=0;i<4;i++){accumulated+=values[i];edges[i+1]=12+(total>0?(int)Math.round((rail()-4)*accumulated/total):0);if(total>0)g.fill(edges[i],y,edges[i+1],y+5,colors[i]);}
+         y+=10;
+-        for(int i=0;i<4;i++){int col=i%2,row=i/2;text(g,tr("phase_short."+i)+" "+(total>0?number(100*values[i]/total)+"%":"—"),12+col*rail()/2,y+row*13,TEXT,rail()/2-4);}
+-        if(railHover(mx,my,y-24,y+26))hovered=tr(hint);
+-        return y+34;
++        for(int i=0;i<4;i++){
++            int col=i%2,row=i/2;String label=i==3&&phaseBasis==PhaseRatioBasis.MOLAR?tr("phase_ratio.crystals"):tr("phase_short."+i);
++            text(g,label+" "+(total>0?number(100*values[i]/total)+"%":"—"),12+col*rail()/2,y+row*13,TEXT,rail()/2-4);
++        }
++        String hint=tr(generator()?"phase_ratio.generator_hint":tank()?"phase_ratio.tank_hint":"phase_ratio.hint");
++        if(phaseBasis==PhaseRatioBasis.MOLAR)hint+="\n"+tr("phase_ratio.mole_hint");
++        if(railHover(mx,my,y-24,y+26))hovered=hint;
++        y+=34;
++        if(excludes){text(g,tr("phase_ratio.custom_solids_excluded"),12,y,WARN,rail()-2);if(railHover(mx,my,y,y+10))hovered=tr("phase_ratio.mole_hint");y+=14;}
++        return y;
+     }
+     /** The "Status / errors" block from y: every line of the shown text (the rail scrolls); hover reads the raw engine status. */
+     private int renderStatus(GuiGraphics g,int mx,int my,int y,String shown,String status){
+@@ -578,16 +567,22 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
+         double min=metrics.stream().mapToDouble(value).min().orElse(0),max=metrics.stream().mapToDouble(value).max().orElse(0);
+         return (Math.abs(max-min)<1e-9?number(max):number(min)+"–"+number(max))+unit;
+     }
++    private String pressureRange(List<com.wormzjl.icheme.runtime.fluid.FluidView.PipeConnection> metrics){
++        if(metrics.isEmpty())return "—";
++        String min=pressureUnit.number(metrics.stream().mapToDouble(com.wormzjl.icheme.runtime.fluid.FluidView.PipeConnection::pressureDropPascalPerMetre).min().orElse(0));
++        String max=pressureUnit.number(metrics.stream().mapToDouble(com.wormzjl.icheme.runtime.fluid.FluidView.PipeConnection::pressureDropPascalPerMetre).max().orElse(0));
++        return (min.equals(max)?min:min+"–"+max)+" "+pressureUnit.symbol()+"/m";
++    }
+     private void renderConnections(GuiGraphics g,int mx,int my){
+         var view=menu.clientData().view();var metrics=view.pipeInfo().connections();int x=tableX(),w=tableWidth();
+-        text(g,tr("connections.hint"),x,64,MUTED,w);
+-        ProcessUi.tableRow(g,font,new String[]{tr("connection"),flowUnit(),tr("speed"),tr("dp_m")},x,tableTop()-16,w,true);
++        text(g,tr("connections.hint"),x,82,MUTED,w);
++        ProcessUi.tableRow(g,font,new String[]{tr("connection"),flowUnit(),tr("speed"),pressureUnit.symbol()+"/m"},x,tableTop()-16,w,true);
+         configureScroll(metrics.size());
+         for(int i=scroll.value();i<Math.min(metrics.size(),scroll.value()+visibleRows());i++){
+             var metric=metrics.get(i);String name=tr("connection");
+             for(var route:view.pipeRoutes())if(route.pipeId()==metric.pipeId())name=(metric.reverse()?route.second():route.first())+" → "+(metric.reverse()?route.first():route.second());
+             int y=tableTop()+(i-scroll.value())*18;
+-            ProcessUi.tableRow(g,font,new String[]{name,number(connectionFlow(view,metric)),number(metric.velocityMetresPerSecond()),number(metric.pressureDropPascalPerMetre())},x,y,w,false);
++            ProcessUi.tableRow(g,font,new String[]{name,number(connectionFlow(view,metric)),number(metric.velocityMetresPerSecond()),pressureUnit.number(metric.pressureDropPascalPerMetre())},x,y,w,false);
+             if(mx>=x&&mx<x+w&&my>=y-2&&my<y+16)hovered=name;
+         }
+     }
+diff --git a/src/main/java/com/wormzjl/icheme/network/FluidNetwork.java b/src/main/java/com/wormzjl/icheme/network/FluidNetwork.java
+index ec1e4663..affd976b 100644
+--- a/src/main/java/com/wormzjl/icheme/network/FluidNetwork.java
++++ b/src/main/java/com/wormzjl/icheme/network/FluidNetwork.java
+@@ -36,9 +36,10 @@ import java.util.*;
+  * height, open flag, vent and spill rates), and a vessel's nozzle states its own port class, OVERFLOW among them, whichever
+  * way it faces.</p>
+  * <p>{@code fluid-13}: power also controls generators; void contents are accepted incoming transport, normalized to one second.</p>
++ * <p>{@code fluid-14}: a tank publishes capacity and separate top/bottom absolute pressures, including empty capacity.</p>
+  */
+ public final class FluidNetwork {
+-    public static final String PROTOCOL="fluid-13";
++    public static final String PROTOCOL="fluid-14";
+     private static final Gson JSON=new Gson();
+     public static final int MAX_JSON=262144;
+     public static final int MAX_EDIT_JSON=4096;
+@@ -88,6 +89,7 @@ public final class FluidNetwork {
+                     ||presets.stream().map(FluidPresetCatalog.Preset::id).distinct().count()!=presets.size()||materialNames.size()>components.size()
+                     ||!components.containsAll(materialNames.keySet()))throw new IllegalArgumentException("Invalid bounded fluid menu state");
+             if(kind!=TopologyCompiler.Kind.RESERVOIR&&!view.outlets().isEmpty())throw new IllegalArgumentException("Only a tank lists outlets");
++            if(view.tank()!=null&&(kind!=TopologyCompiler.Kind.RESERVOIR||(view.state()==null)!=(view.tank().topPressure()==null)||view.state()!=null&&view.tank().capacity()!=view.state().capacity()))throw new IllegalArgumentException("Tank geometry differs from its state");
+             if((kind==TopologyCompiler.Kind.PIPE||kind==TopologyCompiler.Kind.FILTER||kind==TopologyCompiler.Kind.VOID)&&view.pipeInfo()==null)
+                 throw new IllegalArgumentException("Missing accepted transport presentation");
+             if(view.pipeInfo()!=null){
+diff --git a/src/main/java/com/wormzjl/icheme/runtime/fluid/FluidView.java b/src/main/java/com/wormzjl/icheme/runtime/fluid/FluidView.java
+index 86aadac7..4fd386a2 100644
+--- a/src/main/java/com/wormzjl/icheme/runtime/fluid/FluidView.java
++++ b/src/main/java/com/wormzjl/icheme/runtime/fluid/FluidView.java
+@@ -33,16 +33,20 @@ public record FluidView(long identity,long inputRevision,long committedTick,long
+      * A vessel's own geometry and what it gave the atmosphere over the last completed interval (batch
+      * 2026-10-21-floating-roof-tanks, {@code fluid-11}): the height its level head stands over (its fill height, for an
+      * open tank), whether it is open under a floating roof, and its vent and spill (kg/s, from its VENT and SPILL boundary
+-     * transfers). Null for a node that is not a vessel.
++     * transfers). fluid-14 adds capacity and top/bottom absolute pressure. Both pressures are null only while empty;
++     * capacity/geometry are still known. Null Tank for a node that is not a vessel.
+      */
+-    public record Tank(double levelHeight,boolean open,double ventKgPerSecond,double spillKgPerSecond) {
++    public record Tank(double levelHeight,boolean open,double ventKgPerSecond,double spillKgPerSecond,
++                       double capacity,Double topPressure,Double bottomPressure) {
+         public Tank {
+-            if(!(levelHeight>0)||!Double.isFinite(levelHeight)||!(ventKgPerSecond>=0)||!Double.isFinite(ventKgPerSecond)||!(spillKgPerSecond>=0)||!Double.isFinite(spillKgPerSecond))
++            if(!(levelHeight>0)||!Double.isFinite(levelHeight)||!(ventKgPerSecond>=0)||!Double.isFinite(ventKgPerSecond)||!(spillKgPerSecond>=0)||!Double.isFinite(spillKgPerSecond)||!(capacity>0)||!Double.isFinite(capacity))
+                 throw new IllegalArgumentException("Invalid tank presentation");
++            if((topPressure==null)!=(bottomPressure==null)||topPressure!=null&&(!Double.isFinite(topPressure)||!(topPressure>0)||!Double.isFinite(bottomPressure)||bottomPressure<topPressure))
++                throw new IllegalArgumentException("Invalid tank pressures");
+         }
+         /** The liquid's height over the bottom, m: its condensed volume (both liquids and the solids) over the footprint
+          * {@code capacity / levelHeight}. */
+-        public double level(State state){return (state.phaseVolumes()[0]+state.phaseVolumes()[1]+state.solids().volume())*levelHeight/state.capacity();}
++        public double level(State state){return state==null?0:(state.phaseVolumes()[0]+state.phaseVolumes()[1]+state.solids().volume())*levelHeight/capacity;}
+     }
+     /**
+      * One connection of a tank, as its page lists it (plan 4.3 under decision D11): the port the connection's end at the
+diff --git a/src/main/java/com/wormzjl/icheme/runtime/fluid/FluidWorldAuthority.java b/src/main/java/com/wormzjl/icheme/runtime/fluid/FluidWorldAuthority.java
+index b1db306f..e996ffc0 100644
+--- a/src/main/java/com/wormzjl/icheme/runtime/fluid/FluidWorldAuthority.java
++++ b/src/main/java/com/wormzjl/icheme/runtime/fluid/FluidWorldAuthority.java
+@@ -503,13 +503,14 @@ public final class FluidWorldAuthority implements AutoCloseable {
+         var snapshot=islands.computeIfAbsent(owner,runtime.coordinator()::presentation);FluidView.State state=null;int nodeIndex=-1;boolean empty=false;
+         for(int i=0;i<snapshot.graph().reservoirs().size();i++)if(snapshot.graph().reservoirs().get(i).id()==id){nodeIndex=i;var node=snapshot.graph().reservoirs().get(i);empty=node.empty();if(!empty)state=FluidView.State.from(node.state(),node.kind()==PassiveNetwork.NodeKind.RESERVOIR?node.inventory().volume():node.state().volume());break;}
+         InlineFilter filter=null;if(registration.device().kind()==TopologyCompiler.Kind.FILTER){state=null;for(var p:snapshot.graph().pipes())if(p.id()==PhysicalFluidTopology.filterIdentity(id))filter=p.filter();}
++        var mappings=registration.device().actuator()&&registration.device().kind()!=TopologyCompiler.Kind.PIPE?PipePresentation.actuatorMappings(registration.device(),snapshot.graph()):registry.pipeViews(id);
+         var history=new ArrayList<PipeTransfer>();double flow=0;Double devicePressureChange=null;String status=snapshot.status();
+         // Decision D54: a placed tank holds nothing until something fills it.
+         if(empty)status="EMPTY: holds nothing / "+status;
+         if(snapshot.lastResult().isPresent()) {
+             var result=snapshot.lastResult().orElseThrow();var q=result.averageMassFlows();
+             for(int i=0;i<snapshot.graph().pipes().size();i++){var pipe=snapshot.graph().pipes().get(i);if(pipe.first()==nodeIndex)flow+=q[i];if(pipe.second()==nodeIndex)flow-=q[i];}
+-            for(var mapping:registry.pipeViews(id))for(var value:result.pipeTransfers())if(value.pipeId()==mapping.pipeId()) {
++            for(var mapping:mappings)for(var value:result.pipeTransfers())if(value.pipeId()==mapping.pipeId()) {
+                 history.add(value);
+             }
+             if(!history.isEmpty())flow=(history.getFirst().forward().massKg()-history.getFirst().reverse().massKg())/result.advancedSeconds();
+@@ -535,7 +536,7 @@ public final class FluidWorldAuthority implements AutoCloseable {
+         if(filter!=null)for(var pipe:snapshot.graph().pipes())if(pipe.id()==PhysicalFluidTopology.filterIdentity(id))devicePressureChange=snapshot.graph().reservoirs().get(pipe.first()).state().pressure()-snapshot.graph().reservoirs().get(pipe.second()).state().pressure();
+         if(filter!=null&&filter.clogged())status="filter clogged / "+status;
+         var closures=snapshot.lastResult().map(PassiveIntervalSolver.Result::rejectionReasons).orElse(Map.of());
+-        for(var mapping:registry.pipeViews(id))for(var pipe:snapshot.graph().pipes())if(pipe.id()==mapping.pipeId()&&pipe.blockedDirections()!=0&&pipe.filter()==null)status=solidClosure(mapping.pipeId(),closures)+" / "+status;
++        for(var mapping:mappings)for(var pipe:snapshot.graph().pipes())if(pipe.id()==mapping.pipeId()&&pipe.blockedDirections()!=0&&pipe.filter()==null)status=solidClosure(mapping.pipeId(),closures)+" / "+status;
+         if(registry.diagnostic(id)!=null)status=registry.diagnostic(id)+" / "+status;
+         var active=topology.active().get(id);if(active==null||active.revision()!=registration.revision())status="WAITING: configuration event / "+status;
+         if(unboundBindings.contains(id))status="UNBOUND: saved inventory retained / "+status;
+@@ -548,9 +549,9 @@ public final class FluidWorldAuthority implements AutoCloseable {
+                 seconds,routes,filter);
+         if(registration.device().kind()==TopologyCompiler.Kind.RESERVOIR&&nodeIndex>=0)view=view.withOutlets(TankOutlets.of(model,snapshot.graph(),nodeIndex,snapshot.lastResult().orElse(null),registry.tankFaces(id)))
+                 .withTank(TankOutlets.tank(model,snapshot.graph().reservoirs().get(nodeIndex),snapshot.lastResult().orElse(null)));
+-        if(registration.device().kind()==TopologyCompiler.Kind.PIPE||registration.device().kind()==TopologyCompiler.Kind.FILTER)
++        if(registration.device().kind()==TopologyCompiler.Kind.PIPE||registration.device().kind()==TopologyCompiler.Kind.FILTER||registration.device().actuator())
+             view=view.withPipeInfo(PipePresentation.withBulkSpeed(
+-                PipePresentation.inspect(registration.device(),snapshot.graph(),registry.pipeViews(id),history,seconds,componentNames.size()),
++                PipePresentation.inspect(registration.device(),snapshot.graph(),mappings,history,seconds,componentNames.size()),
+                 runtime.coordinator().bulkVolumeRates(owner),registration.device().geometry().area()));
+         if(registration.device().kind()==TopologyCompiler.Kind.VOID) {
+             var sources=new ArrayList<IslandCoordinator.Snapshot>();
+diff --git a/src/main/java/com/wormzjl/icheme/runtime/fluid/PipePresentation.java b/src/main/java/com/wormzjl/icheme/runtime/fluid/PipePresentation.java
+index 1be7484a..f6b895b1 100644
+--- a/src/main/java/com/wormzjl/icheme/runtime/fluid/PipePresentation.java
++++ b/src/main/java/com/wormzjl/icheme/runtime/fluid/PipePresentation.java
+@@ -8,6 +8,13 @@ import java.util.*;
+ /** Display-only reduction of accepted graph/history. No thermo calls, solver work or state mutation. */
+ public final class PipePresentation {
+     private PipePresentation(){}
++    /** A mover's accepted discharge history supplies its flow/phase display instead of a junction's resident stock. */
++    static List<PhysicalFluidTopology.View> actuatorMappings(PhysicalFluidTopology.Device device,PassiveNetwork graph) {
++        var result=new ArrayList<PhysicalFluidTopology.View>();
++        for(var pipe:graph.pipes())if(graph.reservoirs().get(pipe.first()).id()==device.id()&&!(pipe.control() instanceof FlowControl.Passive))
++            result.add(new PhysicalFluidTopology.View(0,pipe.id(),true));
++        return List.copyOf(result);
++    }
+     /** Last accepted incoming streams, including solids; normalize each island's interval before summing. */
+     static FluidView.PipeInfo boundaryInflow(long identity,Collection<IslandCoordinator.Snapshot> snapshots,int components) {
+         var total=new Sum(components);
+diff --git a/src/main/java/com/wormzjl/icheme/runtime/fluid/TankOutlets.java b/src/main/java/com/wormzjl/icheme/runtime/fluid/TankOutlets.java
+index a3a790c9..2b910179 100644
+--- a/src/main/java/com/wormzjl/icheme/runtime/fluid/TankOutlets.java
++++ b/src/main/java/com/wormzjl/icheme/runtime/fluid/TankOutlets.java
+@@ -36,8 +36,7 @@ public final class TankOutlets {
+                     massFlow=(out.massKg()-in.massKg())/seconds;moleFlow=(total(out)-total(in))/seconds;
+                     if(massFlow>0)drawn=leading(out,weights);
+                 }
+-                double head=(port==PassiveNetwork.PhasePort.LIQUID||port==PassiveNetwork.PhasePort.OVERFLOW)&&!tank.empty()
+-                        ?PassiveStepSolver.GRAVITY*model.liquidMass(tank.state())*tank.inventory().levelHeight()/tank.inventory().volume():0;
++                double head=port==PassiveNetwork.PhasePort.LIQUID||port==PassiveNetwork.PhasePort.OVERFLOW?bottomHead(model,tank):0;
+                 var face=faces.get(pipe.id());
+                 if(face==null)throw new IllegalStateException("No compiled face for tank connection "+pipe.id());
+                 outlets.add(new FluidView.Outlet(pipe.id(),face,port,massFlow,moleFlow,drawn,head));
+@@ -49,7 +48,12 @@ public final class TankOutlets {
+      * the VENT and SPILL boundary transfers booked at it, over the interval's seconds; none without an interval. */
+     public static FluidView.Tank tank(FluidThermodynamics model,PassiveNetwork.Reservoir tank,PassiveIntervalSolver.Result result) {
+         var rates=released(model,result,tank.id());
+-        return new FluidView.Tank(tank.inventory().levelHeight(),tank.inventory().open(),rates[0],rates[1]);
++        Double top=tank.empty()?null:tank.state().pressure();
++        return new FluidView.Tank(tank.inventory().levelHeight(),tank.inventory().open(),rates[0],rates[1],tank.inventory().volume(),top,top==null?null:top+bottomHead(model,tank));
++    }
++    /** The same condensed head used by bottom/overflow hydraulic ports; no flash or process advancement. */
++    private static double bottomHead(FluidThermodynamics model,PassiveNetwork.Reservoir tank){
++        return tank.empty()?0:PassiveStepSolver.GRAVITY*model.liquidMass(tank.state())*tank.inventory().levelHeight()/tank.inventory().volume();
+     }
+     /** The mass rates (kg/s) the VENT and SPILL boundary transfers of {@code result} took to the atmosphere at node
+      * {@code nodeId} (at every node when null), over the interval's seconds: {@code [vent, spill]}; zeros without an
+diff --git a/src/main/resources/assets/icheme/lang/en_us.json b/src/main/resources/assets/icheme/lang/en_us.json
+index 42b81d30..ea487b92 100644
+--- a/src/main/resources/assets/icheme/lang/en_us.json
++++ b/src/main/resources/assets/icheme/lang/en_us.json
+@@ -910,11 +910,11 @@
+   "gui.icheme.fluid.recover": "Recover solids",
+   "gui.icheme.fluid.temperature_unit": "Temp: %s",
+   "gui.icheme.fluid.flow_unit": "Flow: %s",
+-  "gui.icheme.fluid.phase_ratio.generator_hint": "Equilibrium phase fractions of the configured feed at its temperature and absolute pressure, including suspended solids. Use the selector to choose volume or mass.",
++  "gui.icheme.fluid.phase_ratio.generator_hint": "Equilibrium phase fractions of the published configured feed at its temperature and absolute pressure, including suspended solids in volume/mass mode.",
+   "gui.icheme.fluid.phase_ratio.mass": "Phase ratio (mass %)",
+   "gui.icheme.fluid.phase_ratio.volume_basis": "Volume %",
+   "gui.icheme.fluid.phase_ratio.mass_basis": "Mass %",
+-  "gui.icheme.fluid.phase_ratio.basis_hint": "Choose volume or mass percentages for the generator's equilibrium feed phases.",
++  "gui.icheme.fluid.phase_ratio.basis_hint": "Choose Volume, Mole or Mass percentages for these published phase readings. This does not change composition inputs.",
+   "gui.icheme.fluid.volume_capacity.hint": "Current fluid volume / maximum reservoir volume, in litres.",
+   "gui.icheme.fluid.flow_unit.hint": "Switch every flow rate and suction-flow input between per second and per hour. The physical flow setting stays the same.",
+   "gui.icheme.fluid.invalid_flow_unit": "Enter a valid flow rate before changing flow units.",
+@@ -922,10 +922,10 @@
+   "gui.icheme.fluid.mole_basis_short": "Mole",
+   "gui.icheme.fluid.mass_basis": "Mass % · kg",
+   "gui.icheme.fluid.mole_basis": "Mole % · kmol",
+-  "gui.icheme.fluid.pressure_input": "Pressure (Pa abs)",
++  "gui.icheme.fluid.pressure_input": "Pressure (%s abs)",
+   "gui.icheme.fluid.temperature_input": "Temperature (%s)",
+   "gui.icheme.fluid.flow_input": "Suction flow (%s)",
+-  "gui.icheme.fluid.head_input": "Max pressure rise (Pa)",
++  "gui.icheme.fluid.head_input": "Max pressure rise (%s)",
+   "gui.icheme.fluid.ratio_input": "Max pressure ratio (out/in)",
+   "gui.icheme.fluid.diameter_input": "Internal diameter (m)",
+   "gui.icheme.fluid.phase.0": "Organic phase",
+@@ -980,7 +980,7 @@
+   "gui.icheme.fluid.outlet.top": "Top (%s): gas outlet",
+   "gui.icheme.fluid.outlet.side": "Side (%s): mixed outlet",
+   "gui.icheme.fluid.outlet.bottom": "Bottom (%s): liquid outlet",
+-  "gui.icheme.fluid.outlet.bottom_head": "Bottom (%s): liquid outlet (head %s kPa)",
++  "gui.icheme.fluid.outlet.bottom_head": "Bottom (%s): liquid outlet (head %s)",
+   "gui.icheme.fluid.outlet.overflow": "Overflow (%s): liquid above the fill height",
+   "gui.icheme.fluid.face.down": "down",
+   "gui.icheme.fluid.face.up": "up",
+@@ -1032,8 +1032,8 @@
+   "gui.icheme.fluid.gradient": "Mean pressure drop / length",
+   "gui.icheme.fluid.gradient.hint": "Absolute pressure difference between connected endpoints divided by their pipe length, including elevation effects. This is a path average; junctions show a range.",
+   "gui.icheme.fluid.phase_ratio": "Phase ratio (volume %)",
+-  "gui.icheme.fluid.phase_ratio.hint": "Volume fractions of the transported organic phase, aqueous phase, vapor and solids (crystals included) during the last completed interval.",
+-  "gui.icheme.fluid.phase_ratio.tank_hint": "Volume fractions of the organic phase, aqueous phase, vapor and solids (crystals included) this tank holds in the last published state.",
++  "gui.icheme.fluid.phase_ratio.hint": "Phase fractions of accepted passing material over the last completed interval. Stopped/unavailable flow has no passing-phase ratio.",
++  "gui.icheme.fluid.phase_ratio.tank_hint": "Phase fractions of the contents held in this reservoir in the last published snapshot.",
+   "gui.icheme.fluid.pipe_status": "Status / errors",
+   "gui.icheme.fluid.reversed_interval": "Flow reversed during this interval.",
+   "gui.icheme.fluid.flowing": "Flowing normally.",
+@@ -1053,5 +1053,26 @@
+   "item.icheme.pipeline_check_valve.toggle": "Empty both hands and right-click to reverse the allowed direction.",
+   "item.icheme.pipeline_check_valve.straight_only": "Straight pipe sections only; locks the connection axis.",
+   "item.icheme.pipeline_check_valve.one_accessory": "Only one accessory per pipe section.",
+-  "item.icheme.pipeline_check_valve.recover": "Breaking the pipe in survival returns the accessory."
++  "item.icheme.pipeline_check_valve.recover": "Breaking the pipe in survival returns the accessory.",
++  "gui.icheme.fluid.pressure_unit": "Pressure: %s",
++  "gui.icheme.fluid.pressure_unit.hint": "Switch all pressures, pressure differences, gradients and pressure inputs between Pa, kPa, bar and MPa. The physical settings stay unchanged.",
++  "gui.icheme.fluid.invalid_unit": "Enter valid numbers before changing units.",
++  "gui.icheme.fluid.table_basis.hint": "Switch component percentages, composition entry and flow readings between molar and mass basis. Phase-ratio basis is selected separately.",
++  "gui.icheme.fluid.phase_ratio.mole": "Phase ratio (mol %)",
++  "gui.icheme.fluid.phase_ratio.mole_basis": "Mole %",
++  "gui.icheme.fluid.phase_ratio.mole_hint": "Mole ratios count fluid molecules and crystalline solids by their conserved component. Custom suspended solids have no molar mass in this model and are excluded.",
++  "gui.icheme.fluid.phase_ratio.custom_solids_excluded": "Custom solids excluded",
++  "gui.icheme.fluid.phase_ratio.crystals": "Crystals",
++  "gui.icheme.fluid.top_pressure": "Top pressure",
++  "gui.icheme.fluid.top_pressure.hint": "Absolute pressure above the condensed contents, from the published reservoir state. Undefined for an empty reservoir.",
++  "gui.icheme.fluid.bottom_pressure": "Bottom pressure",
++  "gui.icheme.fluid.bottom_pressure.hint": "Top absolute pressure plus the existing liquid-and-solid hydrostatic head. No additional pressure setpoint.",
++  "gui.icheme.fluid.suction_pressure": "Suction pressure",
++  "gui.icheme.fluid.inlet_pressure": "Inlet pressure",
++  "gui.icheme.fluid.net_flow": "Net outward flow",
++  "gui.icheme.fluid.net_flow.hint": "Sum of the reservoir outlet flows: positive is net outflow, negative is net filling.",
++  "gui.icheme.fluid.phase_tab.0": "Org",
++  "gui.icheme.fluid.phase_tab.1": "Aq",
++  "gui.icheme.fluid.phase_tab.2": "Gas",
++  "gui.icheme.fluid.phase_tab.3": "Solid"
+ }
+diff --git a/src/test/java/com/wormzjl/icheme/client/gui/common/FluidGuiConsistencyTest.java b/src/test/java/com/wormzjl/icheme/client/gui/common/FluidGuiConsistencyTest.java
+new file mode 100644
+index 00000000..b1ae8b02
+--- /dev/null
++++ b/src/test/java/com/wormzjl/icheme/client/gui/common/FluidGuiConsistencyTest.java
+@@ -0,0 +1,47 @@
++package com.wormzjl.icheme.client.gui.common;
++
++import com.wormzjl.icheme.client.gui.common.ProcessUi.NumericDraft;
++import com.wormzjl.icheme.client.gui.common.ProcessUi.TemperatureUnit;
++import com.wormzjl.icheme.science.fluid.state.ParticleSize;
++import com.wormzjl.icheme.science.fluid.state.SolidInventory;
++import com.wormzjl.icheme.science.material.SolidMaterialCatalog.SolidMaterial;
++import java.util.List;
++import org.junit.jupiter.api.Test;
++import static org.junit.jupiter.api.Assertions.*;
++
++class FluidGuiConsistencyTest {
++    @Test void switchingUnitsPreservesUntouchedSiAndConvertsEditedValues() {
++        double exact=101325.123456789;var pressure=new NumericDraft(exact,PressureUnit.KILOPASCAL);
++        for(int cycle=0;cycle<100;cycle++)for(var unit:PressureUnit.values()){pressure=pressure.in(unit);assertEquals(Double.doubleToRawLongBits(exact),Double.doubleToRawLongBits(pressure.si()));}
++        pressure=pressure.in(PressureUnit.BAR);pressure.text("2.5");assertEquals(250000,pressure.si());assertEquals(.25,pressure.in(PressureUnit.MEGAPASCAL).value());
++        var flow=new NumericDraft(.0123456789,FlowRateUnit.PER_SECOND);
++        for(int i=0;i<100;i++){flow=flow.in(FlowRateUnit.PER_HOUR).in(FlowRateUnit.PER_SECOND);assertEquals(.0123456789,flow.si());}
++        var temp=new NumericDraft(298.123456789,TemperatureUnit.CELSIUS);assertEquals(298.123456789,temp.in(TemperatureUnit.KELVIN).in(TemperatureUnit.CELSIUS).si());
++        flow.text("NaN");var invalid=flow;assertThrows(IllegalArgumentException.class,()->invalid.in(FlowRateUnit.PER_HOUR));assertEquals("NaN",flow.text());
++    }
++    @Test void everyPressureUnitRetainsGaugeResolutionAndItsOwnLabel() {
++        assertEquals("101325.0 Pa",PressureUnit.PASCAL.format(101325));assertEquals("101.3250 kPa",PressureUnit.KILOPASCAL.format(101325));
++        assertEquals("1.013250 bar",PressureUnit.BAR.format(101325));assertEquals("0.1013250 MPa",PressureUnit.MEGAPASCAL.format(101325));
++        assertEquals("0.0 Pa",PressureUnit.PASCAL.format(-.04));assertEquals("—",PressureUnit.BAR.format(Double.NaN));
++        assertEquals(PressureUnit.PASCAL,PressureUnit.PASCAL.next().next().next().next());
++    }
++    @Test void phaseBasesUseActualPhaseAmountsAndOnlyDefinedCrystalMoles() {
++        var ice=new SolidMaterial("icheme:ice","1",900,2000,new SolidMaterial.Crystal("Water",0));
++        var sand=new SolidMaterial("icheme:sand","1",2000,1000);
++        var solids=new SolidInventory(List.of(new SolidInventory.Population(ice,new ParticleSize(".001"),.018),new SolidInventory.Population(sand,new ParticleSize(".001"),.2)));
++        var components=List.of("Nitrogen","Water");var weights=List.of(.028,.018);double[][] moles={{1,0},{0,2},{3,1}};double[] volumes={.1,.2,.7};
++        assertArrayEquals(new double[]{.1,.2,.7,.00012},PhaseRatioBasis.VOLUME.amounts(volumes,moles,solids,components,weights),1e-12);
++        assertArrayEquals(new double[]{.028,.036,.102,.218},PhaseRatioBasis.MASS.amounts(volumes,moles,solids,components,weights),1e-12);
++        assertArrayEquals(new double[]{1,2,4,1},PhaseRatioBasis.MOLAR.amounts(volumes,moles,solids,components,weights),1e-12);
++        assertTrue(PhaseRatioBasis.MOLAR.excludesCustomSolids(solids));assertFalse(PhaseRatioBasis.MASS.excludesCustomSolids(solids));
++        assertEquals(PhaseRatioBasis.VOLUME,PhaseRatioBasis.VOLUME.next().next().next());
++        assertThrows(IllegalArgumentException.class,()->PhaseRatioBasis.MASS.amounts(volumes,moles,solids,components,List.of(.028,0.0)));
++    }
++    @Test void sharedControlsFitEverySupportedScreenWidth() {
++        for(int width=300;width<=790;width++){
++            var footer=FluidGuiLayout.footer(width);assertEquals(6,footer.size());int end=4;
++            for(var slot:footer){assertTrue(slot.x()>=end+6);assertTrue(slot.width()>=32);end=slot.x()+slot.width();assertTrue(end<=width-10);}
++            for(int count=1;count<=4;count++)for(var slot:FluidGuiLayout.tabs(width,count)){assertTrue(slot.x()>=10);assertTrue(slot.x()+slot.width()<=width-10);}
++        }
++    }
++}
+diff --git a/src/test/java/com/wormzjl/icheme/runtime/fluid/FluidPacketCodecTest.java b/src/test/java/com/wormzjl/icheme/runtime/fluid/FluidPacketCodecTest.java
+index 7e448013..34f23f7e 100644
+--- a/src/test/java/com/wormzjl/icheme/runtime/fluid/FluidPacketCodecTest.java
++++ b/src/test/java/com/wormzjl/icheme/runtime/fluid/FluidPacketCodecTest.java
+@@ -88,7 +88,26 @@ class FluidPacketCodecTest {
+             assertEquals(12,roundTrip.view().pipeHistory().size());assertArrayEquals(amounts[2],roundTrip.view().pipeHistory().get(11).reverse().phaseMoles()[2]);assertEquals(250,roundTrip.view().onlineTick());
+         } finally {buffer.release();}
+     }
+-    // ---------------- fluid-6: static and live payloads ----------------
++    @Test void tankCapacityAndBothPressuresRoundTripAndMalformedReadingsAreRejected() {
++        var base=generatorMenu("");int count=base.components().size();double[][] amounts=new double[3][count];amounts[0][0]=1000;
++        var state=new FluidView.State(200000,298.15,1,10,new double[]{1,0,0},amounts,SolidInventory.EMPTY,10);
++        var tank=new FluidView.Tank(5,false,0,0,10,200000.0,200049.03325);
++        var view=new FluidView(9,4,1200,1300,"READY",state,0,List.of()).withTank(tank);
++        var data=new FluidNetwork.MenuData(TopologyCompiler.Kind.RESERVOIR,view,base.controls(),base.components(),List.of(),"",base.materialNames(),base.molecularWeights());
++        var gson=new Gson();String json=gson.toJson(live(data));var buffer=new RegistryFriendlyByteBuf(Unpooled.buffer(),RegistryAccess.EMPTY);
++        try {
++            var packet=new FluidNetwork.LivePayload(3,9,json);FluidNetwork.LivePayload.STREAM_CODEC.encode(buffer,packet);
++            var decoded=FluidNetwork.LivePayload.STREAM_CODEC.decode(buffer);
++            var joined=FluidNetwork.MenuData.of(data.staticData(4),FluidNetwork.decodeLive(decoded.json()));assertEquals(tank,joined.view().tank());
++            var missing=com.google.gson.JsonParser.parseString(json).getAsJsonObject();missing.getAsJsonObject("view").getAsJsonObject("tank").remove("capacity");
++            var rejected=assertThrows(RuntimeException.class,()->FluidNetwork.decodeLive(missing.toString()));
++            assertTrue(FluidNetwork.reason(rejected).contains("Invalid tank presentation"));
++            assertThrows(IllegalArgumentException.class,()->new FluidView.Tank(5,false,0,0,10,200000.0,100000.0));
++            assertThrows(IllegalArgumentException.class,()->new FluidView.Tank(5,false,0,0,10,null,200000.0));
++        }finally{buffer.release();}
++    }
++
++    // ---------------- distinct static and live payloads ----------------
+ 
+     private static FluidNetwork.MenuData generatorMenu(String message) {
+         int count=com.wormzjl.icheme.science.material.MaterialTestBasis.NETWORK+1;var names=new ArrayList<String>();for(int i=0;i<count;i++)names.add("component_"+i);
+@@ -103,9 +122,9 @@ class FluidPacketCodecTest {
+      * carries a crystal's record with its solid, D23; fluid-11 a vessel's tank presentation, batch
+      * 2026-10-21-floating-roof-tanks) and every payload has its own wire identity. A tank's dry ice crosses
+      * the live payload as a solid with its crystal record and comes back equal; a crystal made of a component off the
+-     * menu's axis is refused. Test name kept. */
+-    @Test void theProtocolIsFluidSixWithDistinctStaticAndLivePayloads() {
+-        assertEquals("fluid-11",FluidNetwork.PROTOCOL);
++     * menu's axis is refused. fluid-14 adds a tank's capacity and paired pressures. */
++    @Test void theProtocolIsFluidFourteenWithDistinctStaticAndLivePayloads() {
++        assertEquals("fluid-14",FluidNetwork.PROTOCOL);
+         var ids=java.util.Set.of(FluidNetwork.EditPayload.TYPE.id(),FluidNetwork.RecoverPayload.TYPE.id(),FluidNetwork.StaticPayload.TYPE.id(),FluidNetwork.LivePayload.TYPE.id());
+         assertEquals(4,ids.size());
+         var base=generatorMenu("");int count=base.components().size();
+diff --git a/src/test/java/com/wormzjl/icheme/runtime/fluid/PipePresentationTest.java b/src/test/java/com/wormzjl/icheme/runtime/fluid/PipePresentationTest.java
+index 698248ce..0d170734 100644
+--- a/src/test/java/com/wormzjl/icheme/runtime/fluid/PipePresentationTest.java
++++ b/src/test/java/com/wormzjl/icheme/runtime/fluid/PipePresentationTest.java
+@@ -22,6 +22,20 @@ class PipePresentationTest {
+         return new PassiveNetwork.Reservoir(d.id(),d.position().y(),model.flashTP(350,pressure,n,()->{}),
+             d.kind()==Kind.GENERATOR?PassiveNetwork.NodeKind.GENERATOR:PassiveNetwork.NodeKind.VOID);
+     }
++    @Test void moverDisplayUsesOnlyItsAcceptedDischargeOnEitherFacing(){
++        for(var kind:List.of(Kind.PUMP,Kind.COMPRESSOR))for(var facing:List.of(PhysicalFluidTopology.Direction.EAST,PhysicalFluidTopology.Direction.WEST)){
++            var source=device(1,-2,0,0,Kind.GENERATOR);var sink=device(2,2,0,0,Kind.VOID);
++            FlowControl control=kind==Kind.PUMP?new FlowControl.Pump(.01,500000):new FlowControl.Compressor(.05,3);
++            var mover=new PhysicalFluidTopology.Device(100,new PhysicalFluidTopology.Position("minecraft:overworld",0,0,0),kind,facing,BORE,control);
++            var compiled=PhysicalFluidTopology.compile(List.of(source,device(3,-1,0,0,Kind.PIPE),mover,device(4,1,0,0,Kind.PIPE),sink),Map.of(1L,boundary(source,150000,0),2L,boundary(sink,101325,0)));
++            var graph=compiled.islands().getFirst().graph();var mappings=PipePresentation.actuatorMappings(mover,graph);assertEquals(1,mappings.size());
++            var discharge=graph.pipes().stream().filter(p->p.id()==mappings.getFirst().pipeId()).findFirst().orElseThrow();
++            assertEquals(mover.id(),graph.reservoirs().get(discharge.first()).id());assertEquals(control,discharge.control());
++            var history=graph.pipes().stream().map(p->new PipeTransfer(p.id(),moved(p.id()==discharge.id()?2:9,.25,0),moved(0,0,0))).toList();
++            var info=PipePresentation.inspect(mover,graph,mappings,history,2,model.components().size());
++            assertFalse(info.junction());assertEquals(1,info.connections().size());assertEquals(2,info.contents().massKg());assertEquals(1,info.connections().getFirst().massRateKgPerSecond());
++        }
++    }
+     /** Actual block compiler, including vertical connections, with two nitrogen feeds and 2–4 outlets. */
+     @Test void fourFiveAndSixEquipmentConnectionsBalanceWithoutDuplicatingDisplayedThroughput(){
+         int[][] ports={{-1,0,0},{1,0,0},{0,0,-1},{0,0,1},{0,1,0},{0,-1,0}};
+diff --git a/src/test/java/com/wormzjl/icheme/runtime/fluid/TankDisplayTest.java b/src/test/java/com/wormzjl/icheme/runtime/fluid/TankDisplayTest.java
+index bd875519..baaa3ebc 100644
+--- a/src/test/java/com/wormzjl/icheme/runtime/fluid/TankDisplayTest.java
++++ b/src/test/java/com/wormzjl/icheme/runtime/fluid/TankDisplayTest.java
+@@ -38,12 +38,12 @@ class TankDisplayTest {
+         // A 100 m3 tank 10 m high (10 m2 footprint) holding 30 m3 of hydrocarbon over 20 m3 of free water.
+         int c=AXIS.size();double[][] n=new double[3][c];n[0][0]=1000;n[1][c-1]=1000;
+         var state=new FluidView.State(101325,298.15,50,40000,new double[]{30,20,0},n,SolidInventory.EMPTY,100);
+-        var view=new FluidView(1,0,0,0,"STEADY",state,0,List.of()).withTank(new FluidView.Tank(10,true,0,0));
++        var view=new FluidView(1,0,0,0,"STEADY",state,0,List.of()).withTank(new FluidView.Tank(10,true,0,0,100,101325.0,140551.6));
+         var display=TankDisplay.of(view,AXIS,WEIGHTS,EventPathWorld.CATALOG,PACKAGE);
+         assertEquals(5,display.level(),1e-6);assertEquals(2,display.waterLevel(),1e-6);assertEquals(10,display.height(),1e-6);
+         assertEquals(EventPathWorld.CATALOG.componentAppearance(PACKAGE,"Water").argb(),display.waterArgb());
+         assertNull(TankDisplay.of(new FluidView(1,0,0,0,"STEADY",state,0,List.of()),AXIS,WEIGHTS,EventPathWorld.CATALOG,PACKAGE),"no tank, no display");
+-        assertEquals(TankDisplay.empty(10),TankDisplay.of(new FluidView(1,0,0,0,"EMPTY",null,0,List.of()).withTank(new FluidView.Tank(10,true,0,0)),AXIS,WEIGHTS,EventPathWorld.CATALOG,PACKAGE));
++        assertEquals(TankDisplay.empty(10),TankDisplay.of(new FluidView(1,0,0,0,"EMPTY",null,0,List.of()).withTank(new FluidView.Tank(10,true,0,0,100,null,null)),AXIS,WEIGHTS,EventPathWorld.CATALOG,PACKAGE));
+     }
+ 
+     @Test void watchersAreBoundedAndEndWithThePlayerOrTheTank() {
+diff --git a/src/test/java/com/wormzjl/icheme/runtime/fluid/TankOutletsTest.java b/src/test/java/com/wormzjl/icheme/runtime/fluid/TankOutletsTest.java
+index f2c0193c..c87a3900 100644
+--- a/src/test/java/com/wormzjl/icheme/runtime/fluid/TankOutletsTest.java
++++ b/src/test/java/com/wormzjl/icheme/runtime/fluid/TankOutletsTest.java
+@@ -62,6 +62,15 @@ class TankOutletsTest {
+         var committed=result.graph().reservoirs().get(tank);
+         assertEquals(PassiveStepSolver.GRAVITY*model.liquidMass(committed.state())*PassiveStepSolver.LEVEL_HEAD_HEIGHT/committed.inventory().volume(),bottom.head(),0);
+         assertEquals(0,top.head());assertEquals(0,side.head());
++        var readings=TankOutlets.tank(model,committed,result);
++        assertEquals(committed.state().pressure(),readings.topPressure());
++        assertEquals(readings.topPressure()+bottom.head(),readings.bottomPressure());
++        assertEquals(committed.inventory().volume(),readings.capacity());
++    }
++    @Test void anEmptyTankPublishesItsCapacityWithoutInventingPressures() {
++        var empty=PassiveNetwork.emptyVessel(1,64,25,5,model);
++        var readings=TankOutlets.tank(model,empty,null);
++        assertEquals(25,readings.capacity());assertNull(readings.topPressure());assertNull(readings.bottomPressure());assertEquals(0,readings.level(null));
+     }
+     @Test void theLeadingPhaseIsTheOneThatCarriedTheMostMass() {
+         double[] w={.016,.028,.018};double[][] n=new double[3][3];

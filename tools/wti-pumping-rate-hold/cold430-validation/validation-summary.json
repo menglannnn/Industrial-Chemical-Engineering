@@ -1,0 +1,495 @@
+{
+  "baseline": "cb89f23ac31f67933caeaf0fb5e11aa92f8612d4",
+  "productDiffAfterRejection": "",
+  "form1StrictImprovement": {
+    "candidateSha256": "d7dbc2d72c78450c196090973a26727180e962530fc79df174416b988de33f56",
+    "focused": {
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "negativeControl": {
+      "tests": 1,
+      "failures": 1,
+      "errors": 0,
+      "skipped": 0
+    },
+    "quick": {
+      "cold-random": {
+        "newlyHeldSeeds": [],
+        "recoveredSeeds": [],
+        "changedFirstHoldClasses": {},
+        "moreHeldPublications": {}
+      },
+      "bundled-random": {
+        "newlyHeldSeeds": [],
+        "recoveredSeeds": [],
+        "changedFirstHoldClasses": {},
+        "moreHeldPublications": {}
+      },
+      "bundled-defaults": {
+        "newlyHeldSeeds": [],
+        "recoveredSeeds": [],
+        "changedFirstHoldClasses": {},
+        "moreHeldPublications": {}
+      }
+    },
+    "full": {
+      "cold-random": {
+        "summary": "SUMMARY seeds=1000 clean=976 threads=8 slices=120 wallMs=362666 seedMsSum=1900328 cold=icheme:pilot_cryogenic",
+        "classes": {
+          "B  trace underflow (T1)": [
+            220,
+            431,
+            833
+          ],
+          "E1 interval-start rate pass does not converge": [
+            85,
+            988
+          ],
+          "E5 step line search stalls": [
+            6,
+            110,
+            555,
+            752,
+            792,
+            803
+          ],
+          "E6 step Newton iteration limit": [
+            29,
+            101,
+            206,
+            446,
+            788,
+            919,
+            957,
+            994
+          ],
+          "F  budget (wall deadline / soft budget)": [
+            475,
+            651,
+            683,
+            855,
+            907
+          ]
+        }
+      },
+      "bundled-random": {
+        "summary": "SUMMARY seeds=1000 clean=994 threads=8 slices=120 wallMs=72806 seedMsSum=325481",
+        "classes": {
+          "E10 no finite Jacobian trial at a first step": [
+            430
+          ],
+          "E2 step solve singular at every step size": [
+            241
+          ],
+          "E5 step line search stalls": [
+            431,
+            579
+          ],
+          "E8 interval attempt limit (not F7)": [
+            698
+          ],
+          "F  budget (wall deadline / soft budget)": [
+            157
+          ]
+        }
+      },
+      "bundled-defaults": {
+        "summary": "SUMMARY seeds=1000 clean=1000 threads=8 slices=120 wallMs=5810 seedMsSum=41463",
+        "classes": {}
+      }
+    },
+    "exactCurrentCoverage": {
+      "cases": 400,
+      "newlyHeld": [
+        475,
+        555
+      ],
+      "recovered": [
+        430
+      ],
+      "changedFirstHoldClasses": {
+        "430": [
+          "E6 step Newton iteration limit",
+          null
+        ],
+        "475": [
+          null,
+          "F  budget (wall deadline / soft budget)"
+        ],
+        "555": [
+          null,
+          "E5 step line search stalls"
+        ]
+      },
+      "moreHeldPublications": {
+        "431": [
+          7,
+          11
+        ],
+        "475": [
+          0,
+          2
+        ],
+        "555": [
+          0,
+          8
+        ]
+      },
+      "fewerHeldPublications": {
+        "430": [
+          9,
+          0
+        ]
+      }
+    },
+    "repositoryGates": {
+      "test": {
+        "tests": 1368,
+        "failed": 4,
+        "failures": [
+          "FluidCheckpointCodecTest > portsACompressorAndARefusedMoverRoundTripExactly()",
+          "FluidPacketCodecTest > theProtocolIsFluidSixWithDistinctStaticAndLivePayloads()",
+          "ShapeRasterizerTest > aDrumsFluidNodeIsAShellCell()",
+          "DeterministicMathSourceTest > fluidSourcesCallNoNonCorrectlyRoundedMathFunction()"
+        ]
+      },
+      "slowGates": {
+        "tests": 185,
+        "failed": 1,
+        "failures": [
+          "ProcessUnitTest > everyNozzleNeckAtItsLargestStandsClear()"
+        ]
+      }
+    }
+  },
+  "form2Armijo": {
+    "candidateSha256": "d28a3b6d96565d61964213318d3d9d0ef12d7debd53b1a780c4cdf30c0f4350e",
+    "focused": {
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "negativeControl": {
+      "tests": 1,
+      "failures": 1,
+      "errors": 0,
+      "skipped": 0
+    },
+    "matched": {
+      "1-200": {
+        "cold-random": {
+          "baselineSummary": "SUMMARY seeds=200 clean=195 threads=4 slices=120 wallMs=136735 seedMsSum=274667 cold=icheme:pilot_cryogenic",
+          "candidateSummary": "SUMMARY seeds=200 clean=195 threads=4 slices=120 wallMs=151106 seedMsSum=309982 cold=icheme:pilot_cryogenic",
+          "newlyHeldSeeds": [],
+          "recoveredSeeds": [],
+          "changedFirstHoldClasses": {},
+          "moreHeldPublications": {},
+          "newtonIterations": [
+            631130,
+            631230
+          ]
+        },
+        "bundled-random": {
+          "baselineSummary": "SUMMARY seeds=200 clean=199 threads=4 slices=120 wallMs=37446 seedMsSum=76523",
+          "candidateSummary": "SUMMARY seeds=200 clean=199 threads=4 slices=120 wallMs=38429 seedMsSum=83281",
+          "newlyHeldSeeds": [],
+          "recoveredSeeds": [],
+          "changedFirstHoldClasses": {},
+          "moreHeldPublications": {},
+          "newtonIterations": [
+            150734,
+            149591
+          ]
+        },
+        "bundled-defaults": {
+          "baselineSummary": "SUMMARY seeds=200 clean=200 threads=4 slices=120 wallMs=1641 seedMsSum=6334",
+          "candidateSummary": "SUMMARY seeds=200 clean=200 threads=4 slices=120 wallMs=1726 seedMsSum=6728",
+          "newlyHeldSeeds": [],
+          "recoveredSeeds": [],
+          "changedFirstHoldClasses": {},
+          "moreHeldPublications": {},
+          "newtonIterations": [
+            13103,
+            13115
+          ]
+        }
+      },
+      "401-600": {
+        "cold-random": {
+          "baselineSummary": "SUMMARY seeds=200 clean=197 threads=4 slices=120 wallMs=178772 seedMsSum=500145 cold=icheme:pilot_cryogenic",
+          "candidateSummary": "SUMMARY seeds=200 clean=197 threads=4 slices=120 wallMs=186667 seedMsSum=438604 cold=icheme:pilot_cryogenic",
+          "newlyHeldSeeds": [
+            475
+          ],
+          "recoveredSeeds": [
+            430
+          ],
+          "changedFirstHoldClasses": {
+            "430": [
+              "E6 step Newton iteration limit",
+              null
+            ],
+            "475": [
+              null,
+              "F  budget (wall deadline / soft budget)"
+            ]
+          },
+          "moreHeldPublications": {
+            "431": [
+              7,
+              11,
+              "B  trace underflow (T1)"
+            ],
+            "475": [
+              0,
+              3,
+              "F  budget (wall deadline / soft budget)"
+            ]
+          },
+          "newtonIterations": [
+            784573,
+            569897
+          ]
+        },
+        "bundled-random": {
+          "baselineSummary": "SUMMARY seeds=200 clean=197 threads=4 slices=120 wallMs=32187 seedMsSum=60246",
+          "candidateSummary": "SUMMARY seeds=200 clean=197 threads=4 slices=120 wallMs=33518 seedMsSum=62543",
+          "newlyHeldSeeds": [],
+          "recoveredSeeds": [],
+          "changedFirstHoldClasses": {},
+          "moreHeldPublications": {},
+          "newtonIterations": [
+            128597,
+            128597
+          ]
+        },
+        "bundled-defaults": {
+          "baselineSummary": "SUMMARY seeds=200 clean=200 threads=4 slices=120 wallMs=1714 seedMsSum=6490",
+          "candidateSummary": "SUMMARY seeds=200 clean=200 threads=4 slices=120 wallMs=1880 seedMsSum=7151",
+          "newlyHeldSeeds": [],
+          "recoveredSeeds": [],
+          "changedFirstHoldClasses": {},
+          "moreHeldPublications": {},
+          "newtonIterations": [
+            14864,
+            14864
+          ]
+        }
+      }
+    },
+    "isolatedBudget": {
+      "baseline": {
+        "summary": "SUMMARY seeds=2 clean=1 threads=1 slices=120 wallMs=204709 seedMsSum=204700 cold=icheme:pilot_cryogenic",
+        "seeds": {
+          "431": {
+            "blocks": 27,
+            "endTick": 14158,
+            "heldPublications": 7,
+            "classes": [
+              "b:trace-underflow",
+              "e:new"
+            ],
+            "refused": 0,
+            "finalIslands": "42:FULL; crystalKg=80.7869 crystalVessels=10",
+            "holds": [
+              {
+                "tick": 1088,
+                "island": 22,
+                "committed": 1073,
+                "class": "b:trace-underflow",
+                "status": "HELD: Substep refinement exhausted: Newton line search stalled at residual 1.5152462617962215E-11; reasons={Newton iteration limit at residual #; active-set pass=#=4, Backward-Euler state change #=6, Phase/device active-set cycle=6, Matrix values must be finite=1, Newton line search stalled at residual #; active-set pass=#=43, Newton line search stalled at residual #=24, Newton iteration limit at residual #=1}"
+              },
+              {
+                "tick": 1102,
+                "island": 24,
+                "committed": 1094,
+                "class": "b:trace-underflow",
+                "status": "HELD: Substep refinement exhausted: Newton iteration limit at residual 0.5015364241151516; active-set pass=1; reasons={Backward-Euler state change #=2, Solid transport transition inside the step=6, Newton line search stalled at residual #; active-set pass=#=1, Conservative reconstruction fails equation gate: #=101, Matrix values must be finite=3, Newton iteration limit at residual #; active-set pass=#=106}"
+              },
+              {
+                "tick": 6185,
+                "island": 42,
+                "committed": 6085,
+                "class": "e:new",
+                "status": "HELD: wall deadline"
+              },
+              {
+                "tick": 6285,
+                "island": 42,
+                "committed": 6085,
+                "class": "e:new",
+                "status": "HELD: wall deadline"
+              },
+              {
+                "tick": 6385,
+                "island": 42,
+                "committed": 6085,
+                "class": "e:new",
+                "status": "HELD: wall deadline"
+              },
+              {
+                "tick": 10265,
+                "island": 42,
+                "committed": 10165,
+                "class": "e:new",
+                "status": "HELD: wall deadline"
+              },
+              {
+                "tick": 10365,
+                "island": 42,
+                "committed": 10165,
+                "class": "e:new",
+                "status": "HELD: wall deadline"
+              }
+            ],
+            "exceptions": []
+          },
+          "475": {
+            "blocks": 27,
+            "endTick": 13010,
+            "heldPublications": 0,
+            "classes": [],
+            "refused": 0,
+            "finalIslands": "36:STEADY: replaying 80.11 kg/s since 62.7 s, next check at 864;40:STEADY: no flow since 66.6 s;45:FULL; crystalKg=33.2460 crystalVessels=8",
+            "holds": [],
+            "exceptions": []
+          }
+        }
+      },
+      "candidate": {
+        "summary": "SUMMARY seeds=2 clean=1 threads=1 slices=120 wallMs=91606 seedMsSum=91597 cold=icheme:pilot_cryogenic",
+        "seeds": {
+          "431": {
+            "blocks": 27,
+            "endTick": 14158,
+            "heldPublications": 11,
+            "classes": [
+              "b:trace-underflow",
+              "e:new"
+            ],
+            "refused": 0,
+            "finalIslands": "42:HELD: wall deadline; crystalKg=48.1957 crystalVessels=3",
+            "holds": [
+              {
+                "tick": 1088,
+                "island": 22,
+                "committed": 1073,
+                "class": "b:trace-underflow",
+                "status": "HELD: Substep refinement exhausted: Newton line search stalled at residual 1.5152462617962215E-11; reasons={Newton iteration limit at residual #; active-set pass=#=4, Backward-Euler state change #=6, Phase/device active-set cycle=6, Matrix values must be finite=1, Newton line search stalled at residual #; active-set pass=#=43, Newton line search stalled at residual #=24, Newton iteration limit at residual #=1}"
+              },
+              {
+                "tick": 1102,
+                "island": 24,
+                "committed": 1094,
+                "class": "b:trace-underflow",
+                "status": "HELD: Substep refinement exhausted: Newton iteration limit at residual 0.5015364241151516; active-set pass=1; reasons={Backward-Euler state change #=2, Solid transport transition inside the step=6, Newton line search stalled at residual #; active-set pass=#=1, Conservative reconstruction fails equation gate: #=101, Matrix values must be finite=3, Newton iteration limit at residual #; active-set pass=#=106}"
+              },
+              {
+                "tick": 2093,
+                "island": 37,
+                "committed": 2091,
+                "class": "e:new",
+                "status": "HELD: wall deadline"
+              },
+              {
+                "tick": 2159,
+                "island": 37,
+                "committed": 2091,
+                "class": "e:new",
+                "status": "HELD: wall deadline"
+              },
+              {
+                "tick": 2160,
+                "island": 42,
+                "committed": 2158,
+                "class": "e:new",
+                "status": "HELD: wall deadline"
+              },
+              {
+                "tick": 2260,
+                "island": 42,
+                "committed": 2158,
+                "class": "e:new",
+                "status": "HELD: wall deadline"
+              },
+              {
+                "tick": 2460,
+                "island": 42,
+                "committed": 2158,
+                "class": "e:new",
+                "status": "HELD: wall deadline"
+              },
+              {
+                "tick": 2860,
+                "island": 42,
+                "committed": 2158,
+                "class": "e:new",
+                "status": "HELD: wall deadline"
+              },
+              {
+                "tick": 3660,
+                "island": 42,
+                "committed": 2158,
+                "class": "e:new",
+                "status": "HELD: wall deadline"
+              },
+              {
+                "tick": 5260,
+                "island": 42,
+                "committed": 2158,
+                "class": "e:new",
+                "status": "HELD: wall deadline"
+              },
+              {
+                "tick": 8460,
+                "island": 42,
+                "committed": 2158,
+                "class": "e:new",
+                "status": "HELD: wall deadline"
+              }
+            ],
+            "exceptions": []
+          },
+          "475": {
+            "blocks": 27,
+            "endTick": 13010,
+            "heldPublications": 0,
+            "classes": [],
+            "refused": 0,
+            "finalIslands": "36:STEADY: replaying 80.11 kg/s since 62.7 s, next check at 864;40:STEADY: no flow since 66.6 s;45:FULL; crystalKg=33.2460 crystalVessels=8",
+            "holds": [],
+            "exceptions": []
+          }
+        }
+      }
+    },
+    "cold555": {
+      "summary": "SUMMARY seeds=1 clean=1 threads=1 slices=120 wallMs=140600 seedMsSum=140594 cold=icheme:pilot_cryogenic",
+      "seeds": {
+        "555": {
+          "blocks": 29,
+          "endTick": 14461,
+          "heldPublications": 0,
+          "classes": [],
+          "refused": 0,
+          "finalIslands": "36:STEADY: no flow since 97.5 s;44:STEADY: no flow since 122.6 s;47:STEADY: no flow since 123.1 s;53:FULL; crystalKg=17.1815 crystalVessels=5",
+          "holds": [],
+          "exceptions": []
+        }
+      }
+    }
+  },
+  "form3BestAcceptedMerit": {
+    "focused": {
+      "tests": 1,
+      "failures": 1,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "restoredBaselineBuild": true
+}

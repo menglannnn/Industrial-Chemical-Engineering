@@ -1,0 +1,13 @@
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/network/SolidEventIntegrator.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/SolidEventIntegrator.java
+index af4a8b8..2fe0524 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/SolidEventIntegrator.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/SolidEventIntegrator.java
+@@ -89,7 +89,7 @@ final class SolidEventIntegrator {
+             // donor, and the pipe keeps its open or closed state (t48's trace of cold fuzz seed 850: 1.3e-23 m/s in a still
+             // pipe from a tank holding crystals read DEPOSITION, and its rejections stalled the island). Read only for a
+             // connection that would otherwise fail, so a flowing island never prepares its viscosities for it.
+-            if(Math.abs(flow)<=NetworkReduction.resolutionFlow(graph,model,i,scratch==null?scratch=new MixtureViscosity.Workspace():scratch))continue;
++            if(false)if(Math.abs(flow)<=NetworkReduction.resolutionFlow(graph,model,i,scratch==null?scratch=new MixtureViscosity.Workspace():scratch))continue;
+             if(overPopulated) {
+                 check=new SolidMobility.Check(SolidMobility.Reason.POPULATION_LIMIT,check.velocity(),check.minimumVelocity());
+                 // A node receiver can be fed by several connections at once, and every one of them

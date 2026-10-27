@@ -20,7 +20,7 @@ import java.util.Optional;
  *
  * <p>Fields and rules (each refusal names the field):</p>
  * <ul>
- *   <li>{@code id}, {@code revision} (stable identifier, as for spines), {@code source}, {@code provenance} (an object
+ *   <li>{@code id}, {@code revision} (a revision token, {@link JsonFields#revision}), {@code source}, {@code provenance} (an object
  *       of texts; required, not interpreted);</li>
  *   <li>{@code scheme}: a stable identifier; for {@value Eppr78Groups#SCHEME} the {@code groups} list must equal
  *       {@link Eppr78Groups#groups()} number by number and name by name;</li>
@@ -31,8 +31,9 @@ import java.util.Optional;
  *       each unordered pair at most once. A pair absent from the list is absent from the matrix: a species pair that
  *       needs it is refused when a package resolves its interactions ({@link GroupContributionInteractions}).</li>
  * </ul>
- * <p>Nothing in this record is hashed by itself: the values a package actually uses enter that package's fingerprints
- * through {@link GroupContributionInteractions}, so an edit of a pair no bundled package uses moves no fingerprint.</p>
+ * <p>An edit of the record bumps its {@code revision}, which the identity of every package that resolves its
+ * interactions from it carries ({@link MaterialCatalog.Package#scientificRevision}). The values a package uses are
+ * compared through {@link GroupContributionInteractions}.</p>
  */
 public final class GroupInteractionMatrix {
     /** The unit the record's A and B carry; the data object converts to pascal. */
@@ -69,9 +70,7 @@ public final class GroupInteractionMatrix {
 
     static GroupInteractionMatrix read(JsonObject o) {
         String id = JsonFields.text(o, "id");
-        String revision = JsonFields.text(o, "revision");
-        if (!revision.matches("[A-Za-z0-9][A-Za-z0-9_.:+-]{0,62}"))
-            throw new IllegalArgumentException("revision: expected a stable identifier of at most 63 characters, got " + revision);
+        String revision = JsonFields.revision(o, "revision");
         JsonFields.text(o, "source");
         JsonFields.object(o, "provenance");
         String scheme = JsonFields.text(o, "scheme");

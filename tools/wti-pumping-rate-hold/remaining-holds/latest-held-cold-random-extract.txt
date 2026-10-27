@@ -1,0 +1,12 @@
+# Read-only latest-hold extract for cases still held at end; no new solve.
+SEED 6 extracted=latest-held-at-end
+  HELD tick=8323 island=39 committed=2021 status=HELD: Substep refinement exhausted: Newton line search stalled at residual 69.9295497017663; active-set pass=5; reasons={Newton line search stalled at residual #; active-set pass=#=20}
+SEED 101 extracted=latest-held-at-end
+  HELD tick=10230 island=31 committed=1501 status=HELD: Substep refinement exhausted: Newton iteration limit at residual 3.836654971336322E-6; active-set pass=1; reasons={Newton line search stalled at residual #; active-set pass=#=8, Solid transport transition inside the step=2, Newton iteration limit at residual #; active-set pass=#=13}
+SEED 430 extracted=latest-held-at-end
+  HELD tick=6757 island=20 committed=454 status=HELD: Substep refinement exhausted: Newton iteration limit at residual 0.7654043164404858; active-set pass=0; reasons={Newton iteration limit at residual #; active-set pass=#=13, Newton line search stalled at residual #; active-set pass=#=7}
+SEED 446 extracted=latest-held-at-end
+  HELD tick=8106 island=42 committed=1703 status=HELD: Substep refinement exhausted: Newton line search stalled at residual 1.4579083864964524E-9; active-set pass=0; reasons={Newton iteration limit at residual #; active-set pass=#=21, Newton line search stalled at residual #; active-set pass=#=36}
+SEED 85 extracted=latest-held-at-end
+  HELD tick=8167 island=44 committed=1865 status=HELD: Newton line search stalled at residual 2.120792430559959E-11
+SUMMARY extracted_cases=5 distribution=cold-random

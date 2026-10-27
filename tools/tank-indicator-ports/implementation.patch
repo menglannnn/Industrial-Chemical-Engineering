@@ -1,0 +1,363 @@
+diff --git a/src/main/java/com/wormzjl/icheme/client/TankRenderer.java b/src/main/java/com/wormzjl/icheme/client/TankRenderer.java
+index fa15873b..e755de75 100644
+--- a/src/main/java/com/wormzjl/icheme/client/TankRenderer.java
++++ b/src/main/java/com/wormzjl/icheme/client/TankRenderer.java
+@@ -13,6 +13,7 @@ import com.wormzjl.icheme.runtime.fluid.TankDisplay;
+ import com.wormzjl.icheme.runtime.fluid.TankWatchers;
+ import com.wormzjl.icheme.science.equipment.EquipmentShape;
+ import com.wormzjl.icheme.science.equipment.Mesh;
++import com.wormzjl.icheme.science.equipment.TankGaugeGeometry;
+ import com.wormzjl.icheme.science.equipment.Paint;
+ import com.wormzjl.icheme.science.equipment.ShapeRasterizer;
+ import com.wormzjl.icheme.world.level.block.FloatingRoofs;
+@@ -63,11 +64,11 @@ public final class TankRenderer {
+     private static final int MAX_BUFFERS = 64;
+     /**
+      * The sight glass's bands (owner report 2026-10-21: the gauge was hard to pick out): their half width round the column
+-     * (the chamber is {@code TankDesign.GLASS_RADIUS}, 0.08 m), the least opacity a clear liquid shows with, the empty
+-     * glass above the liquid in light grey, and the float's red ring, {@code MARKER} m tall, at the liquid's surface.
++     * (shared with the instrument's chamber and scale), the least opacity a clear liquid shows with,
++     * and the float's slim red collar at the liquid's surface. Above the liquid the window stays clear.
+      */
+-    private static final double BAND = .1, MARKER = .1;
+-    private static final int LEAST_ALPHA = 200, EMPTY = 0xE0D8D8D8, FLOAT = 0xFFD02020;
++    private static final double BAND = TankGaugeGeometry.BAND_HALF, MARKER = TankGaugeGeometry.MARKER_HEIGHT;
++    private static final int LEAST_ALPHA = 200, FLOAT = 0xFFB84432;
+     private static final ResourceLocation WHITE = ResourceLocation.withDefaultNamespace("block/white_concrete");
+     private static final RenderType BANDS = RenderType.entityTranslucentCull(InventoryMenu.BLOCK_ATLAS);
+     private static final Map<Key, VertexBuffer> BUFFERS = new HashMap<>();
+@@ -193,9 +194,8 @@ public final class TankRenderer {
+             if (water > low) band(consumer, last, low, water, display.waterArgb(), light, u, v);
+             double surface = Math.max(water, oil);
+             if (oil > Math.max(low, water)) band(consumer, last, Math.max(low, water), oil, display.oilArgb(), light, u, v);
+-            if (high > Math.max(low, surface)) band(consumer, last, Math.max(low, surface), high, EMPTY, light, u, v);
+             double ring = Math.max(low, Math.min(high, surface));
+-            band(consumer, last, Math.max(low, ring - MARKER / 2), Math.min(high, ring + MARKER / 2), FLOAT, light, u, v, BAND + .005);
++            band(consumer, last, Math.max(low, ring - MARKER / 2), Math.min(high, ring + MARKER / 2), FLOAT, light, u, v, TankGaugeGeometry.MARKER_HALF);
+             pose.popPose();
+         }
+         if (consumer != null) buffers.endBatch(BANDS);
+@@ -207,26 +207,21 @@ public final class TankRenderer {
+         return level == null ? 0 : FloatingRoofs.of(level).level(node, ticks);
+     }
+ 
+-    /** One band: a square prism round the glass's column from {@code y0} to {@code y1}, its four sides and its top. */
++    /** One band: a closed square column round the glass, wound outwards on every side and both ends. */
+     private static void band(VertexConsumer consumer, com.mojang.blaze3d.vertex.PoseStack.Pose last, double y0, double y1, int argb, int light, float u, float v) {
+         band(consumer, last, y0, y1, argb, light, u, v, BAND);
+     }
+ 
+     /** One band of half width {@code half}. */
+     private static void band(VertexConsumer consumer, com.mojang.blaze3d.vertex.PoseStack.Pose last, double y0, double y1, int argb, int light, float u, float v, double half) {
++        if (y1 <= y0) return;
+         int r = argb >> 16 & 255, g = argb >> 8 & 255, b = argb & 255, alpha = Math.max(argb >>> 24, LEAST_ALPHA);
+-        float w = (float) half, lo = (float) y0, hi = (float) y1;
+-        float[][] sides = {{-w, -w, w, -w, 0, -1}, {w, -w, w, w, 1, 0}, {w, w, -w, w, 0, 1}, {-w, w, -w, -w, -1, 0}};
+-        for (var s : sides) {
+-            vertex(consumer, last, s[0], lo, s[1], r, g, b, alpha, u, v, light, s[4], 0, s[5]);
+-            vertex(consumer, last, s[2], lo, s[3], r, g, b, alpha, u, v, light, s[4], 0, s[5]);
+-            vertex(consumer, last, s[2], hi, s[3], r, g, b, alpha, u, v, light, s[4], 0, s[5]);
+-            vertex(consumer, last, s[0], hi, s[1], r, g, b, alpha, u, v, light, s[4], 0, s[5]);
++        for (var face : TankGaugeGeometry.bandFaces()) {
++            var p = face.positions();var n = face.normals();
++            for (int i = 0; i < p.length; i += 3)
++                vertex(consumer, last, (float) (half * (2 * p[i] - 1)), (float) (y0 + (y1 - y0) * p[i + 1]), (float) (half * (2 * p[i + 2] - 1)),
++                        r, g, b, alpha, u, v, light, (float) n[i], (float) n[i + 1], (float) n[i + 2]);
+         }
+-        vertex(consumer, last, -w, hi, -w, r, g, b, alpha, u, v, light, 0, 1, 0);
+-        vertex(consumer, last, -w, hi, w, r, g, b, alpha, u, v, light, 0, 1, 0);
+-        vertex(consumer, last, w, hi, w, r, g, b, alpha, u, v, light, 0, 1, 0);
+-        vertex(consumer, last, w, hi, -w, r, g, b, alpha, u, v, light, 0, 1, 0);
+     }
+ 
+     private static void vertex(VertexConsumer consumer, com.mojang.blaze3d.vertex.PoseStack.Pose last, float x, float y, float z, int r, int g, int b, int a, float u, float v, int light,
+diff --git a/src/main/java/com/wormzjl/icheme/science/equipment/EquipmentShape.java b/src/main/java/com/wormzjl/icheme/science/equipment/EquipmentShape.java
+index facdaae0..95aeb220 100644
+--- a/src/main/java/com/wormzjl/icheme/science/equipment/EquipmentShape.java
++++ b/src/main/java/com/wormzjl/icheme/science/equipment/EquipmentShape.java
+@@ -189,7 +189,7 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
+         OXIDANT(PortClass.BULK), WATER(PortClass.BULK), CUTTING_WATER(PortClass.BULK), BLOWDOWN(PortClass.BULK), SOLIDS_INLET(PortClass.BULK), FEEDWATER(PortClass.BULK),
+         VENT(PortClass.VAPOUR), EXHAUST(PortClass.VAPOUR), FLUE_GAS(PortClass.VAPOUR), RELIEF(PortClass.VAPOUR), SYNGAS(PortClass.VAPOUR),
+         DRAIN(PortClass.LIQUID), CONDENSATE(PortClass.LIQUID), CATALYST_OUTLET(PortClass.LIQUID), SOLIDS_OUTLET(PortClass.LIQUID),
+-        // A floating-roof tank's (owner change 2026-10-21): two identical bottom nozzles, and the overflow at the fill height.
++        // A floating-roof tank: centered front/back bottom nozzles, and the front overflow at the fill height.
+         BOTTOM(PortClass.LIQUID), OVERFLOW(PortClass.OVERFLOW);
+ 
+         public final PortClass port;
+diff --git a/src/main/java/com/wormzjl/icheme/science/equipment/Mesh.java b/src/main/java/com/wormzjl/icheme/science/equipment/Mesh.java
+index 4bbea56c..3aa07843 100644
+--- a/src/main/java/com/wormzjl/icheme/science/equipment/Mesh.java
++++ b/src/main/java/com/wormzjl/icheme/science/equipment/Mesh.java
+@@ -39,7 +39,9 @@ public final class Mesh {
+          * A fired heater's casing (panels between stiffeners 2 m apart), a machine's concrete plinth or block, a pump's
+          * coupling guard in safety yellow (owner request 2026-10-17).
+          */
+-        HEATER(2, Paint.BODY), CONCRETE(2, -1), GUARD(1, -1), GLASS(1, -1);
++        HEATER(2, Paint.BODY), CONCRETE(2, -1), GUARD(1, -1), GLASS(1, -1),
++        /** Neutral, unpainted level-instrument scale. */
++        GAUGE_SCALE(1, -1);
+ 
+         private final double period;
+         private final int channel;
+diff --git a/src/main/java/com/wormzjl/icheme/science/equipment/TankDesign.java b/src/main/java/com/wormzjl/icheme/science/equipment/TankDesign.java
+index 9645a70c..d38b8343 100644
+--- a/src/main/java/com/wormzjl/icheme/science/equipment/TankDesign.java
++++ b/src/main/java/com/wormzjl/icheme/science/equipment/TankDesign.java
+@@ -24,7 +24,7 @@ import java.util.List;
+  * walkway nor stair but caged ladders up its back to the platform (owner change 2026-10-21). Drawn by the client, apart ({@link ProcessUnit#floating}):
+  * the roof (pontoon ring 0.1 D wide, centre deck, rim seal, legs 1.8 m, drain sump), floating on the liquid and landing on
+  * its legs, and the rolling ladder, as long as the fill height, hinged at the platform with its foot on a runway on the
+- * deck. Nozzles, fixed (owner change 2026-10-21): two identical bottom nozzles on the front's lowest row ({@link Role#BOTTOM},
++ * deck. Nozzles, fixed: two identical bottom nozzles centered opposite each other at front and back ({@link Role#BOTTOM},
+  * liquid ports), and the overflow on the front at the fill height ({@link Role#OVERFLOW}).
+  *
+  * <p>The interior holds the liquid: its cells collide as a drum's but pass light, so the roof shows from above (the
+@@ -51,12 +51,13 @@ final class TankDesign extends UnitDesign {
+      * The level gauge on the shell (owner requests 2026-10-21: the gauge was hard to pick out; it reaches the bottom, on the
+      * tank as before): its column {@code GLASS_OUT} off the shell, from {@code GAUGE_LOW} over grade, piped from the shell at
+      * {@code TAP} and at the fill height, clipped to it every {@code CLIP} m between; on the front {@code GLASS_OFFSET} to
+-     * the left of its middle (between the overflow's flange and the left bottom nozzle's, in the walkway's front gap) on a
+-     * tank with the walkway, on the left side on a smaller one (its ladders stand at the back and the right). A 6" chamber
+-     * ({@code GLASS_RADIUS}) on a safety-yellow scale board ({@code SCALE_HALF} either side) ticked every metre, longer
+-     * every 5 m.
++     * the left of its middle (beside the centered nozzles, in the walkway's front gap) on a
++     * tank with the walkway, on the left side on a smaller one (its ladders stand at the back and the right). A steel-framed
++     * clear chamber on an unpainted pale scale board ({@code SCALE_HALF} either side), ticked dark every metre and longer
++     * every 5 m; its cap radius is {@code GLASS_RADIUS} plus the flange allowance.
+      */
+-    static final double GLASS_OFFSET = .85, GLASS_OUT = .5, GAUGE_LOW = .3, TAP = .45, GLASS_RADIUS = .08, SCALE_HALF = .14, CLIP = 3;
++    static final double GLASS_OFFSET = .85, GLASS_OUT = .5, GAUGE_LOW = .3, TAP = .45, CLIP = 3;
++    static final double GLASS_RADIUS = TankGaugeGeometry.CHAMBER_RADIUS, SCALE_HALF = TankGaugeGeometry.SCALE_HALF;
+ 
+     /** Half the walkway's gap across the front, m: the overflow's pipe stands there. */
+     static final double FRONT_GAP = 1.2;
+@@ -149,15 +150,13 @@ final class TankDesign extends UnitDesign {
+     /**
+      * A tank's sizes, m, in its frame (y up from grade, front -z): its diameter, shell height and radius, the axis (x and
+      * z), the fill height, the shell's facets, the walkway's walking level, the stair's inner radius (beyond the walkway)
+-     * and the platform's outer radius (a small tank's: its ladders' decks'), the bottom nozzles' offset from the front's
+-     * middle, and the nozzles' default size.
++     * and the platform's outer radius (a small tank's: its ladders' decks'), the stair approach's setback, and the nozzles' default size.
+      */
+-    record Plan(double d, int shell, double r, double a, double fill, int n, double walk, double band, double outer, int k, double defaultOd) {
++    record Plan(double d, int shell, double r, double a, double fill, int n, double walk, double band, double outer, int accessSetback, double defaultOd) {
+         static Plan of(double d, int shell) {
+             double r = d / 2, band = r + WALKWAY + Access.GAP, outer = d >= STAIR_SIZE ? band + Access.WOUND_WIDTH + Access.GAP : r + Access.MIN_DECK;
+             int n = Math.max(12, 4 * (int) Math.ceil(.75 * Math.PI * d));
+             return new Plan(d, shell, r, ProcessUnit.centre(outer + .05), shell - FREEBOARD, n, shell - GIRDER_DROP, band, outer,
+-                    // A tank with the walkway keeps its bottom nozzles 2 m or more off the middle: the level gauge stands between.
+                     Math.max(d >= STAIR_SIZE ? 2 : 1, (int) Math.round(r / 6)), PipeSizes.od(.1 + .007 * d, .15, .35));
+         }
+ 
+@@ -211,9 +210,9 @@ final class TankDesign extends UnitDesign {
+             hinge = from + span / 2;
+         }
+         gauge(u, p);
+-        u.nozzles.add(front(Role.BOTTOM, p, p.k, .5));
+-        u.nozzles.add(front(Role.BOTTOM, p, -p.k, .5));
+-        u.nozzles.add(front(Role.OVERFLOW, p, 0, p.shell - .5));
++        u.nozzles.add(nozzle(Role.BOTTOM, p, -1, .5));
++        u.nozzles.add(nozzle(Role.BOTTOM, p, 1, .5));
++        u.nozzles.add(nozzle(Role.OVERFLOW, p, -1, p.shell - .5));
+         u.fluidPoint = new double[]{p.a, .01, p.a - p.r + .02};
+         floating(u, p, hinge);
+     }
+@@ -240,13 +239,15 @@ final class TankDesign extends UnitDesign {
+ 
+     /**
+      * The stair from grade to the gauger's platform, wound clockwise seen from above round the shell beyond the walkway,
+-     * at the plant stair's slope. Its foot stands just to the right of the bottom nozzles (seen from the front), and it
++     * at the plant stair's slope. Its foot stands beside the front access gap, and it
+      * climbs away from them; where that would meet the front's nozzles or bring the platform or the walkway's landing into
+      * the walkway's front gap, it starts further round, in steps of 0.1 rad.
+      */
+     static Access.WoundStair stair(Plan p) {
+         double hw = Access.WOUND_WIDTH / 2, rw = p.band + hw, top = p.shell + Access.DECK;
+-        double zone = Math.max(p.k + .5, FRONT_GAP) + .5 + hw, first = -Math.PI / 2 - DeterministicMath.asin(Math.min(1, (p.k + 1 + hw) / rw));
++        // Retain the established access approach clearance, independent of the relocated nozzle centers.
++        double zone = Math.max(p.accessSetback + .5, FRONT_GAP) + .5 + hw;
++        double first = -Math.PI / 2 - DeterministicMath.asin(Math.min(1, (p.accessSetback + 1 + hw) / rw));
+         for (int m = 0; m < 63; m++) {
+             double start = first - .1 * m;
+             var plain = Access.WoundStair.wind(p.a, p.a, y -> p.r, WALKWAY + Access.GAP, start, -1, 0, top, Access.WOUND_WIDTH, Access.WOUND_SLOPE, List.of(), false);
+@@ -259,16 +260,18 @@ final class TankDesign extends UnitDesign {
+     }
+ 
+     /**
+-     * Whether a planned stair keeps clear: its treads and fences pass the front (within {@code zone} of its middle) only
+-     * over the bottom nozzles' row and under the overflow's; the gauger's platform at its top and its landing onto the
++     * Whether a planned stair keeps clear: its treads and fences pass front/back (within {@code zone} of the centerline) only
++     * over the bottom nozzles' row, and pass the front under the overflow; the gauger's platform at its top and its landing onto the
+      * walkway ({@code opening}) stand outside the walkway's front gap, and the landing outside the platform.
+      */
+     private static boolean clear(Plan p, Access.WoundStair stair, double[] opening, double zone) {
+         for (int k = 1; k <= stair.steps(); k++) {
+             var q = stair.at((k - .5) * Access.WOUND_GOING, 0, 0);
+-            if (Math.abs(q[0] - p.a) >= zone || q[2] >= p.a) continue;
++            // The front includes the gauge/access gap; the back has only its centered 1 m maximum nozzle.
++            double width = q[2] < p.a ? zone : PipeSizes.MAX_OUTSIDE / 2 + .5 + Access.WOUND_WIDTH / 2;
++            if (Math.abs(q[0] - p.a) >= width) continue;
+             double low = stair.tread(k) - stair.rise(k) - .3, high = stair.tread(k) + Access.FENCE;
+-            if (low < 1.1 || high > p.shell - 1.2 && low < p.shell + .2) return false;
++            if (low < 1.1 || q[2] < p.a && high > p.shell - 1.2 && low < p.shell + .2) return false;
+         }
+         double end = stair.angle(stair.steps()), span = PLATFORM / (p.band + Access.WOUND_WIDTH / 2), gap = frontGap(p), margin = .3 / p.r;
+         if (meets(end - span - margin, end + margin, -Math.PI / 2 - gap, -Math.PI / 2 + gap)) return false;
+@@ -443,14 +446,17 @@ final class TankDesign extends UnitDesign {
+      * The level gauge ({@link Plan#gauge}): the chamber (a dark column; the client shows the liquid's bands in it, plan
+      * section 3.4) from just over grade to above the fill height, its drain down to grade and its vent cap above; its
+      * lines from the shell at its foot ({@link #TAP}) and at the fill height, and its clips to the shell between; the
+-     * safety-yellow scale board behind it, ticked dark at each metre over the floor, the fifth ones across the whole board.
++     * pale scale board behind it, ticked dark at each metre over the floor, the fifth ones across the whole board.
+      */
+     private static void gauge(ProcessUnit u, Plan p) {
+         var g = p.gauge();
+         double x = g.x(), z = g.z(), low = GAUGE_LOW, high = p.fill + .3, flange = GLASS_RADIUS + .03;
+         double[] out = g.out(), side = {-out[2], 0, out[0]};
+         var column = Frame.of(new double[]{x, 0, z}, 1, 1);
+-        u.mesh.prism(column, GLASS_RADIUS, low, high, 12, Material.OPENING);
++        // Corner rails leave the front and sides clear; no opaque barrel hides the empty window or its liquid.
++        double rail = TankGaugeGeometry.BAND_HALF + .025;
++        for (int sx : new int[]{-1, 1}) for (int sz : new int[]{-1, 1})
++            u.mesh.bar(new double[]{x + sx * rail, low, z + sz * rail}, new double[]{x + sx * rail, high, z + sz * rail}, .022, out, Mesh.NO_ENDS, Material.FLANGE);
+         for (double[] cap : new double[][]{{low - .06, low}, {high, high + .06}}) {
+             u.mesh.prism(column, flange, cap[0], cap[1], 12, Material.FLANGE);
+             u.mesh.annulus(column, 0, flange, cap[0], 12, -1, Material.FLANGE);
+@@ -468,13 +474,14 @@ final class TankDesign extends UnitDesign {
+         }
+         // The scale board just behind the chamber, and its ticks on its face either side of it.
+         double[] face = {x - (GLASS_RADIUS - .02) * out[0], 0, z - (GLASS_RADIUS - .02) * out[2]};
+-        board(u, face, out, side, -SCALE_HALF, SCALE_HALF, low, p.fill + .1, .04, Material.GUARD);
++        board(u, face, out, side, -SCALE_HALF, SCALE_HALF, low, p.fill + .1, .04, Material.GAUGE_SCALE);
+         for (int m = 1; m <= p.fill + 1e-9; m++) {
+             boolean fifth = m % 5 == 0;
+             double half = fifth ? .03 : .015;
+             double[] proud = {face[0] + .01 * out[0], 0, face[2] + .01 * out[2]};
+-            board(u, proud, out, side, -SCALE_HALF, -GLASS_RADIUS - .005, m - half, m + half, .01, Material.BOLT);
+-            if (fifth) board(u, proud, out, side, GLASS_RADIUS + .005, SCALE_HALF, m - half, m + half, .01, Material.BOLT);
++            double window = TankGaugeGeometry.BAND_HALF + .045;
++            board(u, proud, out, side, -SCALE_HALF, -window, m - half, m + half, .01, Material.BOLT);
++            if (fifth) board(u, proud, out, side, window, SCALE_HALF, m - half, m + half, .01, Material.BOLT);
+         }
+     }
+ 
+@@ -485,15 +492,17 @@ final class TankDesign extends UnitDesign {
+     }
+ 
+     /**
+-     * A bottom nozzle or the overflow: out of the front (frame -z) at {@code offset} from its middle and height {@code y},
+-     * square to the front (a hillside nozzle off the middle), its neck from under the shell where a pipe's largest neck's
++     * A bottom nozzle or the overflow: centered on front (sign -1) or back (sign +1) at height {@code y},
++     * its neck from under the shell where a pipe's largest neck's
+      * edge meets it (owner decision 2026-10-21: a 1 m pipe has a 1 m root), its flange face on the next block face
+      * {@link EquipmentShape#STAND_OUT} beyond the shell.
+      */
+-    private static Nozzle front(Role role, Plan p, double offset, double y) {
+-        double apothem = p.r * DeterministicMath.cos(Math.PI / p.n), edge = Math.abs(offset) + PipeSizes.MAX_OUTSIDE / 2;
+-        double start = Math.sqrt(Math.max(0, apothem * apothem - edge * edge)) - .03, plane = Math.floor(p.a - p.r - EquipmentShape.STAND_OUT), base = p.a - start;
+-        return new Nozzle(role, new double[]{p.a + offset, y, base}, 2, -1, base - plane, p.defaultOd, 0);
++    private static Nozzle nozzle(Role role, Plan p, int sign, double y) {
++        double apothem = p.r * DeterministicMath.cos(Math.PI / p.n), edge = PipeSizes.MAX_OUTSIDE / 2;
++        double start = Math.sqrt(apothem * apothem - edge * edge) - .03;
++        double plane = sign < 0 ? Math.floor(p.a - p.r - EquipmentShape.STAND_OUT) : Math.ceil(p.a + p.r + EquipmentShape.STAND_OUT);
++        double base = p.a + sign * start;
++        return new Nozzle(role, new double[]{p.a, y, base}, 2, sign, sign * (plane - base), p.defaultOd, 0);
+     }
+ 
+     /**
+diff --git a/src/main/java/com/wormzjl/icheme/science/equipment/TankGaugeGeometry.java b/src/main/java/com/wormzjl/icheme/science/equipment/TankGaugeGeometry.java
+new file mode 100644
+index 00000000..179355eb
+--- /dev/null
++++ b/src/main/java/com/wormzjl/icheme/science/equipment/TankGaugeGeometry.java
+@@ -0,0 +1,21 @@
++package com.wormzjl.icheme.science.equipment;
++
++import java.util.List;
++
++/** Shared proportions and outward-wound faces for the tank's shell-mounted level indicator. */
++public final class TankGaugeGeometry {
++    public static final double CHAMBER_RADIUS = .20, BAND_HALF = .12, SCALE_HALF = .26;
++    public static final double MARKER_HALF = .16, MARKER_HEIGHT = .07;
++    private static final List<Mesh.Polygon> BAND_FACES;
++
++    static {
++        var mesh = new Mesh();
++        mesh.box(new double[]{0, 0, 0}, new double[]{1, 1, 1}, Mesh.ALL_FACES, Mesh.Material.OPENING);
++        BAND_FACES = List.copyOf(mesh.cell(0, 0, 0));
++    }
++
++    private TankGaugeGeometry() {}
++
++    /** Read-only closed unit cube, 0..1 on every axis. Scale/translate copies for each band, including its underside. */
++    public static List<Mesh.Polygon> bandFaces() { return BAND_FACES; }
++}
+diff --git a/src/main/resources/assets/icheme/models/block/equipment_shell.json b/src/main/resources/assets/icheme/models/block/equipment_shell.json
+index c6062698..72816627 100644
+--- a/src/main/resources/assets/icheme/models/block/equipment_shell.json
++++ b/src/main/resources/assets/icheme/models/block/equipment_shell.json
+@@ -26,6 +26,7 @@
+     "heater": "icheme:block/painted_heater",
+     "concrete": "icheme:block/equipment_concrete",
+     "guard": "icheme:block/equipment_guard",
++    "gauge_scale": "minecraft:block/white_concrete",
+     "particle": "icheme:block/vessel_shell"
+   }
+ }
+diff --git a/src/test/java/com/wormzjl/icheme/science/equipment/ShapeRasterizerTest.java b/src/test/java/com/wormzjl/icheme/science/equipment/ShapeRasterizerTest.java
+index 2edb3b19..68a3b693 100644
+--- a/src/test/java/com/wormzjl/icheme/science/equipment/ShapeRasterizerTest.java
++++ b/src/test/java/com/wormzjl/icheme/science/equipment/ShapeRasterizerTest.java
+@@ -790,21 +790,25 @@ class ShapeRasterizerTest {
+     @Test
+     void storagePortsStandWhereThePlanPutsThem() {
+         for (var heading : Heading.values()) {
+-            // A tank: two alike bottom nozzles on the lowest row either side of the front's middle, the overflow over the fill
+-            // height; all towards the constructor.
++            // A tank: centered front/back bottom nozzles on the lowest row; front overflow above the fill height.
+             var tank = EquipmentShape.storage(Kind.TANK, 20, 12, heading, 0);
+             var ports = ShapeRasterizer.ports(tank);
+             assertEquals(List.of(EquipmentShape.Role.BOTTOM, EquipmentShape.Role.BOTTOM, EquipmentShape.Role.OVERFLOW), tank.nozzles().stream().map(EquipmentShape.Nozzle::role).toList());
+             assertEquals(List.of(EquipmentShape.PortClass.LIQUID, EquipmentShape.PortClass.LIQUID, EquipmentShape.PortClass.OVERFLOW),
+                     ports.stream().map(ShapeRasterizer.Port::port).toList(), tank.toString());
+-            for (var port : ports) assertArrayEquals(new int[]{heading.dx, 0, heading.dz}, new int[]{port.dx(), port.dy(), port.dz()}, tank.toString());
++            for (int i = 0; i < ports.size(); i++) {
++                var port = ports.get(i);int sign = i == 1 ? -1 : 1;
++                assertArrayEquals(new int[]{sign * heading.dx, 0, sign * heading.dz}, new int[]{port.dx(), port.dy(), port.dz()}, tank.toString());
++            }
+             var a = ports.get(0).cell();
+             var b = ports.get(1).cell();
+             var overflow = ports.get(2).cell();
+             assertEquals(List.of(0, 0, 11), List.of(a.y(), b.y(), overflow.y()), tank.toString());
+-            // Mirrored about the overflow's column, on the front's face.
+-            assertEquals(2 * (heading.dx != 0 ? overflow.z() : overflow.x()), heading.dx != 0 ? a.z() + b.z() : a.x() + b.x(), tank.toString());
++            // Both bottom ports share the overflow's centerline; the second ends at the opposite side of the tank.
++            assertEquals(heading.dx != 0 ? overflow.z() : overflow.x(), heading.dx != 0 ? a.z() : a.x(), tank.toString());
++            assertEquals(heading.dx != 0 ? a.z() : a.x(), heading.dx != 0 ? b.z() : b.x(), tank.toString());
+             assertEquals(heading.dx != 0 ? overflow.x() : overflow.z(), heading.dx != 0 ? a.x() : a.z(), tank.toString());
++            assertTrue((a.x() - b.x()) * heading.dx + (a.z() - b.z()) * heading.dz > tank.diameter(), tank.toString());
+             // A sphere: the vapour outlet up at its top, the liquid outlet on the lowest row at the box's front edge.
+             var sphere = EquipmentShape.storage(Kind.SPHERE, 14, 1, heading, 2);
+             var sp = ShapeRasterizer.ports(sphere);
+@@ -819,6 +823,21 @@ class ShapeRasterizerTest {
+         }
+     }
+ 
++    @Test
++    void tankGaugeFacesPointOutwardsIncludingTheUnderside() {
++        var faces = TankGaugeGeometry.bandFaces();assertEquals(6, faces.size());
++        var normals = new java.util.HashSet<String>();
++        for (var face : faces) {
++            var p = face.positions();var n = face.normals();
++            double[] a = {p[3] - p[0], p[4] - p[1], p[5] - p[2]}, b = {p[6] - p[0], p[7] - p[1], p[8] - p[2]};
++            double[] cross = {a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]};
++            assertTrue(cross[0] * (p[0] - .5) + cross[1] * (p[1] - .5) + cross[2] * (p[2] - .5) > 0, "inward face is culled from outside");
++            assertTrue(cross[0] * n[0] + cross[1] * n[1] + cross[2] * n[2] > 0, "winding and light normal disagree");
++            normals.add(n[0] + "," + n[1] + "," + n[2]);
++        }
++        assertEquals(6, normals.size());
++    }
++
+     /**
+      * Every size: its decks and its wound stair or ladders are walked (at frame level), its pipes kept one block apart. The
+      * wound stair from {@link TankDesign#STAIR_SIZE} and {@link SphereDesign#STAIR_SIZE} across, caged ladders under (owner

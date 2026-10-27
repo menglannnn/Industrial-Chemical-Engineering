@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.wormzjl.icheme.runtime.fluid.HoldClassWorldsTest" tests="1" skipped="0" failures="0" errors="0" timestamp="2026-10-24T03:10:12.410Z" hostname="WORMZ-PC" time="0.474">
+  <properties/>
+  <testcase name="aFailedIterateRaisesNoPhaseHold()" classname="com.wormzjl.icheme.runtime.fluid.HoldClassWorldsTest" time="0.474"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

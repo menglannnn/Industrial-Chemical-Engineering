@@ -1,0 +1,105 @@
+diff --git a/src/main/java/com/wormzjl/icheme/science/fluid/network/OpenVessel.java b/src/main/java/com/wormzjl/icheme/science/fluid/network/OpenVessel.java
+index 2887f07..0c18abe 100644
+--- a/src/main/java/com/wormzjl/icheme/science/fluid/network/OpenVessel.java
++++ b/src/main/java/com/wormzjl/icheme/science/fluid/network/OpenVessel.java
+@@ -31,6 +31,12 @@ public final class OpenVessel {
+     private OpenVessel() {}
+     /** The shell's height over the fill height, m: the roof's own depth when it stands at the overflow nozzle. */
+     public static final double FREEBOARD=1;
++    /** Prototype (trace 354/678, 2026-10-21): the time over which an open vessel gives the atmosphere what it holds in
++     * excess at a step's start (its gas, its liquid above the shell top), s. A step of length dt releases the share
++     * {@link #releaseShare} of it: a finite rate, so a vanishing step releases nothing. */
++    public static final double RELEASE_TIME=Double.parseDouble(System.getProperty("icheme.openTank.releaseTime","1"));
++    /** The share of a step's start excess an open vessel releases over a step of {@code dt} seconds: {@code min(1, dt/RELEASE_TIME)}. */
++    static double releaseShare(double dt){return Math.min(1,dt/RELEASE_TIME);}
+ 
+     /** What one release takes out of its vessel over a step: amounts (mol, water last), energy {@code sum m h} (J),
+      * solids and their moments. */
+@@ -109,14 +115,14 @@ public final class OpenVessel {
+      * vessel or gives nothing. Each component's release is at most what the vessel holds of it, so roundoff between a
+      * state's phase split and its inventory never books out more than it holds.
+      */
+-    static Releases releases(FluidThermodynamics model,PassiveNetwork.Reservoir node) {
++    static Releases releases(FluidThermodynamics model,PassiveNetwork.Reservoir node,double dt) {
+         if(node.kind()!=PassiveNetwork.NodeKind.RESERVOIR||!node.inventory().open()||node.empty()||PassiveStepSolver.holdsNoFluid(node))return null;
+-        var state=node.state();var held=node.inventory().moles();
++        var state=node.state();var held=node.inventory().moles();double share=releaseShare(dt);
+         Release vent=null,spill=null;
+         if(FluidThermodynamics.holdsPhase(state,GAS)) {
+             var n=FluidThermodynamics.phaseMoles(state,GAS);
+-            for(int c=0;c<n.length;c++){n[c]=Math.min(n[c],held[c]);held[c]-=n[c];}
+-            vent=new Release(n,model.phaseMass(state,GAS)*model.phaseSpecificEnthalpy(state,GAS,null),SolidInventory.EMPTY,SolidInventory.Moments.ZERO);
++            for(int c=0;c<n.length;c++){n[c]=Math.min(share*n[c],held[c]);held[c]-=n[c];}
++            vent=new Release(n,share*model.phaseMass(state,GAS)*model.phaseSpecificEnthalpy(state,GAS,null),SolidInventory.EMPTY,SolidInventory.Moments.ZERO);
+         }
+         double top=topVolume(node.inventory()),liquid=condensedVolume(state);
+         if(liquid>top) {
+@@ -124,14 +130,14 @@ public final class OpenVessel {
+             var solids=SolidInventory.EMPTY;double solidMass=0,solidVolume=0,solidCapacity=0;
+             for(int phase=OIL;phase<=WATER;phase++) {
+                 if(!(band[phase]>0))continue;
+-                double share=band[phase]/FluidThermodynamics.phaseVolume(state,phase);
++                double part=share*band[phase]/FluidThermodynamics.phaseVolume(state,phase);
+                 var phaseMoles=FluidThermodynamics.phaseMoles(state,phase);
+-                for(int c=0;c<n.length;c++)n[c]+=share*phaseMoles[c];
+-                energy+=share*model.phaseMass(state,phase)*model.phaseSpecificEnthalpy(state,phase,null);
++                for(int c=0;c<n.length;c++)n[c]+=part*phaseMoles[c];
++                energy+=part*model.phaseMass(state,phase)*model.phaseSpecificEnthalpy(state,phase,null);
+                 var moments=FluidThermodynamics.phaseSolidMoments(state,phase);
+                 if(moments.mass()>0) {
+-                    solids=solids.plus(state.solids().scale(share*FluidThermodynamics.phaseSolidShare(state,phase)));
+-                    solidMass+=share*moments.mass();solidVolume+=share*moments.volume();solidCapacity+=share*moments.heatCapacity();
++                    solids=solids.plus(state.solids().scale(part*FluidThermodynamics.phaseSolidShare(state,phase)));
++                    solidMass+=part*moments.mass();solidVolume+=part*moments.volume();solidCapacity+=part*moments.heatCapacity();
+                 }
+             }
+             for(int c=0;c<n.length;c++)n[c]=Math.min(n[c],held[c]);
+diff --git a/src/main/java/com/wormzjl/icheme/science/fluid/network/PassiveStepSolver.java b/src/main/java/com/wormzjl/icheme/science/fluid/network/PassiveStepSolver.java
+index 8bfa885..5aa01e0 100644
+--- a/src/main/java/com/wormzjl/icheme/science/fluid/network/PassiveStepSolver.java
++++ b/src/main/java/com/wormzjl/icheme/science/fluid/network/PassiveStepSolver.java
+@@ -3193,7 +3193,7 @@ public final class PassiveStepSolver {
+                 if(this.boundaryClosed[edge]&&pipe.control() instanceof FlowControl.Passive)continue;
+                 if((end==0?pipe.firstPort():pipe.secondPort())!=PassiveNetwork.PhasePort.BULK)drawsPhase[end==0?pipe.first():pipe.second()]=true;
+             }
+-            releases=rateOnly?null:releases(graph);
++            releases=rateOnly?null:releases(graph,dt);
+             capacities=capacities(graph,dt);overflowCapacities=overflowCapacities(graph,dt);
+             seedHeld=new boolean[count][];startPhases=new Transport[count][];
+             for(int i=0;i<count;i++)if(drawsPhase[i]){seedHeld[i]=PhaseDraw.held(this.seeds.get(i));startPhases[i]=transport(i,graph.reservoirs().get(i).state(),null).phases;}
+@@ -3345,10 +3345,10 @@ public final class PassiveStepSolver {
+          * throttling mode and not closed. */
+         boolean saturates(int edge){return PassiveStepSolver.saturates(modes.get(edge))&&!boundaryClosed[edge];}
+         /** {@link #releases} of {@code graph}: null when no node releases anything. */
+-        private OpenVessel.Releases[] releases(PassiveNetwork graph) {
++        private OpenVessel.Releases[] releases(PassiveNetwork graph,double dt) {
+             OpenVessel.Releases[] result=null;
+             for(int node=0;node<graph.reservoirs().size();node++) {
+-                var released=OpenVessel.releases(model,graph.reservoirs().get(node));if(released==null)continue;
++                var released=OpenVessel.releases(model,graph.reservoirs().get(node),dt);if(released==null)continue;
+                 if(result==null)result=new OpenVessel.Releases[graph.reservoirs().size()];
+                 result[node]=released;
+             }
+@@ -3384,11 +3384,11 @@ public final class PassiveStepSolver {
+          * phase's release shared over {@code span}, its drawing ends times the step. */
+         private void released(int node,FluidThermodynamics.State start,double[] capacity,double span) {
+             var released=releases[node];
+-            if(released.vent()!=null)capacity[FluidThermodynamics.GAS]=0;
++            if(released.vent()!=null)capacity[FluidThermodynamics.GAS]=Math.max(0,capacity[FluidThermodynamics.GAS]-OpenVessel.releaseShare(dt)*model.phaseMass(start,FluidThermodynamics.GAS)/span);
+             if(released.spill()==null)return;
+             var band=OpenVessel.band(model,start,OpenVessel.topVolume(graph.reservoirs().get(node).inventory()),OpenVessel.condensedVolume(start));
+             for(int phase=FluidThermodynamics.OIL;phase<=FluidThermodynamics.WATER;phase++)if(band[phase]>0)
+-                capacity[phase]=Math.max(0,capacity[phase]-model.phaseMass(start,phase)*band[phase]/FluidThermodynamics.phaseVolume(start,phase)/span);
++                capacity[phase]=Math.max(0,capacity[phase]-OpenVessel.releaseShare(dt)*model.phaseMass(start,phase)*band[phase]/FluidThermodynamics.phaseVolume(start,phase)/span);
+         }
+         /** {@link #overflowCapacities} of {@code graph}. */
+         private double[][] overflowCapacities(PassiveNetwork graph,double dt) {
+@@ -3442,7 +3442,7 @@ public final class PassiveStepSolver {
+                 if(layout[node]==null||!vents&&(!drawsPhase[node]||capacities[node]==null))continue;
+                 var seed=seeds.get(node);var start=graph.reservoirs().get(node).state();
+                 double[] drawn=new double[3];
+-                if(vents)drawn[FluidThermodynamics.GAS]=model.phaseMass(start,FluidThermodynamics.GAS);
++                if(vents)drawn[FluidThermodynamics.GAS]=OpenVessel.releaseShare(dt)*model.phaseMass(start,FluidThermodynamics.GAS);
+                 if(drawsPhase[node])for(int edge=0;edge<segments.length;edge++)for(int end=0;end<2;end++) {
+                     var segment=segments[edge][end];var pipe=graph.pipes().get(edge);
+                     if(segment==null||(end==0?pipe.first():pipe.second())!=node)continue;

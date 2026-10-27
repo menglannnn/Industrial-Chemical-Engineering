@@ -1,0 +1,14 @@
+// Write this worktree's existing test runtime classpath for the offline matched-seed harness.
+allprojects { project ->
+    afterEvaluate {
+        if (project == rootProject) {
+            project.tasks.register('cold430ValidationClasspath') {
+                doLast {
+                    def output = project.layout.buildDirectory.file('cold430-validation/test-runtime-classpath.txt').get().asFile
+                    output.parentFile.mkdirs()
+                    output.text = project.sourceSets.test.runtimeClasspath.asPath
+                }
+            }
+        }
+    }
+}

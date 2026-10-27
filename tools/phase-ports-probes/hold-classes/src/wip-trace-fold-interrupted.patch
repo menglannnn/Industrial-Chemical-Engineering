@@ -1,0 +1,102 @@
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/network/ConservativeTransport.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/ConservativeTransport.java
+index aa93700c..c733d7c3 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/ConservativeTransport.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/ConservativeTransport.java
+@@ -525,7 +525,9 @@ public final class ConservativeTransport {
+         if(water==0){wl=state.vaporVolume()>0?0:moles[l.length];wv=moles[l.length]-wl;}
+         else if(state.waterLiquid()<state.waterVapor()){wl=moles[l.length]*(state.waterLiquid()/water);wv=moles[l.length]-wl;}
+         else{wv=moles[l.length]*(state.waterVapor()/water);wl=moles[l.length]-wv;}
+-        return model.adoptingState(state.temperature(),state.pressure(),l,v,wl,wv,state.hydrocarbonPartialPressure(),null).withSolidState(state.solids(),state.solidMoments());
++        // A trace phase is folded as the flash folds it (decision D34): the committed node has the phase set its flash has.
++        double[] split={wl,wv};model.foldTracePhases(l,v,split);
++        return model.adoptingState(state.temperature(),state.pressure(),l,v,split[0],split[1],state.hydrocarbonPartialPressure(),null).withSolidState(state.solids(),state.solidMoments());
+     }
+     /** Whether {@code moles} book a hydrocarbon into a state that holds no hydrocarbon phase (see {@link #repartition}). */
+     static boolean appearsWithoutPhase(FluidThermodynamics.State state,double[] moles) {
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+index fe79dfee..9c742d93 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+@@ -544,6 +544,9 @@ public final class PassiveStepSolver {
+             // .repartition); the pass is solved again from it, as from any phase appearance. Before, that restatement
+             // failed and every step size was refused.
+             if(phaseAppeared(states,projection.states())){seeds=projection.states();continue;}
++            // Decision D34: the reconstruction folded a trace phase this pass solved, so the pass is solved again with the
++            // folded phase set: the Newton, the reconstruction and the equation gate then read the same phases.
++            if(traceFolded(states,projection.states())){seeds=projection.states();continue;}
+             var changedSeeds=phaseCorrection(graph,projection.states(),checkpoint,true,equations.cachedPrepared);if(changedSeeds!=null){seeds=changedSeeds;continue;}
+             var reconstructed=x.clone();
+             for(int node=0;node<projection.states().size();node++)if(equations.layout[node]!=null){var encoded=equations.layout[node].encode(projection.states().get(node));System.arraycopy(encoded,0,reconstructed,equations.offsets[node],encoded.length);}
+@@ -1458,6 +1461,15 @@ public final class PassiveStepSolver {
+         }
+         return changed?corrected:null;
+     }
++    /** Whether the reconstruction folded away a trace phase ({@code FluidThermodynamics.foldTracePhases}) the Newton state holds. */
++    private static boolean traceFolded(List<FluidThermodynamics.State> solved,List<FluidThermodynamics.State> reconstructed) {
++        for(int i=0;i<solved.size();i++) {
++            var before=solved.get(i);var after=reconstructed.get(i);
++            double nl=PhaseLayout.sum(before.liquidView()),nv=PhaseLayout.sum(before.vaporView())+before.waterVapor(),nw=before.waterLiquid(),limit=FluidThermodynamics.PHASE_TRACE_FRACTION*(nl+nv+nw);
++            if(nl>0&&nl<limit&&PhaseLayout.sum(after.liquidView())==0||nw>0&&nw<limit&&after.waterLiquid()==0||nv>0&&nv<limit&&PhaseLayout.sum(after.vaporView())+after.waterVapor()==0)return true;
++        }
++        return false;
++    }
+     /** Whether the reconstruction gave a hydrocarbon phase to a node the Newton state holds none in (hold class E3). */
+     private static boolean phaseAppeared(List<FluidThermodynamics.State> solved,List<FluidThermodynamics.State> reconstructed) {
+         for(int i=0;i<solved.size();i++) {
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/FluidThermodynamics.java b/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/FluidThermodynamics.java
+index 6cadff29..09872897 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/FluidThermodynamics.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/FluidThermodynamics.java
+@@ -451,6 +451,40 @@ public final class FluidThermodynamics {
+                 moments.enthalpy(temperature,pressure),moments.internalEnergy(temperature),moments.mass(),0,0,0,null,null,solids,moments);
+     }
+ 
++    /**
++     * Owner decision D34 (phase-ports batch, 2026-09-28): a phase holding less than this share of its node's total amount
++     * (moles, every phase and component counted, solids not) is a trace phase and does not exist: its material is folded
++     * into the node's remaining phases. The resolution the Newton states a node's composition to.
++     */
++    public static final double PHASE_TRACE_FRACTION=1e-9;
++    /**
++     * Folds trace phases in place (owner decisions D33, D34): nothing leaves the node and nothing is booked. A trace
++     * hydrocarbon liquid goes into the gas phase, a trace of free water into the gas as water vapour, and a trace gas
++     * phase into the liquids (its hydrocarbons into the hydrocarbon liquid, its water vapour into the free water). A phase
++     * is folded only when every component it holds has a receiving phase that is not itself a trace: a nitrogen bubble in
++     * a node of free water only has none (nitrogen does not dissolve in the model's free water) and stays. The flash is
++     * the one place this is decided ({@link #flashTP}); the reconstruction's restatement of a node reuses it. Returns
++     * whether anything moved. {@code water} is {free water, water vapour}.
++     */
++    public boolean foldTracePhases(double[] liquid,double[] vapor,double[] water) {
++        double nl=0,nh=0;for(double x:liquid)nl+=x;for(double x:vapor)nh+=x;
++        double nv=nh+water[1],nw=water[0],total=nl+nv+nw;
++        if(!(total>0))return false;
++        double limit=PHASE_TRACE_FRACTION*total;boolean moved=false;
++        if(nl>0&&nl<limit&&nv>=limit){for(int i=0;i<liquid.length;i++){vapor[i]+=liquid[i];liquid[i]=0;}moved=true;}
++        if(nw>0&&nw<limit&&nv>=limit){water[1]+=water[0];water[0]=0;moved=true;}
++        if(nv>0&&nv<limit&&(nh==0||nl>=limit)&&(water[1]==0||nw>=limit)) {
++            for(int i=0;i<vapor.length;i++){liquid[i]+=vapor[i];vapor[i]=0;}water[0]+=water[1];water[1]=0;moved=true;
++        }
++        return moved;
++    }
++    /** {@code state} with its trace phases folded ({@link #foldTracePhases}); the state itself when there is none. */
++    private State folded(State state,TranslatedPengRobinson.Workspace terms) {
++        double[] l=state.liquid(),v=state.vapor(),water={state.waterLiquid(),state.waterVapor()};
++        if(!foldTracePhases(l,v,water))return state;
++        return state(state.temperature(),state.pressure(),l,v,water[0],water[1],state.hydrocarbonPartialPressure(),terms,null);
++    }
++
+     /** Initializer/boundary flash only. The time-step solver must not call this in residual evaluation. */
+     public State flashTP(double t,double p,double[] overall,Runnable checkpoint) {
+         return flashTP(t,p,overall,checkpoint,null);
+@@ -460,6 +494,11 @@ public final class FluidThermodynamics {
+      * into two buffers rather than building two phase records per iteration (review 8.7 (c) E1: the phase-check flashes
+      * were half of a flowing island's allocation). */
+     public State flashTP(double t,double p,double[] overall,Runnable checkpoint,Prepared prepared) {
++        TranslatedPengRobinson.Workspace given=prepared!=null&&prepared.temperature()==t?prepared.pengRobinson():null;
++        return folded(equilibrium(t,p,overall,checkpoint,prepared),given);
++    }
++    /** The equilibrium split of {@link #flashTP} before its trace phases are folded. */
++    private State equilibrium(double t,double p,double[] overall,Runnable checkpoint,Prepared prepared) {
+         TranslatedPengRobinson.Workspace given=prepared!=null&&prepared.temperature()==t?prepared.pengRobinson():null;
+         SolverDiagnostics.count(SolverDiagnostics.flashCalls);
+         int n=hydrocarbon.componentCount();if(overall.length!=n+1)throw new IllegalArgumentException("Fluid basis mismatch");

@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="820" height="500" viewBox="0 0 820 500" font-family="Segoe UI, Arial, sans-serif">
+<title>Column auxiliaries: flow scheme</title>
+<style>
+.ts{font-size:12px;fill:#444441}.th{font-size:13px;font-weight:600;fill:#2C2C2A}
+.unit{fill:#F1EFE8;stroke:#5F5E5A;stroke-width:1}
+.add{fill:#EEEDFE;stroke:#534AB7;stroke-width:1}
+.opt{stroke-dasharray:6 4}
+.vap{fill:none;stroke:#D85A30;stroke-width:3}
+.liq{fill:none;stroke:#185FA5;stroke-width:2.5}
+.utl{fill:none;stroke:#0F6E56;stroke-width:1.5;stroke-dasharray:6 3}
+</style>
+<defs><marker id="a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5"/></marker></defs>
+<rect width="820" height="500" fill="#fff"/>
+<rect x="330" y="90" width="70" height="330" rx="24" fill="#ECEAE3" stroke="#888780"/>
+<text class="th" x="365" y="259" text-anchor="middle">Column</text>
+<rect class="unit opt" x="480" y="40" width="220" height="50" rx="6"/>
+<text class="th" x="590" y="60" text-anchor="middle">Steam ejector</text>
+<text class="ts" x="590" y="78" text-anchor="middle">optional, before the condenser</text>
+<rect class="unit" x="480" y="120" width="220" height="50" rx="6"/>
+<text class="th" x="590" y="140" text-anchor="middle">Condenser</text>
+<text class="ts" x="590" y="158" text-anchor="middle">required: water or air cooled</text>
+<rect class="unit" x="480" y="200" width="220" height="50" rx="6"/>
+<text class="th" x="590" y="220" text-anchor="middle">Reflux drum</text>
+<text class="ts" x="590" y="238" text-anchor="middle">comes with the condenser</text>
+<rect class="add" x="480" y="280" width="220" height="40" rx="6"/>
+<text class="th" x="590" y="305" text-anchor="middle">Reflux pump (proposed)</text>
+<rect class="unit" x="60" y="180" width="190" height="50" rx="6"/>
+<text class="th" x="155" y="200" text-anchor="middle">PA cooler</text>
+<text class="ts" x="155" y="218" text-anchor="middle">one per pumparound, 0 to 4</text>
+<rect class="add" x="60" y="260" width="190" height="40" rx="6"/>
+<text class="th" x="155" y="285" text-anchor="middle">PA pump (proposed)</text>
+<rect class="unit opt" x="480" y="360" width="220" height="50" rx="6"/>
+<text class="th" x="590" y="380" text-anchor="middle">Reboiler</text>
+<text class="ts" x="590" y="398" text-anchor="middle">optional: kettle at grade</text>
+<path class="vap" d="M365 90V65H476" marker-end="url(#a)"/>
+<path class="vap" d="M440 65V145H476" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#a)"/>
+<text class="ts" x="446" y="112">without ejector</text>
+<path class="vap" d="M590 90V116" marker-end="url(#a)"/>
+<path class="utl" d="M770 65H704" marker-end="url(#a)"/>
+<text class="ts" x="708" y="57">motive steam</text>
+<path class="utl" d="M770 145H704" marker-end="url(#a)"/>
+<text class="ts" x="708" y="137">water or air</text>
+<path class="liq" d="M590 170V196" marker-end="url(#a)"/>
+<path class="liq" d="M590 250V276" marker-end="url(#a)"/>
+<path class="liq" d="M480 300H425V130H404" marker-end="url(#a)"/>
+<text class="ts" x="408" y="122">reflux</text>
+<path class="liq" d="M700 300H770" marker-end="url(#a)"/>
+<text class="ts" x="708" y="292">distillate</text>
+<path class="liq" d="M330 280H254" marker-end="url(#a)"/>
+<text class="ts" x="262" y="272">draw</text>
+<path class="liq" d="M155 260V234" marker-end="url(#a)"/>
+<path class="liq" d="M250 205H326" marker-end="url(#a)"/>
+<text class="ts" x="262" y="197">return, above</text>
+<path class="utl" d="M20 205H56" marker-end="url(#a)"/>
+<text class="ts" x="20" y="197">water</text>
+<path class="liq" d="M20 350H326" marker-end="url(#a)"/>
+<text class="ts" x="24" y="342">feed</text>
+<path class="liq" d="M365 420V445H590V414" marker-end="url(#a)"/>
+<text class="ts" x="372" y="460">sump liquid</text>
+<path class="vap" d="M480 385H404" marker-end="url(#a)"/>
+<text class="ts" x="408" y="377">vapour</text>
+<path class="liq" d="M700 395H770" marker-end="url(#a)"/>
+<text class="ts" x="708" y="387">bottoms</text>
+<path class="utl" d="M770 420H750V412H704" marker-end="url(#a)"/>
+<text class="ts" x="728" y="434">steam</text>
+<line x1="40" y1="484" x2="70" y2="484" stroke="#D85A30" stroke-width="3"/><text class="ts" x="76" y="488">vapour</text>
+<line x1="130" y1="484" x2="160" y2="484" stroke="#185FA5" stroke-width="2.5"/><text class="ts" x="166" y="488">liquid</text>
+<line x1="220" y1="484" x2="250" y2="484" stroke="#0F6E56" stroke-width="1.5" stroke-dasharray="6 3"/><text class="ts" x="256" y="488">utility</text>
+<rect x="320" y="476" width="30" height="16" rx="3" fill="#F1EFE8" stroke="#5F5E5A" stroke-dasharray="6 4"/><text class="ts" x="356" y="488">optional</text>
+<rect x="430" y="476" width="30" height="16" rx="3" fill="#EEEDFE" stroke="#534AB7"/><text class="ts" x="466" y="488">proposed addition (not in the request)</text>
+</svg>

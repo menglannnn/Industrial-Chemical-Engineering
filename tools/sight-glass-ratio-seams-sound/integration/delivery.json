@@ -1,0 +1,15 @@
+{
+  "date": "2026-10-25",
+  "head": "f658697c",
+  "branch": "claude/floating-roof-tanks-81d68b",
+  "worktree": "D:\\Minecraft\\Modding\\1.21\\CreateChemE\\.claude\\worktrees\\rename-ichem-mod-30e50c",
+  "quick_tests": 1409,
+  "slow_tests": 185,
+  "baseline_failures": 2,
+  "new_failures": 0,
+  "target_local_files_preserved": 10,
+  "target_build": "success",
+  "client_pid": 25812,
+  "client_session": 17560,
+  "version": "0.11.2"
+}

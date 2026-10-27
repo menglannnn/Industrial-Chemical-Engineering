@@ -20,6 +20,9 @@ import com.wormzjl.icheme.science.column.v3.V3ColumnStreamProperties;
 import com.wormzjl.icheme.science.column.v3.V3ComponentBasis;
 import com.wormzjl.icheme.science.column.v3.V3HollandExample32;
 import com.wormzjl.icheme.science.column.v3.thermo.V3PengRobinsonThermo;
+import com.wormzjl.icheme.science.equipment.ColumnComponents;
+import com.wormzjl.icheme.science.equipment.ColumnDesign;
+import com.wormzjl.icheme.science.equipment.ColumnTrays;
 import com.wormzjl.icheme.world.inventory.ColumnCalculatorV3Menu;
 import com.wormzjl.icheme.world.level.block.entity.ColumnCalculatorV3BlockEntity;
 import com.wormzjl.icheme.world.level.block.entity.ColumnInputPreset;
@@ -55,11 +58,12 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
  * payload delivery observes the most recent screen registration.</p>
  */
 public final class ColumnV3Network {
-    // Version 15 supports two-terminal-stage pots and total-tray presentation.
-    public static final int WIRE_SCHEMA_VERSION = 16;
+    // Version 15 supports two-terminal-stage pots and total-tray presentation; 17 carries the saved column design.
+    public static final int WIRE_SCHEMA_VERSION = 17;
 
-    // Both peers must use the same engine-scheduled inspection protocol.
-    private static final String PROTOCOL_VERSION = "11";
+    // Both peers must use the same engine-scheduled inspection protocol. 12: the dataset revision is the package's data
+    // identity, every record's declared revision (up to MaterialCatalog.MAX_IDENTITY characters). 13: Save design.
+    private static final String PROTOCOL_VERSION = "13";
 
     private static final int MAX_IDENTIFIER_LENGTH = 128;
     private static final int MAX_COMPONENT_IDENTIFIER_LENGTH = 64;
@@ -68,7 +72,10 @@ public final class ColumnV3Network {
     private static final int MAX_REVISION_LENGTH = 128;
     private static final int MAX_STREAM_LABEL_LENGTH = 48;
     private static final int MAX_PHASE_LENGTH = 16;
-    private static final int MAX_REJECTION_LENGTH = 128;
+    /** A rejection's reason, which names a design's refused nozzle, carries a diagnostic's length. */
+    private static final int MAX_REJECTION_LENGTH = MAX_DIAGNOSTIC_LENGTH;
+    /** A refused Save design's reason starts with this; the rest is {@link ColumnDesign#of}'s, in words for the player. */
+    public static final String NOT_SAVED = "NOT_SAVED: ";
 
     // Smallest encoding every declared element of a bounded list can occupy: a VarInt is at least one byte and a
     // double is exactly eight. A declared count that cannot fit in the remaining bytes is a forged length, not a
@@ -87,6 +94,7 @@ public final class ColumnV3Network {
         registrar.playToServer(CalculatePayload.TYPE, CalculatePayload.STREAM_CODEC, ColumnV3Network::handleCalculate);
         registrar.playToServer(StateRequestPayload.TYPE, StateRequestPayload.STREAM_CODEC,
                 ColumnV3Network::handleStateRequest);
+        registrar.playToServer(SaveDesignPayload.TYPE, SaveDesignPayload.STREAM_CODEC, ColumnV3Network::handleSaveDesign);
         registrar.playToClient(StatePayload.TYPE, StatePayload.STREAM_CODEC, ColumnV3Network::handleState);
         registrar.playToClient(ActionRejectedPayload.TYPE, ActionRejectedPayload.STREAM_CODEC,
                 ColumnV3Network::handleActionRejected);
@@ -103,6 +111,13 @@ public final class ColumnV3Network {
     public static long sendCalculate(BlockPos blockPos, long expectedInputRevision, V3ColumnInput input) {
         long nonce = CLIENT_NONCE_SEQUENCE.incrementAndGet();
         PacketDistributor.sendToServer(new CalculatePayload(blockPos, nonce, expectedInputRevision, input));
+        return nonce;
+    }
+
+    /** Sends the draft and the component choices to be saved as the calculator's design (plan section 4.3). */
+    public static long sendSaveDesign(BlockPos blockPos, V3ColumnInput input, ColumnComponents.Choices choices) {
+        long nonce = CLIENT_NONCE_SEQUENCE.incrementAndGet();
+        PacketDistributor.sendToServer(new SaveDesignPayload(blockPos, nonce, input, choices));
         return nonce;
     }
 
@@ -157,6 +172,33 @@ public final class ColumnV3Network {
             calculator.failOperation(acceptedOperation, "INTERNAL_ERROR: " + bounded(unexpected.getMessage()));
             IChemE.LOGGER.error("column_v3 request={} status=INTERNAL_ERROR phase=ADMISSION", requestId, unexpected);
         }
+        reply(context, payload.blockPos(), calculator.state(payload.clientNonce()));
+    }
+
+    private static void handleSaveDesign(SaveDesignPayload payload, IPayloadContext context) {
+        ColumnPresentation.queue(context, payload.blockPos(), payload.clientNonce(), () -> applySaveDesign(payload, context));
+    }
+
+    /** Checks the structure of the sent draft ({@link ColumnDesign#of}) and stores it as the design; nothing is solved. */
+    private static void applySaveDesign(SaveDesignPayload payload, IPayloadContext context) {
+        if (!(context.player() instanceof ServerPlayer player)) {
+            reject(context, payload.blockPos(), payload.clientNonce(), "REJECTED_CONTEXT");
+            return;
+        }
+        ColumnCalculatorV3BlockEntity calculator = resolveCalculator(player, payload.blockPos());
+        if (calculator == null || !(player.containerMenu instanceof ColumnCalculatorV3Menu menu)
+                || !menu.blockPos().equals(payload.blockPos()) || !menu.stillValid(player)) {
+            reject(context, payload.blockPos(), payload.clientNonce(), "REJECTED_CONTEXT");
+            return;
+        }
+        ColumnDesign design;
+        try {
+            design = ColumnDesign.of(payload.input(), payload.choices());
+        } catch (IllegalArgumentException refused) {
+            reject(context, payload.blockPos(), payload.clientNonce(), NOT_SAVED + refused.getMessage());
+            return;
+        }
+        calculator.saveDesign(design);
         reply(context, payload.blockPos(), calculator.state(payload.clientNonce()));
     }
 
@@ -373,6 +415,91 @@ public final class ColumnV3Network {
         }
     }
 
+    private record SaveDesignPayload(BlockPos blockPos, long clientNonce, V3ColumnInput input, ColumnComponents.Choices choices)
+            implements CustomPacketPayload {
+        private static final Type<SaveDesignPayload> TYPE = new Type<>(
+                ResourceLocation.fromNamespaceAndPath(IChemE.MOD_ID, "save_column_v3_design"));
+        private static final StreamCodec<RegistryFriendlyByteBuf, SaveDesignPayload> STREAM_CODEC = new StreamCodec<>() {
+            @Override
+            public SaveDesignPayload decode(RegistryFriendlyByteBuf buffer) {
+                requireWireSchema(buffer);
+                BlockPos blockPos = buffer.readBlockPos();
+                long nonce = nonNegative(buffer.readVarLong(), "client nonce");
+                V3ColumnInput input = readInput(buffer);
+                var condenser = readKind(buffer, ColumnComponents.Condenser.class);
+                var reflux = readKind(buffer, ColumnComponents.Pump.class);
+                return new SaveDesignPayload(blockPos, nonce, input, new ColumnComponents.Choices(condenser, reflux, readPumps(buffer)));
+            }
+
+            @Override
+            public void encode(RegistryFriendlyByteBuf buffer, SaveDesignPayload payload) {
+                writeWireSchema(buffer);
+                buffer.writeBlockPos(payload.blockPos());
+                buffer.writeVarLong(payload.clientNonce());
+                writeInput(buffer, payload.input());
+                buffer.writeEnum(payload.choices().condenser());
+                buffer.writeEnum(payload.choices().refluxPump());
+                writePumps(buffer, payload.choices().pumparoundPumps());
+            }
+        };
+
+        private SaveDesignPayload {
+            blockPos = Objects.requireNonNull(blockPos, "blockPos");
+            if (clientNonce < 0L) throw new IllegalArgumentException("Invalid V3 client nonce");
+            input = Objects.requireNonNull(input, "input");
+            choices = Objects.requireNonNull(choices, "choices");
+        }
+
+        @Override
+        public Type<? extends CustomPacketPayload> type() {
+            return TYPE;
+        }
+    }
+
+    private static void writePumps(RegistryFriendlyByteBuf buffer, List<ColumnComponents.Pump> pumps) {
+        buffer.writeVarInt(pumps.size());
+        for (var pump : pumps) buffer.writeEnum(pump);
+    }
+
+    private static List<ColumnComponents.Pump> readPumps(RegistryFriendlyByteBuf buffer) {
+        int count = readCount(buffer, ColumnTrays.MAX_PUMPAROUNDS, "pumparound pump", 1);
+        var pumps = new ArrayList<ColumnComponents.Pump>(count);
+        for (int i = 0; i < count; i++) pumps.add(readKind(buffer, ColumnComponents.Pump.class));
+        return pumps;
+    }
+
+    private static <E extends Enum<E>> E readKind(RegistryFriendlyByteBuf buffer, Class<E> type) {
+        int ordinal = buffer.readVarInt();
+        E[] kinds = type.getEnumConstants();
+        if (ordinal < 0 || ordinal >= kinds.length) throw new DecoderException("Unknown V3 " + type.getSimpleName());
+        return kinds[ordinal];
+    }
+
+    /** A saved design: the trays, the diameter and the components. */
+    private static void writeDesign(RegistryFriendlyByteBuf buffer, ColumnDesign design) {
+        buffer.writeVarIntArray(design.trays().encode());
+        buffer.writeDouble(design.diameter());
+        var c = design.components();
+        buffer.writeEnum(c.condenser());
+        buffer.writeEnum(c.refluxPump());
+        writePumps(buffer, c.pumparoundPumps());
+        buffer.writeBoolean(c.ejector());
+        buffer.writeBoolean(c.kettle());
+    }
+
+    private static ColumnDesign readDesign(RegistryFriendlyByteBuf buffer) {
+        try {
+            var trays = ColumnTrays.decode(buffer.readVarIntArray(ColumnTrays.MAX_ENCODED));
+            double diameter = finite(buffer.readDouble(), "design diameter");
+            var condenser = readKind(buffer, ColumnComponents.Condenser.class);
+            var reflux = readKind(buffer, ColumnComponents.Pump.class);
+            var pumps = readPumps(buffer);
+            return new ColumnDesign(trays.withComponents(new ColumnComponents(condenser, reflux, pumps, buffer.readBoolean(), buffer.readBoolean())), diameter);
+        } catch (IllegalArgumentException invalid) {
+            throw new DecoderException("Invalid V3 column design", invalid);
+        }
+    }
+
     private record StateRequestPayload(BlockPos blockPos, long clientNonce) implements CustomPacketPayload {
         private static final Type<StateRequestPayload> TYPE = new Type<>(
                 ResourceLocation.fromNamespaceAndPath(IChemE.MOD_ID, "request_column_v3_state"));
@@ -487,6 +614,8 @@ public final class ColumnV3Network {
             buffer.writeBoolean(n.upperKelvin()!=null); if(n.upperKelvin()!=null)buffer.writeDouble(n.upperKelvin());
             buffer.writeBoolean(n.estimated());
         }
+        buffer.writeBoolean(state.design().isPresent());
+        state.design().ifPresent(design -> writeDesign(buffer, design));
     }
 
     private static V3State readState(RegistryFriendlyByteBuf buffer) {
@@ -518,8 +647,9 @@ public final class ColumnV3Network {
                 var name=new com.wormzjl.icheme.science.material.MaterialName(id,translation,fallback,kind,lower,upper,buffer.readBoolean());
                 if(names.putIfAbsent(key,name)!=null)throw new DecoderException("Duplicate material name key");
             }
+            Optional<ColumnDesign> design = buffer.readBoolean() ? Optional.of(readDesign(buffer)) : Optional.empty();
             return new V3State(clientNonce, stateRevision, operationId, inputRevision, resultRevision, status, input,
-                    result, diagnostics,names,editorCatalog);
+                    result, diagnostics,names,editorCatalog,design);
         } catch (IllegalArgumentException invalid) {
             throw new DecoderException("Invalid V3 state", invalid);
         }
@@ -635,7 +765,7 @@ public final class ColumnV3Network {
         buffer.writeUtf(result.inputDigest(), 64);
         buffer.writeUtf(result.formulationRevision(), MAX_REVISION_LENGTH);
         buffer.writeUtf(result.assumptionsRevision(), MAX_REVISION_LENGTH);
-        buffer.writeUtf(result.datasetRevision(), MAX_REVISION_LENGTH);
+        buffer.writeUtf(result.datasetRevision(), com.wormzjl.icheme.science.material.MaterialCatalog.MAX_IDENTITY);
         buffer.writeVarInt(result.newtonIterations());
         buffer.writeDouble(result.maximumScaledResidual());
         buffer.writeVarInt(result.acceptanceCheckCount());
@@ -715,7 +845,7 @@ public final class ColumnV3Network {
             String digest = buffer.readUtf(64);
             String formulation = buffer.readUtf(MAX_REVISION_LENGTH);
             String assumptions = buffer.readUtf(MAX_REVISION_LENGTH);
-            String dataset = buffer.readUtf(MAX_REVISION_LENGTH);
+            String dataset = buffer.readUtf(com.wormzjl.icheme.science.material.MaterialCatalog.MAX_IDENTITY);
             int iterations = buffer.readVarInt();
             double residual = finite(buffer.readDouble(), "maximum residual");
             int acceptanceChecks = buffer.readVarInt();

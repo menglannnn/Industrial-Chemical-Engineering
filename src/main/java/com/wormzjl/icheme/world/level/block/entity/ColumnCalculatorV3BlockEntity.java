@@ -19,6 +19,7 @@ import com.wormzjl.icheme.science.column.v3.V3ConvergenceEvidence;
 import com.wormzjl.icheme.science.column.v3.V3HollandExample32;
 import com.wormzjl.icheme.science.column.v3.thermo.V3PengRobinsonThermo;
 import com.wormzjl.icheme.science.column.v3.thermo.V3CrudeFeed;
+import com.wormzjl.icheme.science.equipment.ColumnDesign;
 import com.wormzjl.icheme.science.material.MaterialCatalog;
 import com.wormzjl.icheme.world.inventory.ColumnCalculatorV3Menu;
 import java.util.ArrayList;
@@ -59,6 +60,7 @@ public final class ColumnCalculatorV3BlockEntity extends BlockEntity implements 
     private static final String TAG_STATE_REVISION = "StateRevision";
     private static final String TAG_INPUT = "Input";
     private static final String TAG_RESULT = "Result";
+    private static final String TAG_DESIGN = "Design";
 
     private V3Status status = V3Status.DIRTY;
     private long inputRevision;
@@ -71,6 +73,8 @@ public final class ColumnCalculatorV3BlockEntity extends BlockEntity implements 
     private V3NeuralSeed warmSeed;
     private V3Operation activeOperation;
     private List<String> attemptDetails = List.of();
+    /** The design the player saved for an equipment constructor to import; apart from the input, which Calculate replaces. */
+    private ColumnDesign savedDesign;
 
     public ColumnCalculatorV3BlockEntity(BlockPos pos, BlockState state) {
         super(ModBlockEntities.COLUMN_CALCULATOR_V3.get(), pos, state);
@@ -192,11 +196,20 @@ public final class ColumnCalculatorV3BlockEntity extends BlockEntity implements 
     /** What an opening screen may replay at once: the last published state, a cached read; empty until a bucket published one. */
     public Optional<V3State> published() { return Optional.ofNullable(published); }
 
-    /** The stored column design (an equipment constructor imports its trays): a read, nothing is solved or published. */
+    /** The stored column input: a read, nothing is solved or published. */
     public V3ColumnInput currentInput() { return currentInput; }
 
     /** Returns the last accepted numerical state for a repeat-request predictor. Server thread only. */
     public V3NeuralSeed warmSeed() { return warmSeed; }
+    /** The design the player saved, which an equipment constructor imports: a read. */
+    public Optional<ColumnDesign> savedDesign() { return Optional.ofNullable(savedDesign); }
+
+    /** Stores a checked design ({@link ColumnDesign#of}) in place of the saved one; the input and the result stay. */
+    public void saveDesign(ColumnDesign design) {
+        savedDesign = Objects.requireNonNull(design, "design");
+        stateRevision = Math.incrementExact(stateRevision);
+        setChanged();
+    }
 
     /**
      * Unloaded or broken (a chunk unload calls this after {@code onChunkUnloaded}): the running solve is cancelled. The
@@ -237,7 +250,7 @@ public final class ColumnCalculatorV3BlockEntity extends BlockEntity implements 
                 status,
                 currentInput,
                 Optional.ofNullable(displayResult),
-                diagnostics, names, editorCatalog);
+                diagnostics, names, editorCatalog, Optional.ofNullable(savedDesign));
     }
 
     private void refreshMaterialFreshness() {
@@ -262,6 +275,7 @@ public final class ColumnCalculatorV3BlockEntity extends BlockEntity implements 
         tag.putLong(TAG_STATE_REVISION, stateRevision);
         tag.put(TAG_INPUT, writeInput(currentInput));
         if (displayResult != null) tag.put(TAG_RESULT, writeDisplayResult(displayResult));
+        if (savedDesign != null) tag.put(TAG_DESIGN, ColumnDesignTags.write(savedDesign));
         // Active operation identity, queue state, timings, and any warm numerical state are intentionally not saved.
     }
 
@@ -275,6 +289,14 @@ public final class ColumnCalculatorV3BlockEntity extends BlockEntity implements 
         resultRevision = -1L;
         stateRevision = 0L;
         currentInput = freshInput();
+        savedDesign = null;
+        // The saved design stands apart from the input: a design this build cannot read is dropped alone.
+        if (tag.contains(TAG_DESIGN, Tag.TAG_COMPOUND))
+            try {
+                savedDesign = ColumnDesignTags.read(tag.getCompound(TAG_DESIGN));
+            } catch (IllegalArgumentException invalid) {
+                com.wormzjl.icheme.IChemE.LOGGER.warn("Column calculator at {}: saved design refused ({})", worldPosition, invalid.getMessage());
+            }
         if (!tag.contains(TAG_DATA_VERSION)) {
             status = V3Status.DIRTY;
             detail = "No V3 persisted state";
@@ -350,9 +372,11 @@ public final class ColumnCalculatorV3BlockEntity extends BlockEntity implements 
             Optional<V3ColumnDisplayResult> displayResult,
             List<String> diagnostics,
             java.util.Map<String, com.wormzjl.icheme.science.material.MaterialName> materialNames,
-            com.wormzjl.icheme.science.column.v3.V3EditorCatalog editorCatalog) {
+            com.wormzjl.icheme.science.column.v3.V3EditorCatalog editorCatalog,
+            Optional<ColumnDesign> design) {
         public V3State {
             Objects.requireNonNull(editorCatalog,"editorCatalog");
+            Objects.requireNonNull(design,"design");
             materialNames = java.util.Map.copyOf(materialNames);
             if (materialNames.size() > 2 * V3ColumnStreamProperties.MAX_COMPONENTS
                     || materialNames.keySet().stream().anyMatch(id -> !id.matches("[A-Za-z][A-Za-z0-9_.:-]{0,63}")))

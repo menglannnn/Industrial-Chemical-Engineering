@@ -1,0 +1,3 @@
+E10 no finite Jacobian trial at a first step                 seeds=   1 smallest=  430 list= 430
+E5 step line search stalls                                   seeds=   1 smallest=  579 list= 579
+F  budget (wall deadline / soft budget)                      seeds=   1 smallest=  157 list= 157

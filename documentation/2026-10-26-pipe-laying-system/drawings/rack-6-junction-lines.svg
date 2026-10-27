@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="680" height="344" viewBox="0 0 680 344">
+<style>.t{font:14px sans-serif;fill:#2C2C2A}.ts{font:12px sans-serif;fill:#5F5E5A}.th{font:500 14px sans-serif;fill:#2C2C2A}.box{fill:#F8F7F3;stroke:#B4B2A9}</style>
+<rect width="680" height="344" fill="#fff"/>
+<text class="th" x="170" y="50" text-anchor="middle" dominant-baseline="central">Corner</text>
+<rect class="box" x="90" y="90" width="160" height="160" stroke-width="0.5"/>
+<g fill="none" stroke="#1D9E75" stroke-width="8" stroke-linejoin="round"><path d="M125 250 L125 125 L250 125"/><path d="M155 250 L155 155 L250 155"/><path d="M185 250 L185 185 L250 185"/><path d="M215 250 L215 215 L250 215"/></g>
+<text class="ts" x="170" y="270" text-anchor="middle" dominant-baseline="central">From the run</text>
+<text class="ts" x="258" y="170" dominant-baseline="central">Turned run</text>
+<text class="th" x="490" y="50" text-anchor="middle" dominant-baseline="central">Tee</text>
+<text class="ts" x="490" y="76" text-anchor="middle" dominant-baseline="central">Run</text>
+<rect class="box" x="410" y="90" width="160" height="160" stroke-width="0.5"/>
+<g fill="none" stroke="#888780" stroke-width="8"><path d="M445 90 L445 250"/><path d="M475 90 L475 250"/></g>
+<g fill="none" stroke="#1D9E75" stroke-width="8" stroke-linejoin="round"><path d="M570 125 L535 125 L535 90"/><path d="M570 155 L505 155 L505 90"/><path d="M570 185 L505 185 L505 250"/><path d="M570 215 L535 215 L535 250"/></g>
+<text class="ts" x="490" y="270" text-anchor="middle" dominant-baseline="central">Run</text>
+<text class="ts" x="578" y="170" dominant-baseline="central">Branch</text>
+<text class="ts" x="170" y="298" text-anchor="middle" dominant-baseline="central">All four lines turn, nested</text>
+<text class="ts" x="490" y="298" text-anchor="middle" dominant-baseline="central">Back lines pass, front lines turn</text>
+<line x1="220" y1="324" x2="246" y2="324" stroke="#1D9E75" stroke-width="6"/><text class="ts" x="254" y="324" dominant-baseline="central">Turns</text>
+<line x1="330" y1="324" x2="356" y2="324" stroke="#888780" stroke-width="6"/><text class="ts" x="364" y="324" dominant-baseline="central">Passes</text>
+</svg>

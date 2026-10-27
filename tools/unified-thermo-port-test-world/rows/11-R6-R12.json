@@ -1,0 +1,32 @@
+{
+  "id": "R6-R12",
+  "title": "Two save-and-reload cycles, the first with a pending edit, the second after breaking the slush tank of D23-2 (E4 rows 6 and 12; needs D32 fix)",
+  "blocks": {
+    "G11": {"at": [20, 101, 44], "block": "generator", "foreign": true},
+    "T11": {"at": [22, 101, 44], "block": "reservoir", "foreign": true},
+    "T2":  {"at": [24, 102, 28], "block": "reservoir", "aim": {"stand": [25, 100, 30]}, "foreign": true},
+    "Tb4": {"at": [26, 101, 36], "block": "reservoir", "foreign": true},
+    "Ts":  {"at": [32, 102, 84], "block": "reservoir", "aim": {"stand": [33, 100, 86]}, "foreign": true}
+  },
+  "steps": [
+    {"op": "read", "ids": ["T11", "T2", "Tb4"], "views": ["overview", "solids"], "tag": "before-1"},
+    {"op": "mark"},
+    {"op": "note", "text": "cycle 1: an edit applied and the world saved within about 2 s, before the engine's next event takes it"},
+    {"op": "set", "id": "G11", "mixture": "Pilot: N2 + 10 % CO2", "pressure": 300000, "temperatureK": 165, "waitMs": 200, "noShot": true},
+    {"op": "reload"},
+    {"op": "log", "grep": "fluid_world|fluid_island=|Exception", "tag": "reload-1"},
+    {"op": "read", "ids": ["T11", "T2", "Tb4"], "views": ["overview", "solids"], "tag": "after-1"},
+    {"op": "read", "ids": ["G11"], "views": ["overview"], "tag": "after-1"},
+    {"op": "note", "text": "row 12: break the D23-2 slush tank (343 kg of dry ice and its liquid leave with it; only the tank block itself may drop)"},
+    {"op": "read", "ids": ["Ts"], "views": ["overview", "solids"], "tag": "before-break"},
+    {"op": "mark"},
+    {"op": "break", "ids": ["Ts"]},
+    {"op": "log", "grep": "has the following entity data|Killed|recovered|Exception", "tag": "break"},
+    {"op": "wait", "s": 10},
+    {"op": "mark"},
+    {"op": "note", "text": "cycle 2: the save that crashed in M4 (D32)"},
+    {"op": "reload"},
+    {"op": "log", "grep": "fluid_world|fluid_island=|Exception|NoSuchElement", "tag": "reload-2"},
+    {"op": "read", "ids": ["T11", "T2", "Tb4"], "views": ["overview", "solids"], "tag": "after-2"}
+  ]
+}

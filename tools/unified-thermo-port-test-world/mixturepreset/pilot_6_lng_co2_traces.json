@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "kind": "mixture",
+  "name": "Pilot: LNG + 0.5 % CO2 (traces)",
+  "translation_key": "",
+  "package": "icheme:pilot_cryogenic",
+  "basis": "mole",
+  "components": [
+    {"id": "Nitrogen", "amount": 1},
+    {"id": "Methane", "amount": 93.5},
+    {"id": "Ethane", "amount": 5},
+    {"id": "CarbonDioxide", "amount": 0.5}
+  ]
+}

@@ -1,0 +1,5 @@
+E10 no finite Jacobian trial at a first step                 seeds=   1 smallest=  430 list= 430
+E2 step solve singular at every step size                    seeds=   1 smallest=  241 list= 241
+E5 step line search stalls                                   seeds=   2 smallest=  431 list= 431 579
+E8 interval attempt limit (not F7)                           seeds=   1 smallest=  698 list= 698
+F  budget (wall deadline / soft budget)                      seeds=   1 smallest=  157 list= 157

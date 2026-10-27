@@ -312,9 +312,12 @@ public final class IslandCertificate {
      * discarded on load and the island keeps its inventory.
      */
     public record Signature(String propertyRevision,String policy,String graph) {
+        /** The longest property revision: the model's carries the package's fluid identity twice (its thermodynamics and its
+         * viscosity), each at most {@link com.wormzjl.icheme.science.material.MaterialCatalog#MAX_IDENTITY}, and its tags. */
+        static final int MAXIMUM_PROPERTY_REVISION=1<<16;
         public Signature {
             Objects.requireNonNull(propertyRevision);Objects.requireNonNull(policy);Objects.requireNonNull(graph);
-            if(propertyRevision.isBlank()||propertyRevision.length()>4096||policy.isBlank()||policy.length()>512||!graph.matches("[0-9a-f]{64}"))
+            if(propertyRevision.isBlank()||propertyRevision.length()>MAXIMUM_PROPERTY_REVISION||policy.isBlank()||policy.length()>512||!graph.matches("[0-9a-f]{64}"))
                 throw new IllegalArgumentException("Invalid certificate signature");
         }
         /** The signature a certificate of this graph gets under this model and policy. */
@@ -341,7 +344,7 @@ public final class IslandCertificate {
         for(var node:graph.reservoirs()) {
             d.number(node.id());d.text(node.kind().name());d.real(node.elevation());
             // A junction's volume is a numerical placeholder that a solve may move; a vessel's is its identity.
-            if(!node.junction())d.real(node.inventory().volume());
+            if(!node.junction()){d.real(node.inventory().volume());d.text(node.inventory().geometry().toString());d.integer(node.inventory().open()?1:0);}
             if(node.fixed()) {
                 var inventory=node.inventory();d.integer(inventory.moles().length);for(double n:inventory.moles())d.real(n);
                 d.real(inventory.internalEnergy());d.solids(inventory.solids());d.real(node.state().temperature());d.real(node.state().pressure());
@@ -356,8 +359,9 @@ public final class IslandCertificate {
                 case FlowControl.Pump pump->{d.text("pump");d.real(pump.requestedVolumeFlow());d.real(pump.maximumAddedPressure());d.integer(pump.enabled()?1:0);}
                 case FlowControl.Compressor compressor->{d.text("compressor");d.real(compressor.requestedVolumeFlow());d.real(compressor.maximumPressureRatio());d.integer(compressor.enabled()?1:0);}
                 case FlowControl.PressureValve valve->{d.text("valve");d.real(valve.targetPressure());}
+                case FlowControl.ControlValve valve->{d.text("control_valve");d.text(valve.source().name());d.real(valve.target());d.text(String.valueOf(valve.sensor()));d.number(valve.revision());d.real(valve.targetPressure());d.real(valve.massTarget());d.real(valve.volumeTarget());}
             }
-            d.integer(pipe.blockedDirections());d.integer(pipe.forbiddenDirections());
+            d.integer(pipe.blockedDirections());d.integer(pipe.forbiddenDirections());d.real(pipe.actuatorArea());
             // What each end draws (PassiveNetwork.PhasePort): it changes the equations, so a replay holds only under it.
             d.integer(pipe.firstPort().ordinal());d.integer(pipe.secondPort().ordinal());
             var filter=pipe.filter();

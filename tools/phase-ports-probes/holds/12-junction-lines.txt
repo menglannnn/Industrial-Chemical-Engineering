@@ -1,0 +1,33 @@
+LIQUID_JUNCTION interval=5 generators:0.05 m_J=9.774 kg Q(1s)=54.00 kg/s m_J/Q=0.1810 s mismatch(1s)=-0.000389 mismatch(end)=5.52e-10 perSlice=[-0.000389,-4.11e-07,-4.33e-10,5.52e-10] junctionShare=8.38e-16 ms=* newtonSolves=13
+LIQUID_JUNCTION interval=5 generators:0.02 m_J=1.564 kg Q(1s)=4.829 kg/s m_J/Q=0.3238 s mismatch(1s)=-0.00172 mismatch(end)=9.16e-09 perSlice=[-0.00172,-8.21e-06,-3.90e-08,9.16e-09] junctionShare=9.82e-16 ms=* newtonSolves=13
+LIQUID_JUNCTION interval=5 tanks:0.05 m_J=9.774 kg Q(1s)=0.01503 kg/s m_J/Q=650.2 s mismatch(1s)=-0.356 mismatch(end)=NaN perSlice=[-0.356,NaN,NaN,NaN] junctionShare=0.00 ms=* newtonSolves=4
+LIQUID_JUNCTION interval=5 tanks:0.02 m_J=1.564 kg Q(1s)=0.01503 kg/s m_J/Q=104.0 s mismatch(1s)=-0.342 mismatch(end)=NaN perSlice=[-0.342,NaN,NaN,NaN] junctionShare=0.00 ms=* newtonSolves=4
+LIQUID_JUNCTION interval=0.1 generators:0.05 m_J=9.774 kg Q(1s)=54.00 kg/s m_J/Q=0.1810 s tauFit(1.0-1.1s)=0.1809 s mismatch(1s)=-0.00288 mismatch(end)=4.10e-09 junctionShare=4.19e-16 ms=*
+LIQUID_JUNCTION interval=0.1 generators:0.02 m_J=1.564 kg Q(1s)=4.829 kg/s m_J/Q=0.3238 s tauFit(1.0-1.1s)=0.3239 s mismatch(1s)=-0.0189 mismatch(end)=5.42e-09 junctionShare=6.55e-16 ms=*
+LIQUID_JUNCTION interval=0.1 tanks:0.05 m_J=9.774 kg Q(1s)=0.000 kg/s m_J/Q=Infinity s tauFit(1.0-1.1s)=NaN s mismatch(1s)=NaN mismatch(end)=NaN junctionShare=0.00 ms=*
+LIQUID_JUNCTION interval=0.1 tanks:0.02 m_J=1.564 kg Q(1s)=0.000 kg/s m_J/Q=Infinity s tauFit(1.0-1.1s)=NaN s mismatch(1s)=NaN mismatch(end)=NaN junctionShare=1.64e-16 ms=*
+MIXED_GAS_TRANSIENT interval=0.1 Outcome[key=0.05:4:false, worstMoles=7.582557408490455E-16, worstEnergy=1.082056358151667E-15, junctionShare=0.6299991470586254, newtonSolves=0, ms=*, bytes=*]
+MIXED_GAS_TRANSIENT interval=0.1 Outcome[key=0.05:4:true, worstMoles=4.40685378900546E-16, worstEnergy=1.7130407475626576E-15, junctionShare=0.03571771555469576, newtonSolves=0, ms=*, bytes=*]
+MIXED_GAS_TRANSIENT interval=0.1 Outcome[key=0.05:5:false, worstMoles=7.835885536287712E-16, worstEnergy=6.726296280402256E-16, junctionShare=0.6354347848520648, newtonSolves=0, ms=*, bytes=*]
+MIXED_GAS_TRANSIENT interval=0.1 Outcome[key=0.05:5:true, worstMoles=8.857957562760021E-16, worstEnergy=2.008392600590702E-15, junctionShare=6.570592110015265E-16, newtonSolves=0, ms=*, bytes=*]
+MIXED_GAS_TRANSIENT interval=0.1 Outcome[key=0.05:6:false, worstMoles=1.0684512711963823E-15, worstEnergy=1.1405458910247302E-15, junctionShare=0.6354347848520561, newtonSolves=0, ms=*, bytes=*]
+MIXED_GAS_TRANSIENT interval=0.1 Outcome[key=0.05:6:true, worstMoles=7.878862121242412E-16, worstEnergy=3.544222236336533E-15, junctionShare=0.49593125210259104, newtonSolves=0, ms=*, bytes=*]
+MIXED_GAS_TRANSIENT interval=0.1 Outcome[key=0.02:4:false, worstMoles=9.961379254960024E-16, worstEnergy=1.9759182386898538E-15, junctionShare=0.6295556376996159, newtonSolves=0, ms=*, bytes=*]
+MIXED_GAS_TRANSIENT interval=0.1 Outcome[key=0.02:4:true, worstMoles=8.587395909448297E-16, worstEnergy=2.157536549247625E-15, junctionShare=0.21755732987908988, newtonSolves=0, ms=*, bytes=*]
+MIXED_GAS_TRANSIENT interval=0.1 Outcome[key=0.02:5:false, worstMoles=5.495933382046909E-16, worstEnergy=1.7143996482750202E-15, junctionShare=0.6354347849265111, newtonSolves=0, ms=*, bytes=*]
+MIXED_GAS_TRANSIENT interval=0.1 Outcome[key=0.02:5:true, worstMoles=5.495933382046909E-16, worstEnergy=2.740654535530767E-15, junctionShare=5.988820933607662E-15, newtonSolves=0, ms=*, bytes=*]
+MIXED_GAS_TRANSIENT interval=0.1 Outcome[key=0.02:6:false, worstMoles=1.447579141620905E-15, worstEnergy=1.191362467445353E-15, junctionShare=0.6354347849263428, newtonSolves=0, ms=*, bytes=*]
+MIXED_GAS_TRANSIENT interval=0.1 Outcome[key=0.02:6:true, worstMoles=5.679602919105247E-16, worstEnergy=2.3324719451325675E-15, junctionShare=0.3239955067545946, newtonSolves=0, ms=*, bytes=*]
+MIXED_GAS_TRANSIENT interval=5 Outcome[key=0.05:4:false, worstMoles=4.0882881058892406E-16, worstEnergy=3.801819636749101E-16, junctionShare=0.5592660372818398, newtonSolves=26, ms=*, bytes=*]
+MIXED_GAS_TRANSIENT interval=5 Outcome[key=0.05:4:true, worstMoles=1.965868429665465E-16, worstEnergy=2.3628148242243554E-16, junctionShare=0.03874747220164217, newtonSolves=26, ms=*, bytes=*]
+MIXED_GAS_TRANSIENT interval=5 Outcome[key=0.05:5:false, worstMoles=3.7475974303984705E-16, worstEnergy=5.84895328730631E-17, junctionShare=0.3918630559555991, newtonSolves=37, ms=*, bytes=*]
+MIXED_GAS_TRANSIENT interval=5 Outcome[key=0.05:5:true, worstMoles=6.8138135098154E-17, worstEnergy=1.1814074121121777E-16, junctionShare=1.0950986850025441E-15, newtonSolves=25, ms=*, bytes=*]
+MIXED_GAS_TRANSIENT interval=5 Outcome[key=0.05:6:false, worstMoles=2.0441440529446203E-16, worstEnergy=3.21692430801847E-16, junctionShare=0.5673641353063877, newtonSolves=52, ms=*, bytes=*]
+MIXED_GAS_TRANSIENT interval=5 Outcome[key=0.05:6:true, worstMoles=1.7034533774538502E-16, worstEnergy=2.6581666772523996E-16, junctionShare=0.4960148197408047, newtonSolves=33, ms=*, bytes=*]
+MIXED_GAS_TRANSIENT interval=5 Outcome[key=0.02:4:false, worstMoles=3.4349583637793186E-16, worstEnergy=2.6151859041483357E-16, junctionShare=0.6223279063239171, newtonSolves=24, ms=*, bytes=*]
+MIXED_GAS_TRANSIENT interval=5 Outcome[key=0.02:4:true, worstMoles=2.4262381402003E-16, worstEnergy=4.081825903981993E-16, junctionShare=0.16573200808980484, newtonSolves=20, ms=*, bytes=*]
+MIXED_GAS_TRANSIENT interval=5 Outcome[key=0.02:5:false, worstMoles=3.0914625274013867E-16, worstEnergy=2.6151859041483357E-16, junctionShare=0.6354347846258315, newtonSolves=27, ms=*, bytes=*]
+MIXED_GAS_TRANSIENT interval=5 Outcome[key=0.02:5:true, worstMoles=2.060975018267591E-16, worstEnergy=4.664943890265135E-16, junctionShare=4.277729238291187E-15, newtonSolves=21, ms=*, bytes=*]
+MIXED_GAS_TRANSIENT interval=5 Outcome[key=0.02:6:false, worstMoles=4.465445872913114E-16, worstEnergy=2.0340334810042612E-16, junctionShare=0.6354347846258123, newtonSolves=25, ms=*, bytes=*]
+MIXED_GAS_TRANSIENT interval=5 Outcome[key=0.02:6:true, worstMoles=2.060975018267591E-16, worstEnergy=4.081825903981993E-16, junctionShare=0.23334493956378013, newtonSolves=23, ms=*, bytes=*]
+MIXED_GAS_COST interval=5 cases=12 ms=* newtonSolves=339 allocatedMB=*

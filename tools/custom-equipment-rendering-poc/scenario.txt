@@ -1,0 +1,7 @@
+createcheme equipment place 0 -60 0 3 6
+createcheme equipment place 8 -60 0 2.5 4
+createcheme equipment place 16 -60 0 4 8 5
+createcheme equipment place 32 -60 0 6 10
+createcheme equipment place 44 -60 0 1 2
+createcheme equipment place 48 -60 0 0.5 1
+tp @s 24 -50 -20 0 18

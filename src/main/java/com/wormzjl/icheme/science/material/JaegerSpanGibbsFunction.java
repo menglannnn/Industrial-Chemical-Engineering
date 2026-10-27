@@ -3,8 +3,6 @@ package com.wormzjl.icheme.science.material;
 import com.wormzjl.icheme.science.math.DeterministicMath;
 
 import com.google.gson.JsonObject;
-import java.util.ArrayList;
-import java.util.List;
 
 /**
  * The Gibbs energy equation of solid carbon dioxide (phase I, dry ice) of Jäger and Span 2012 (J. Chem. Eng. Data 57,
@@ -75,7 +73,6 @@ public final class JaegerSpanGibbsFunction {
     private final double offsetPower;
     private final double arctan4, arctan6, log4, log6;
     private final double alphaLog1, alphaLog4, alphaArctan5, alphaArctan8;
-    private final Object science;
 
     private JaegerSpanGibbsFunction(JsonObject o) {
         String type = JsonFields.text(o, "type");
@@ -127,25 +124,9 @@ public final class JaegerSpanGibbsFunction {
                             + t + " K, " + p + " Pa");
             }
         }
-
-        var numbers = new ArrayList<Object>();
-        numbers.add(TYPE);
-        for (double v : new double[] {referenceTemperature, referencePressure, referenceVolume, gasConstant, n}) numbers.add(v);
-        numbers.add(list(tail));
-        numbers.add(list(alpha));
-        numbers.add(list(kappa));
-        numbers.add(List.of(publishedG0, publishedG1));
-        numbers.add(List.of(minimumTemperature, maximumTemperature, minimumPressure, maximumPressure));
-        science = List.copyOf(numbers);
     }
 
     static JaegerSpanGibbsFunction read(JsonObject o) { return new JaegerSpanGibbsFunction(o); }
-
-    private static List<Double> list(double[] values) {
-        var list = new ArrayList<Double>();
-        for (double v : values) list.add(v);
-        return list;
-    }
 
     public double minimumTemperature() { return minimumTemperature; }
     public double maximumTemperature() { return maximumTemperature; }
@@ -161,8 +142,6 @@ public final class JaegerSpanGibbsFunction {
     public double publishedG0() { return publishedG0; }
     /** The paper's g1 (Table 1), dimensionless; for the check only. */
     public double publishedG1() { return publishedG1; }
-    /** Numeric content for the package spine fingerprint. */
-    Object science() { return science; }
 
     /** Whether (T, P) lies in the declared range (pressure strictly positive). */
     public boolean covers(double temperatureKelvin, double pressurePascal) {

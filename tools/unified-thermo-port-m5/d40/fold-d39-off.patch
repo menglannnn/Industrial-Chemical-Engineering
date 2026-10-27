@@ -1,0 +1,12 @@
+diff -ru a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+@@ -605,7 +605,7 @@
+                     int refuted=proposal.phases()&FluidThermodynamics.vanishing(proposal.seed(),iterate.get(proposal.node()));
+                     if(refuted!=0){foldedPhases[proposal.node()]|=refuted;SolverDiagnostics.count(SolverDiagnostics.phaseRefusals);seeds=proposal.point();proposal=null;continue;}
+                 }
+-                var changedSeeds=foldedIterate(graph,iterate);
++                var changedSeeds=phaseCorrection(graph,iterate,checkpoint,null,foldedPhases.clone());
+                 // Decision D11: a phase a vessel's ports draw at their full capacity leaves the vessel within the step; a
+                 // pass whose seed still holds it may have no root (see drainedSeeds).
+                 if(changedSeeds==null)changedSeeds=equations.drainedSeeds(checkpoint);

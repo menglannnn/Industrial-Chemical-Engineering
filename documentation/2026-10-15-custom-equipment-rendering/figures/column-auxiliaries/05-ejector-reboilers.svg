@@ -1,0 +1,108 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="820" height="745" viewBox="0 0 820 745" font-family="Segoe UI, Arial, sans-serif">
+<title>Steam ejector, kettle reboiler and vertical thermosiphon</title>
+<style>
+.ts{font-size:12px;fill:#444441}.th{font-size:13px;font-weight:600;fill:#2C2C2A}.warn{font-size:12px;fill:#993C1D}
+.steel{fill:#D3D1C7;stroke:#5F5E5A;stroke-width:1}
+.clad{fill:#ECEAE3;stroke:#888780;stroke-width:1}
+.hid{fill:none;stroke:#5F5E5A;stroke-width:.9;stroke-dasharray:3 2}
+.vap{fill:none;stroke:#D85A30;stroke-width:3}
+.liq{fill:none;stroke:#185FA5;stroke-width:3}
+.lvl{fill:none;stroke:#185FA5;stroke-width:1.2;stroke-dasharray:5 3}
+.utl{fill:none;stroke:#0F6E56;stroke-width:2;stroke-dasharray:6 3}
+.lead{fill:none;stroke:#888780;stroke-width:.8;stroke-dasharray:3 2}
+</style>
+<defs><marker id="a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5"/></marker></defs>
+<rect width="820" height="745" fill="#fff"/>
+<text class="th" x="40" y="24">A. Steam ejector, optional: 1.0 m suction, 8.3 m long (1 m = 60 px)</text>
+<g class="steel">
+<rect x="75" y="96.5" width="18" height="30"/><rect x="72" y="92.5" width="24" height="4"/>
+<rect x="60" y="126.5" width="48" height="27"/>
+<rect x="123" y="74" width="60" height="30"/><rect x="117" y="68" width="72" height="6"/>
+<rect x="108" y="104" width="90" height="72"/>
+<polygon points="198,104 330,129.5 330,150.5 198,176"/>
+<rect x="330" y="129.5" width="48" height="21"/>
+<polygon points="378,129.5 558,117.5 558,162.5 378,150.5"/>
+<rect x="558" y="110" width="5" height="60"/>
+</g>
+<polygon class="hid" points="108,131 132,136 140,137.5 150,134 150,146 140,142.5 132,144 108,149"/>
+<path class="utl" d="M84 60V88" marker-end="url(#a)"/>
+<path class="vap" d="M153 40V62" marker-end="url(#a)"/>
+<path class="vap" d="M567 140H608" marker-end="url(#a)"/>
+<path class="lead" d="M84 186V156M264 186V165M468 186V158M153 202V178M354 202V152"/>
+<g class="ts">
+<text x="40" y="56">Motive steam</text>
+<text x="165" y="50">Suction from the column</text>
+<text x="616" y="144">To the condenser</text>
+<text x="84" y="198" text-anchor="middle">Steam chest</text>
+<text x="264" y="198" text-anchor="middle">Converging inlet</text>
+<text x="468" y="198" text-anchor="middle">Diffuser</text>
+<text x="153" y="214" text-anchor="middle">Suction chamber</text>
+<text x="354" y="214" text-anchor="middle">Throat</text>
+<text x="40" y="240">Drawn lying; installed upright in the overhead down-leg, flowing down. Lengths in suction diameters d:</text>
+<text x="40" y="256">steam chest 0.8, chamber 1.5 (1.2 d wide), inlet 2.2, throat 0.8 (0.35 d), diffuser 3.0 (to 0.75 d): 8.3 d.</text>
+</g>
+<text class="th" x="40" y="300">B. Kettle reboiler (recommended): shell 2 m, bundle 1.25 m × 6 m, at grade beside the column (1 m = 30 px)</text>
+<line x1="40" y1="455" x2="340" y2="455" stroke="#5F5E5A" stroke-width="2"/>
+<g class="steel">
+<rect x="57" y="398" width="3" height="43.5"/>
+<rect x="60" y="401" width="22.5" height="37.5"/>
+<rect x="82.5" y="398" width="5" height="43.5"/>
+<polygon points="87.5,401 105.5,380 105.5,440 87.5,438.5"/>
+<rect x="105.5" y="380" width="204" height="60"/>
+<path d="M309.5 380A15 30 0 0 1 309.5 440Z"/>
+<rect x="138" y="368" width="24" height="12"/><rect x="135" y="365" width="30" height="3"/>
+<rect x="228" y="368" width="24" height="12"/><rect x="225" y="365" width="30" height="3"/>
+<rect x="106.5" y="440" width="15" height="7"/><rect x="104" y="447" width="20" height="3"/>
+<rect x="283.5" y="440" width="9" height="7"/><rect x="281" y="447" width="14" height="3"/>
+<rect x="66" y="393" width="10" height="8"/><rect x="64" y="390" width="14" height="3"/>
+<rect x="66" y="438.5" width="10" height="7.5"/><rect x="64" y="446" width="14" height="3"/>
+<polygon points="127,440 143,440 145,455 125,455"/>
+<polygon points="262,440 278,440 280,455 260,455"/>
+</g>
+<path class="hid" d="M87.5 401H250A12 18.75 0 0 1 250 438.5H87.5"/>
+<path d="M270 398V440" stroke="#5F5E5A" stroke-width="1.5" stroke-dasharray="4 2"/>
+<path class="lvl" d="M105.5 396H270M270 425H309"/>
+<path class="vap" d="M150 362V340" marker-end="url(#a)"/><path class="vap" d="M240 362V340" marker-end="url(#a)"/>
+<path class="liq" d="M114 464V453" marker-end="url(#a)"/>
+<path class="liq" d="M288 452V466" marker-end="url(#a)"/>
+<path class="utl" d="M71 370V386" marker-end="url(#a)"/>
+<path class="utl" d="M71 451V466" marker-end="url(#a)"/>
+<path class="lead" d="M336 394L272 396M336 414L271 412M336 434L300 428M71 484V470"/>
+<g class="ts">
+<text x="195" y="330" text-anchor="middle">Vapour back to the column</text>
+<text x="40" y="362">Heating steam</text>
+<text x="340" y="372">Gravity feed: weir about 1.6 m, column sump level 2 to 3 m</text>
+<text x="340" y="398">Level over the bundle</text>
+<text x="340" y="418">Weir</text>
+<text x="340" y="438">Overflow: bottoms product</text>
+<text x="114" y="480" text-anchor="middle">Sump liquid in</text>
+<text x="288" y="480" text-anchor="middle">Bottoms out</text>
+<text x="40" y="496">Steam condensate out</text>
+</g>
+<text class="th" x="40" y="540">C. Vertical thermosiphon (alternative): needs a taller skirt (1 m = 30 px)</text>
+<line x1="40" y1="700" x2="600" y2="700" stroke="#5F5E5A" stroke-width="2"/>
+<rect class="steel" x="85" y="640" width="90" height="60"/>
+<rect class="clad" x="82" y="565" width="96" height="75"/>
+<path d="M82 565L92 559L102 565L112 559L122 565L132 559L142 565L152 559L162 565L172 559L178 562" fill="none" stroke="#888780"/>
+<path class="hid" d="M85 640A45 22.5 0 0 0 175 640"/>
+<path d="M84 580H176" stroke="#5F5E5A" stroke-width="1.5"/>
+<path class="lvl" d="M84 610H176"/>
+<g class="steel">
+<path d="M315 598A15 6 0 0 1 345 598Z"/>
+<rect x="315" y="598" width="30" height="12"/>
+<rect x="313" y="608" width="34" height="3"/>
+<rect x="315" y="611" width="30" height="89"/>
+</g>
+<path d="M315 700V712H345V700" fill="none" stroke="#D85A30" stroke-width="1.5" stroke-dasharray="4 2"/>
+<path d="M322 612V698M330 612V698M338 612V698" stroke="#B4B2A9" stroke-width=".7"/>
+<path class="vap" d="M330 594V588H178"/>
+<path class="liq" d="M130 662V690H292V706H312" stroke-dasharray="6 3"/>
+<path class="lead" d="M190 576L178 580M190 614L176 610M356 604L345 604M356 690L345 706"/>
+<g class="ts">
+<text x="194" y="580">Bottom tray, 4 m</text>
+<text x="194" y="618">Sump level, 3 m</text>
+<text x="360" y="608">Top tubesheet at the sump level</text>
+<text x="40" y="732">Skirt 2 m: the circulation head needs the tubes (3 m) above grade, which a 2 m skirt cannot give.</text>
+</g>
+<text class="warn" x="360" y="694">Bottom channel under the ground</text>
+</svg>

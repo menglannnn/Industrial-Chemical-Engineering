@@ -294,17 +294,21 @@ public final class WorldTopologyLedger {
             if(solids.empty()||!Double.isFinite(energyJoule))throw new IllegalArgumentException("Empty/invalid solid recovery");
         }
     }
-    /** Persisted identity for topology/accounting even when a world has no active hydraulic islands. */
-    public record FluidBasis(String packageId,List<String> components,String scientificFingerprint) {
+    /**
+     * Persisted identity for topology/accounting even when a world has no active hydraulic islands. {@code revision} is
+     * the network package's data identity, the declared revision of every record it reads
+     * ({@link MaterialCatalog#fluidRevision}); a world written before the field existed reads "" and restates once.
+     */
+    public record FluidBasis(String packageId,List<String> components,String revision) {
         public FluidBasis {
-            Objects.requireNonNull(packageId);Objects.requireNonNull(scientificFingerprint);
+            Objects.requireNonNull(packageId);Objects.requireNonNull(revision);
             components=new MaterialAxis(components).ids();
-            if(!packageId.matches("[a-z][a-z0-9_.:-]{0,127}")||!scientificFingerprint.matches("[0-9a-f]{64}:[0-9a-f]{64}")
+            if(!packageId.matches("[a-z][a-z0-9_.:-]{0,127}")||revision.length()>MaterialCatalog.MAX_IDENTITY||revision.chars().anyMatch(Character::isISOControl)
                     ||!components.getLast().equals("Water")||!components.contains("Nitrogen"))throw new IllegalArgumentException("Invalid fluid basis contract");
         }
         public static FluidBasis capture(MaterialCatalog catalog) {
             String id=FluidMaterialCatalog.networkPackage(catalog);var ids=new ArrayList<>(catalog.requirePackage(id).components());ids.add("Water");
-            return new FluidBasis(id,ids,catalog.fluidThermoFingerprint(id)+":"+catalog.viscosityFingerprint(id));
+            return new FluidBasis(id,ids,catalog.fluidRevision(id));
         }
         public void requireCurrent(MaterialCatalog catalog) {
             if(!equals(capture(catalog)))throw new IllegalArgumentException("Incompatible saved fluid topology basis; use a fresh development world");

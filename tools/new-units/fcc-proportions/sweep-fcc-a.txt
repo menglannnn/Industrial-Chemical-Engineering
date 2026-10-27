@@ -1,0 +1,2 @@
+KIND FCC_CONVERTER: 2388 shapes, most quads 70825 at 16.50 x 44 s14 45x74x27
+2388 shapes, 0 failed

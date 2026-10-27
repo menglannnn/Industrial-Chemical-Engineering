@@ -1,0 +1,36 @@
+{
+  "id": "R10-fence",
+  "title": "A phase hold inside a network, then an edit on the held island: liquid ethane flows through a tank at 95 K; liquid nitrogen joins and the tank would split into two liquids, which the network does not carry (HELD (phases), retried, parked); the nitrogen generator is set to 1 atm and the held island accepts the edit at its fence (E4 row 10, acceptAtFence; added 2026-10-17)",
+  "blocks": {
+    "Ge": {"at": [20, 101, 104], "block": "generator"},
+    "P1": {"at": [21, 101, 104], "block": "pipe"},
+    "T":  {"at": [22, 101, 104], "block": "reservoir"},
+    "P2": {"at": [23, 101, 104], "block": "pipe"},
+    "V":  {"at": [24, 101, 104], "block": "void"},
+    "P3": {"at": [22, 101, 105], "block": "pipe"},
+    "Gn": {"at": [22, 101, 106], "block": "generator"}
+  },
+  "steps": [
+    {"op": "mark"},
+    {"op": "place", "ids": ["Ge", "Gn"]},
+    {"op": "set", "id": "Ge", "mixture": "Ethane", "pressure": 2000000, "temperatureK": 95},
+    {"op": "set", "id": "Gn", "mixture": "Nitrogen", "pressure": 2000000, "temperatureK": 95},
+    {"op": "place", "ids": ["T", "V", "P2", "P1"]},
+    {"op": "wait", "s": 30},
+    {"op": "read", "ids": ["T"], "views": ["overview", "organic", "outlets"], "tag": "ethane"},
+    {"op": "note", "text": "row 12: P3 joins the liquid nitrogen to the ethane tank; the tank would hold two hydrocarbon liquids, so the island holds (HELD (phases)), retries once and waits for a change to its network"},
+    {"op": "place", "ids": ["P3"]},
+    {"op": "wait", "s": 15},
+    {"op": "read", "ids": ["T"], "views": ["overview", "rail-end", "organic"], "tag": "held"},
+    {"op": "log", "grep": "fluid_island=|status=PHASE_HOLD", "tag": "fence-held"},
+    {"op": "wait", "s": 20},
+    {"op": "read", "ids": ["T"], "views": ["overview", "rail-end"], "tag": "parked"},
+    {"op": "read", "ids": ["Gn"], "views": ["overview"], "tag": "parked"},
+    {"op": "mark"},
+    {"op": "note", "text": "row 12: an edit on the held island: the nitrogen generator to 1 atm (gas, below the tank, no backflow); the held island accepts it at its fence without a solve"},
+    {"op": "set", "id": "Gn", "mixture": "Nitrogen", "pressure": 101325, "temperatureK": 95},
+    {"op": "wait", "s": 15},
+    {"op": "read", "ids": ["T"], "views": ["overview", "organic", "outlets"], "tag": "accepted"},
+    {"op": "log", "grep": "fluid_island=|status=PHASE_HOLD", "tag": "fence-accepted"}
+  ]
+}

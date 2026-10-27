@@ -1,0 +1,27 @@
+{
+  "id": "R3",
+  "title": "Frosting tank: N2 at 150 K, then CO2 gas at 220 K / 400 kPa, side outlet to a void (E4 rows 3 and 5; M4 open item 2, D33)",
+  "blocks": {
+    "G":  {"at": [20, 101, 20], "block": "generator"},
+    "P1": {"at": [21, 101, 20], "block": "pipe"},
+    "T":  {"at": [22, 101, 20], "block": "reservoir"},
+    "P2": {"at": [23, 101, 20], "block": "pipe"},
+    "V":  {"at": [24, 101, 20], "block": "void"}
+  },
+  "steps": [
+    {"op": "mark"},
+    {"op": "place", "ids": ["G"]},
+    {"op": "set", "id": "G", "mixture": "Nitrogen", "pressure": 300000, "temperatureK": 150},
+    {"op": "place", "ids": ["T", "V", "P1", "P2"]},
+    {"op": "wait", "s": 30},
+    {"op": "read", "ids": ["T"], "views": ["overview", "vapor", "solids", "outlets"], "tag": "n2"},
+    {"op": "set", "id": "G", "mixture": "Carbon dioxide", "pressure": 400000, "temperatureK": 220},
+    {"op": "wait", "s": 5},
+    {"op": "read", "ids": ["T"], "views": ["overview", "vapor", "solids", "outlets"], "tag": "co2-early"},
+    {"op": "read", "ids": ["P2"], "views": ["overview"], "tag": "co2-early"},
+    {"op": "wait", "s": 40},
+    {"op": "read", "ids": ["T"], "views": ["overview", "vapor", "solids", "outlets"], "tag": "co2-late"},
+    {"op": "read", "ids": ["P2"], "views": ["overview"], "tag": "co2-late"},
+    {"op": "log", "grep": "fluid_island=|status=PHASE_HOLD", "tag": "R3"}
+  ]
+}

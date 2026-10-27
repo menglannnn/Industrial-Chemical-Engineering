@@ -248,7 +248,7 @@ public final class PassiveIntervalSolver {
                 if(!ok){previousStateChange=change;previousStateStep=step;throw new StateChangeRejection("Backward-Euler state change "+change);}
                 accepted=replace(accepted,result);last=result;elapsed+=step;acceptedCount++;consecutiveRejects=0;previousStateChange=0;
                 var flush=flushTraces(accepted,checkpoint);if(flush!=null)accepted=flush.graph();
-                implicit.markBackwardEulerAccepted(accepted);
+                implicit.markBackwardEulerAccepted(accepted,result);
                 carriedModes=result.modes();carriedFlows=result.massFlows();carriedKey=flowKey(accepted);
                 // The cold-start graphs are read only while the structure is cold, and the step solver's last solve only
                 // by a test of the Jacobian; a retained island keeps neither (review 8.7 (c) E2).

@@ -1,0 +1,13 @@
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+index 090e4276..7f4091f9 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+@@ -1595,7 +1595,7 @@ public final class PassiveStepSolver {
+      * (2000-4000, 4000-20000, 20000-200000), every reach held more worlds, because the square root of the turbulent law
+      * then lands on the end pressures.
+      */
+-    static final double[] FLOW_FORM_REYNOLDS={1000,2000};
++    static final double[] FLOW_FORM_REYNOLDS={-2,-1};
+     /** The flow form's weight in a connection's row at the Reynolds number {@code reynolds} of the flow its drive gives:
+      * 1 up to {@link #FLOW_FORM_REYNOLDS}[0], 0 from [1], a smoothstep (C1) between. */
+     static double flowFormWeight(double reynolds) {

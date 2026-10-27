@@ -1,0 +1,4 @@
+com.wormzjl.createcheme.client.gui.screens.inventory.V3ClientPresetsTest
+com.wormzjl.createcheme.client.gui.screens.inventory.V3ColumnInputDraftTest
+com.wormzjl.createcheme.client.gui.screens.inventory.V3EditorDraftTest
+com.wormzjl.createcheme.client.gui.screens.inventory.V3PumparoundDraftTest

@@ -70,6 +70,7 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
     private boolean generator(){return menu.clientData()!=null&&menu.clientData().kind()==TopologyCompiler.Kind.GENERATOR;}
     private boolean pipe(){return menu.clientData()!=null&&menu.clientData().kind()==TopologyCompiler.Kind.PIPE;}
     private boolean transport(){return menu.clientData()!=null&&menu.clientData().view().pipeInfo()!=null;}
+    private com.wormzjl.icheme.science.fluid.network.FlowControl.ValveSource valveSource=com.wormzjl.icheme.science.fluid.network.FlowControl.ValveSource.NONE;
     private boolean canEdit(){return !menu.debug()&&menu.clientData()!=null;}
     private boolean constructedMover(){var data=menu.clientData();return data!=null&&!datasheet.isEmpty()&&(data.kind()==TopologyCompiler.Kind.PUMP||data.kind()==TopologyCompiler.Kind.COMPRESSOR);}
     private boolean switchable(){return generator()||constructedMover();}
@@ -113,11 +114,11 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
         }
         if(data.view().inputRevision()==revision)return;
         revision=data.view().inputRevision();var c=data.controls();
-        powerOn=c.power()==FluidNetwork.Power.ON;
+        powerOn=c.power()==FluidNetwork.Power.ON;valveSource=c.valveSource();
         fields.clear();fields.put("temperature",new NumericDraft(c.temperature(),temperatureUnit));
         fields.put("pressure",new NumericDraft(c.pressure(),pressureUnit));fields.put("diameter",new NumericDraft(c.diameter()));
         fields.put("volumeFlow",new NumericDraft(c.volumeFlow(),flowRateUnit));fields.put("maximumAddedPressure",new NumericDraft(c.maximumAddedPressure(),pressureUnit));
-        fields.put("maximumPressureRatio",new NumericDraft(c.maximumPressureRatio()));
+        fields.put("maximumPressureRatio",new NumericDraft(c.maximumPressureRatio()));fields.put("massFlow",new NumericDraft(c.massFlow(),flowRateUnit));
         composition=new RelativeComposition(data.components(),data.molecularWeights(),c.composition());
         if(mass)composition.toggleBasis();
         loadSolids(c.solids());
@@ -146,7 +147,7 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
     /** Rail controls above the values: the fields a device's page edits, or a filter's recover button. */
     private int railControls(){
         var data=menu.clientData();if(data==null||!canEdit())return 0;
-        return switch(data.kind()){case PUMP,COMPRESSOR->constructedMover()?3:2;case GENERATOR->3;case VALVE,VOID,PIPE,FILTER->1;default->0;};
+        return switch(data.kind()){case PUMP,COMPRESSOR->constructedMover()?3:2;case GENERATOR->3;case VALVE->data.valve()!=null&&!data.valve().configured()?0:valveSource==com.wormzjl.icheme.science.fluid.network.FlowControl.ValveSource.MASS_FLOW||valveSource==com.wormzjl.icheme.science.fluid.network.FlowControl.ValveSource.VOLUME_FLOW?2:1;case VOID,PIPE,FILTER->1;default->0;};
     }
     private void changePage(int target){page=target;templates=false;scroll.reset();rebuild();}
     private void toggleBasis(){
@@ -165,7 +166,7 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
         var next=temperatureUnit.next();if(convertUnit(next,"temperature")){temperatureUnit=preferredTemperatureUnit=next;rebuild();}
     }
     private void toggleFlowRate(){
-        var next=flowRateUnit.next();if(convertUnit(next,"volumeFlow")){flowRateUnit=preferredFlowRateUnit=next;rebuild();}
+        var next=flowRateUnit.next();if(convertUnit(next,"volumeFlow","massFlow")){flowRateUnit=preferredFlowRateUnit=next;rebuild();}
     }
     private void togglePressure(){
         var next=pressureUnit.next();if(convertUnit(next,"pressure","maximumAddedPressure")){pressureUnit=preferredPressureUnit=next;rebuild();}
@@ -208,7 +209,16 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
             case GENERATOR->{railField("pressure",tr("pressure_input",pressureUnit.symbol()),y);railField("temperature",tr("temperature_input",temperatureUnit.symbol()),y+RAIL_CONTROL);}
             case PUMP->{railField("volumeFlow",tr("flow_input",flowRateUnit.unit("m³")),y);railField("maximumAddedPressure",tr("head_input",pressureUnit.symbol()),y+RAIL_CONTROL);}
             case COMPRESSOR->{railField("volumeFlow",tr("flow_input",flowRateUnit.unit("m³")),y);railField("maximumPressureRatio",tr("ratio_input"),y+RAIL_CONTROL);}
-            case VALVE,VOID->railField("pressure",tr("pressure_input",pressureUnit.symbol()),y);
+            case VOID->railField("pressure",tr("pressure_input",pressureUnit.symbol()),y);
+            case VALVE->{
+                if(data.valve()==null||data.valve().configured()){
+                    boolean flow=valveSource==com.wormzjl.icheme.science.fluid.network.FlowControl.ValveSource.MASS_FLOW||valveSource==com.wormzjl.icheme.science.fluid.network.FlowControl.ValveSource.VOLUME_FLOW;
+                    if(flow){boolean massTarget=valveSource==com.wormzjl.icheme.science.fluid.network.FlowControl.ValveSource.MASS_FLOW;
+                        railField(massTarget?"massFlow":"volumeFlow",tr("flow_input",flowRateUnit.unit(massTarget?"kg":"m³")),y);
+                        var flowBasis=button(massTarget?"Mass flow":"Actual volume flow",12,y+RAIL_CONTROL,rail()-4,()->{valveSource=massTarget?com.wormzjl.icheme.science.fluid.network.FlowControl.ValveSource.VOLUME_FLOW:com.wormzjl.icheme.science.fluid.network.FlowControl.ValveSource.MASS_FLOW;rebuild();});flowBasis.visible=inRail(y+RAIL_CONTROL,20);
+                    }else railField("pressure",tr("pressure_input",pressureUnit.symbol()),y);
+                }
+            }
             case PIPE->railField("diameter",tr("diameter_input"),y);
             default->{}
         }
@@ -317,7 +327,7 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
         try{
             var controls=new FluidNetwork.Controls(fields.get("temperature").si(),fields.get("pressure").si(),
                 fields.get("diameter").value(),PipeResistance.DEFAULT_ROUGHNESS_METRES,fields.get("volumeFlow").si(),
-                fields.get("maximumAddedPressure").si(),composition.moleFractions(),solids(),fields.get("maximumPressureRatio").value(),powerOn?FluidNetwork.Power.ON:FluidNetwork.Power.OFF);
+                fields.get("maximumAddedPressure").si(),composition.moleFractions(),solids(),fields.get("maximumPressureRatio").value(),powerOn?FluidNetwork.Power.ON:FluidNetwork.Power.OFF,valveSource,fields.get("massFlow").si());
             FluidNetwork.sendEdit(menu,revision,controls);message=tr("waiting");
         }catch(IllegalArgumentException e){message=tr("invalid_input");}
     }
@@ -465,6 +475,18 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
         if(view.devicePressureChange()!=null)rows.add(new Reading("pressure_change",displayPressure(view.devicePressureChange())));
         if(data.kind()==TopologyCompiler.Kind.COMPRESSOR&&view.devicePressureChange()!=null&&state!=null&&state.pressure()>0)
             rows.add(new Reading("pressure_ratio",number((state.pressure()+view.devicePressureChange())/state.pressure())));
+        if(data.valve()!=null){rows.add(new Reading("controller",data.valve().status()));rows.add(new Reading("valve_opening",quantity(100*data.valve().opening(),"%")));}
+        for(var sensor:data.sensors()){
+            String key=switch(sensor.kind()){case PRESSURE->"pressure_probe";case TEMPERATURE->"temperature_probe";case FLOW->"flowmeter";case LEVEL->sensor.mount().equals("level_boot")?"boot_level":"body_level";};
+            boolean available=sensor.availability()!=com.wormzjl.icheme.runtime.instrument.Instrument.Availability.UNAVAILABLE;
+            String value=available?switch(sensor.kind()){
+                case PRESSURE->pressureUnit.format(sensor.value());
+                case TEMPERATURE->quantity(temperatureUnit.display(sensor.value()),temperatureUnit.symbol())+(sensor.availability()==com.wormzjl.icheme.runtime.instrument.Instrument.Availability.NO_FLOW?" (no flow)":"");
+                case FLOW->quantity(flowRateUnit.display(sensor.value()),flowRateUnit.unit("kg"))+" / "+quantity(flowRateUnit.display(sensor.secondary()),flowRateUnit.unit("m³"));
+                case LEVEL->quantity(sensor.value(),"m")+" / "+quantity(sensor.secondary(),"%")+(sensor.value()<0||sensor.value()>sensor.span()?" (overrange)":"");
+            }:"Unavailable";
+            rows.add(new Reading(key,value));
+        }
         return List.copyOf(rows);
     }
     private int renderDeviceRail(GuiGraphics g){
@@ -509,7 +531,7 @@ public final class FluidDeviceScreen extends AbstractContainerScreen<FluidDevice
         return switch(outlet.port()){
             case VAPOR->tr("outlet.top",face);
             case BULK->tr("outlet.side",face);
-            case LIQUID->outlet.head()>0?tr("outlet.bottom_head",face,pressureUnit.format(outlet.head())):tr("outlet.bottom",face);
+            case LIQUID,BOOT_WATER,BOOT_HC->outlet.head()>0?tr("outlet.bottom_head",face,pressureUnit.format(outlet.head())):tr("outlet.bottom",face);
             case OVERFLOW->tr("outlet.overflow",face);
         };
     }

@@ -1,0 +1,54 @@
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/network/JunctionCrystals.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/JunctionCrystals.java
+index ffc9442e..d52f8166 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/JunctionCrystals.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/JunctionCrystals.java
+@@ -29,14 +29,20 @@ import java.util.TreeMap;
+ final class JunctionCrystals {
+     /** Per node, the crystals that melt there by material id; null for a node where none does. */
+     private final TreeMap<String,NetworkCrystals.Crystal>[] melting;
+-    private JunctionCrystals(TreeMap<String,NetworkCrystals.Crystal>[] melting){this.melting=melting;}
++    /**
++     * The island's solid populations, its holders' and its injections': the basis the reconstruction labels every solid
++     * stream with ({@link ConservativeTransport}), and so what a Newton state carries whose moments its seed names no
++     * population of (see {@link #split}).
++     */
++    private final SolidInventory island;
++    private JunctionCrystals(TreeMap<String,NetworkCrystals.Crystal>[] melting,SolidInventory island){this.melting=melting;this.island=island;}
+ 
+     /** The junctions of {@code graph} above the melting point of a crystal the island holds; null where none is. */
+     @SuppressWarnings("unchecked")
+     static JunctionCrystals of(PassiveNetwork graph,FluidThermodynamics model) {
+-        TreeMap<String,SolidMaterial> materials=null;
+-        for(var node:graph.reservoirs()){materials=crystals(node.inventory().solids(),materials);materials=crystals(node.state().solids(),materials);}
+-        for(var transfer:graph.scheduledTransfers())if(transfer instanceof ScheduledTransfer.Injection in)materials=crystals(in.solidsPerSecond(),materials);
++        TreeMap<String,SolidMaterial> materials=null;var island=SolidInventory.EMPTY;
++        for(var node:graph.reservoirs()){materials=crystals(node.inventory().solids(),materials);materials=crystals(node.state().solids(),materials);island=island.plus(node.inventory().solids());}
++        for(var transfer:graph.scheduledTransfers())if(transfer instanceof ScheduledTransfer.Injection in){materials=crystals(in.solidsPerSecond(),materials);island=island.plus(in.solidsPerSecond());}
+         if(materials==null)return null;
+         var crystals=model.crystalSolids();
+         var melting=new TreeMap[graph.reservoirs().size()];boolean any=false;
+@@ -46,7 +52,7 @@ final class JunctionCrystals {
+             for(var material:materials.values()){var crystal=crystals.of(material);
+                 if(t>crystal.meltingTemperature(p)){if(melting[i]==null)melting[i]=new TreeMap<String,NetworkCrystals.Crystal>();melting[i].put(material.id(),crystal);any=true;}}
+         }
+-        return any?new JunctionCrystals(melting):null;
++        return any?new JunctionCrystals(melting,island):null;
+     }
+     /** {@code into} with the crystal materials of {@code stock} added (allocated on the first one; null while there is none). */
+     private static TreeMap<String,SolidMaterial> crystals(SolidInventory stock,TreeMap<String,SolidMaterial> into) {
+@@ -63,8 +69,15 @@ final class JunctionCrystals {
+      * aggregate moments over the seed's population list), per kilogram of the stock's solids: {@code mass[c]} kg of
+      * component {@code c}, {@code energy} J of offsets, and the moments it takes away, {@code volume} m3 and
+      * {@code capacity} J/K; {@code all} where every population melts (the stock leaves no solid).
++     *
++     * <p>A state whose seed held no solid names no population, yet its moments carry what reached it within the step: the
++     * island's populations ({@link #island}), which the reconstruction books and melts. Read as inert, the Newton point
++     * kept as a solid what the booking melted, and the equation gate refused the junction's solid and enthalpy rows by an
++     * amount proportional to the step (cold fuzz seed 729: 0.035 to 0.1 kg/s at 1.9 % crystal from a 207 K junction into a
++     * 244 K gas junction; refused down to 5e-7 s, held).</p>
+      */
+     Split split(int node,SolidInventory list,int components) {
++        if(!(list.massKg()>0))list=island;
+         double total=list.massKg();var mass=new double[components];double energy=0,volume=0,capacity=0;boolean all=total>0;
+         if(total>0)for(var p:list.populations()) {
+             var crystal=melts(node,p.material());if(crystal==null){all=false;continue;}

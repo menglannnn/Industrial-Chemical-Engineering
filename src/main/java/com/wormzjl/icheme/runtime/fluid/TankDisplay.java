@@ -63,7 +63,7 @@ public record TankDisplay(float level,float waterLevel,float height,int oilArgb,
         float height=(float)tank.levelHeight();
         var state=view.state();if(state==null)return empty(height);
         var volumes=state.phaseVolumes();double footprint=state.capacity()/tank.levelHeight();
-        float level=(float)(tank.level(state));float water=(float)Math.min(level,volumes[1]/footprint);
+        float level=(float)(tank.level(state));float water=(float)Math.min(level,tank.geometry().heightAt(volumes[1]));
         var moles=state.phaseMoles();
         int oil=volumes[0]>0?mix(moles[0],components,molecularWeights,catalog,packageId):0;
         int free=volumes[1]>0?catalog.componentAppearance(packageId,"Water").argb():0;

@@ -1,0 +1,241 @@
+{
+  "integration": "cb89f23a",
+  "cases": [
+    {
+      "distribution": "bundled-random",
+      "seed": 579,
+      "feeds": [
+        {
+          "label": "water",
+          "kelvinRounded": 347,
+          "kPaAbsoluteRounded": 168,
+          "position": "0,0,2"
+        },
+        {
+          "label": "crude",
+          "kelvinRounded": 397,
+          "kPaAbsoluteRounded": 300,
+          "position": "1,-5,-2"
+        }
+      ],
+      "endCrystalKgWorldTotal": null,
+      "endCrystalVesselsWorldTotal": null,
+      "solidTransitionInLatestRejections": false,
+      "valveSetpointsKPa": [
+        120
+      ],
+      "pumpSettings": [],
+      "sourceScope": "Final whole-world layout; retained crystal total is not an identified held-island inventory"
+    },
+    {
+      "distribution": "cold-random",
+      "seed": 6,
+      "feeds": [
+        {
+          "label": "LNG",
+          "kelvinRounded": 164,
+          "kPaAbsoluteRounded": 5609,
+          "position": "-1,-3,1"
+        }
+      ],
+      "endCrystalKgWorldTotal": 0.0,
+      "endCrystalVesselsWorldTotal": 0,
+      "solidTransitionInLatestRejections": false,
+      "valveSetpointsKPa": [
+        200
+      ],
+      "pumpSettings": [
+        {
+          "m3s": 0.001,
+          "referenceRiseKPa": 500
+        },
+        {
+          "m3s": 0.01,
+          "referenceRiseKPa": 200
+        }
+      ],
+      "sourceScope": "Final whole-world layout; retained crystal total is not an identified held-island inventory"
+    },
+    {
+      "distribution": "cold-random",
+      "seed": 101,
+      "feeds": [
+        {
+          "label": "CO2gas",
+          "kelvinRounded": 282,
+          "kPaAbsoluteRounded": 4044,
+          "position": "2,2,0"
+        },
+        {
+          "label": "LNG",
+          "kelvinRounded": 155,
+          "kPaAbsoluteRounded": 2894,
+          "position": "0,0,3"
+        },
+        {
+          "label": "CO2gas",
+          "kelvinRounded": 285,
+          "kPaAbsoluteRounded": 3643,
+          "position": "2,0,0"
+        }
+      ],
+      "endCrystalKgWorldTotal": 12.5059,
+      "endCrystalVesselsWorldTotal": 2,
+      "solidTransitionInLatestRejections": true,
+      "valveSetpointsKPa": [],
+      "pumpSettings": [
+        {
+          "m3s": 0.01,
+          "referenceRiseKPa": 500
+        },
+        {
+          "m3s": 0.05,
+          "referenceRiseKPa": 1000
+        },
+        {
+          "m3s": 0.01,
+          "referenceRiseKPa": 500
+        }
+      ],
+      "sourceScope": "Final whole-world layout; retained crystal total is not an identified held-island inventory"
+    },
+    {
+      "distribution": "cold-random",
+      "seed": 430,
+      "feeds": [
+        {
+          "label": "CO2gas",
+          "kelvinRounded": 293,
+          "kPaAbsoluteRounded": 4890,
+          "position": "-3,-2,0"
+        },
+        {
+          "label": "LNG",
+          "kelvinRounded": 128,
+          "kPaAbsoluteRounded": 884,
+          "position": "-2,-1,0"
+        }
+      ],
+      "endCrystalKgWorldTotal": 0.0,
+      "endCrystalVesselsWorldTotal": 0,
+      "solidTransitionInLatestRejections": false,
+      "valveSetpointsKPa": [],
+      "pumpSettings": [
+        {
+          "m3s": 0.01,
+          "referenceRiseKPa": 1000
+        }
+      ],
+      "sourceScope": "Final whole-world layout; retained crystal total is not an identified held-island inventory"
+    },
+    {
+      "distribution": "cold-random",
+      "seed": 446,
+      "feeds": [
+        {
+          "label": "LNG",
+          "kelvinRounded": 114,
+          "kPaAbsoluteRounded": 262,
+          "position": "1,0,1"
+        },
+        {
+          "label": "CO2gas",
+          "kelvinRounded": 287,
+          "kPaAbsoluteRounded": 4992,
+          "position": "0,2,3"
+        }
+      ],
+      "endCrystalKgWorldTotal": 0.116715,
+      "endCrystalVesselsWorldTotal": 1,
+      "solidTransitionInLatestRejections": false,
+      "valveSetpointsKPa": [
+        120,
+        150
+      ],
+      "pumpSettings": [],
+      "sourceScope": "Final whole-world layout; retained crystal total is not an identified held-island inventory"
+    },
+    {
+      "distribution": "cold-random",
+      "seed": 85,
+      "feeds": [
+        {
+          "label": "LNG",
+          "kelvinRounded": 119,
+          "kPaAbsoluteRounded": 307,
+          "position": "0,0,-3"
+        }
+      ],
+      "endCrystalKgWorldTotal": 0.346666,
+      "endCrystalVesselsWorldTotal": 2,
+      "solidTransitionInLatestRejections": false,
+      "valveSetpointsKPa": [
+        120
+      ],
+      "pumpSettings": [],
+      "sourceScope": "Final whole-world layout; retained crystal total is not an identified held-island inventory"
+    },
+    {
+      "distribution": "bundled-random",
+      "seed": 430,
+      "feeds": [
+        {
+          "label": "water",
+          "kelvinRounded": 341,
+          "kPaAbsoluteRounded": 236,
+          "position": "-3,-2,0"
+        },
+        {
+          "label": "crude",
+          "kelvinRounded": 326,
+          "kPaAbsoluteRounded": 142,
+          "position": "-2,-1,0"
+        }
+      ],
+      "endCrystalKgWorldTotal": null,
+      "endCrystalVesselsWorldTotal": null,
+      "solidTransitionInLatestRejections": false,
+      "valveSetpointsKPa": [],
+      "pumpSettings": [
+        {
+          "m3s": 0.01,
+          "referenceRiseKPa": 1000
+        }
+      ],
+      "sourceScope": "Final whole-world layout; retained crystal total is not an identified held-island inventory"
+    },
+    {
+      "distribution": "bundled-random",
+      "seed": 157,
+      "feeds": [
+        {
+          "label": "crude",
+          "kelvinRounded": 389,
+          "kPaAbsoluteRounded": 353,
+          "position": "0,-1,0"
+        },
+        {
+          "label": "water",
+          "kelvinRounded": 332,
+          "kPaAbsoluteRounded": 278,
+          "position": "2,-1,-2"
+        }
+      ],
+      "endCrystalKgWorldTotal": null,
+      "endCrystalVesselsWorldTotal": null,
+      "solidTransitionInLatestRejections": false,
+      "valveSetpointsKPa": [
+        200,
+        150
+      ],
+      "pumpSettings": [
+        {
+          "m3s": 0.01,
+          "referenceRiseKPa": 500
+        }
+      ],
+      "sourceScope": "Final whole-world layout; retained crystal total is not an identified held-island inventory"
+    }
+  ],
+  "limits": "Boundary labels round T/P; no flow direction, flash split, held-node T/P or crystal population was newly computed. Physical regimes in the review are hypotheses supported by these observations, not established hold causes."
+}

@@ -1,0 +1,189 @@
+From 2ab43f23c5081c8f28c7750ad69764311f86de6f Mon Sep 17 00:00:00 2001
+From: wormzjl <wormzjl@gmail.com>
+Date: Fri, 16 Oct 2026 13:44:08 +0800
+Subject: [PATCH 2/2] fluid: a phase the vessel's own closure is driving to
+ nothing leaves (form 4, ii)
+
+Physics. A boiling liquid in a rigid vessel with no room for a bubble does not boil: its pressure rises and holds it
+liquid. The vessel's own balance at its energy and volume says so by where it goes: from the TP answer's vapour it
+drives the bubble down towards nothing. Whether it arrives within its 24 iterations is a matter of numbers; the
+direction is the physics. A phase the closure grows, however small, stands.
+
+What the code did. The D26 amendment refused a proposed phase only where the closure ended under the trace share (1e-9
+of the moles). Cold seed 48's liquid-full LNG tank beside dry ice stalls with its vapour at 1e-9 to 3e-9 of the moles,
+still falling (57 % of its stalled own splits ended just above the share): the fold kept it, the step seeded it, the
+next pass folded it, the pass key cycled and the interval halved (form A: 3.82 M Newton iterations in seed 48 alone).
+One step of that tank (157.3903 K, 1.381 MPa, the closure stopped at 2.8e-9 of the moles at a residual of 2.4e-6)
+ended in a phase/device active-set cycle.
+
+What it does now. A proposed phase that a vessel's closure, converged or not, leaves under VANISHING_SHARE (1e-6 of the
+node's amount: what a closure that stops short at a residual near 1e-6 resolves) and smaller than its start gave it is
+being driven to nothing (vanishing). It is refused for the solve like one under the trace share, and a seed that would
+add a refused phase is not taken. The one-tank step now takes one pass and one own split. In the review's rule-off
+world (seed 48 with every unconverged closure adding nothing) none of the 40 stalled closures that add a real liquid
+to a gas tank is refused: each grows its liquid, from about 0.3 to 0.56 of the moles. The one legitimate case it can
+refuse is the first bubble of a vessel crossing its bubble point while that bubble holds under 1e-6 of the moles
+(about 17 cm3 of vapour per m3 of LNG at 1.4 MPa) and the closure approaches it from the TP answer's larger vapour:
+refused for that solve, it stands once larger. A junction's own split is the engine's converged PH answer and keeps the
+trace share alone. New gate: one step of that tank holds no vapour in one pass; with the trace share alone it cycles.
+
+Owner decision (2026-10-16), form 4.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../fluid/diagnostics/SolverDiagnostics.java  |  5 ++-
+ .../fluid/network/InventoryEquilibrium.java   |  3 +-
+ .../fluid/thermo/FluidThermodynamics.java     | 41 +++++++++++++++----
+ .../fluid/network/PrecipitatedSolidsTest.java | 25 +++++++++++
+ 4 files changed, 62 insertions(+), 12 deletions(-)
+
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/diagnostics/SolverDiagnostics.java b/src/main/java/com/wormzjl/createcheme/science/fluid/diagnostics/SolverDiagnostics.java
+index 7fbb107b..5175379f 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/diagnostics/SolverDiagnostics.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/diagnostics/SolverDiagnostics.java
+@@ -114,8 +114,9 @@ public final class SolverDiagnostics {
+      * decision D26: a vessel's closure of its inventory, a junction's PH answer), and those that seeded the TP-based state
+      * instead because the node's own flash failed or none was given. */
+     public static final LongAdder phaseSeeds=new LongAdder(),phaseSeedFallbacks=new LongAdder();
+-    /** Outer phase checks whose own split refused a proposed phase, its closure having driven it under the trace share
+-     * (the D26 amendment of 2026-10-16): the refusal is written to the solve's A85 record. */
++    /** Outer phase checks whose own split refused a proposed phase, its closure having driven it under the trace share or
++     * driving it to nothing (the D26 amendment of 2026-10-16, by direction in form 4): the refusal is written to the
++     * solve's A85 record. */
+     public static final LongAdder phaseRefusals=new LongAdder();
+     // ---- properties ----
+     public static final LongAdder stateCalls=new LongAdder();
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/network/InventoryEquilibrium.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/InventoryEquilibrium.java
+index 5831c38d..d553b954 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/InventoryEquilibrium.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/InventoryEquilibrium.java
+@@ -215,7 +215,8 @@ public final class InventoryEquilibrium {
+      * inventory's amounts and restated with the trace fold ({@link ConservativeTransport#repartition}): from the TP split of
+      * a liquid-full vessel cooled past its bubble point (several vessel volumes of vapour) the closure's 24 iterations end
+      * within about 1e-5 of the bubble it holds. Converged or not, the split answers by where the closure went: a phase it
+-     * drove under the trace share is not in it, and the check refuses that phase for the solve (the D26 amendment).
++     * drove under the trace share is not in it, and the check refuses that phase for the solve (the D26 amendment), as it
++     * refuses one the closure is still driving to nothing ({@code FluidThermodynamics.vanishing}, form 4).
+      * {@code null} where the closure leaves no iterate or refuses the state; the check then seeds its TP-based state.
+      */
+     static FluidThermodynamics.State split(FluidThermodynamics model,FluidThermodynamics.State start,PassiveNetwork.Inventory inventory,double workFrom,
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/FluidThermodynamics.java b/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/FluidThermodynamics.java
+index 928a6f40..2cdf012b 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/FluidThermodynamics.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/FluidThermodynamics.java
+@@ -637,6 +637,14 @@ public final class FluidThermodynamics {
+      * resolves, and the same number for a condensate film in a gas and for the last bubble in a liquid.
+      */
+     public static final double PHASE_TRACE_FRACTION=1e-9;
++    /**
++     * The share under which a vessel's own closure that is shrinking a proposed phase is driving it to nothing, converged
++     * or not ({@link #vanishing}; the D26 amendment by direction, owner decision of 2026-10-16, form 4). It is what a
++     * closure that stops short resolves: its 24 iterations end at a residual near 1e-6 of the node's amount, and cold seed
++     * 48's liquid-full tank beside dry ice stalls with its vapour at 1e-9 to 3e-9 of the moles and still falling, which the
++     * trace share alone keeps or drops at rounding.
++     */
++    public static final double VANISHING_SHARE=1e-6;
+     /**
+      * Folds the trace phases of one split in place (owner decisions D33, D34): nothing leaves the node and nothing is
+      * booked, so every component amount, and with it the node's mass, is unchanged. The rule (A84):
+@@ -770,13 +778,14 @@ public final class FluidThermodynamics {
+      * while slack), started from the TP answer with the node's populated phases it lacks ({@link #tpSeed}). Where the
+      * node's own flash fails, or none is given, that TP-based state seeds instead; it is only a seed, the node's rows give
+      * the answer;</li>
+-     * <li>the own split decides by where its closure went, converged or not (the D26 amendment of 2026-10-16): a proposed
+-     * phase it drove under the trace share, which the seed's fold (D34, and D41's carried gas at a junction) then removes,
+-     * is refused, and the refusal is written to the record, so the TP answer does not propose it again in this solve: a
+-     * boiling liquid in a vessel with no room for a bubble pressurises and stays liquid, a drop formed in a gas at its dew
+-     * point re-evaporates. A proposed phase that stands seeds the node, and the seed is taken only when it then holds a
+-     * phase the node lacks that is not in the record: nothing the fold removes is added, so the check and the fold
+-     * agree.</li>
++     * <li>the own split decides by where its closure went, converged or not (the D26 amendment of 2026-10-16, by its
++     * direction in form 4): a proposed phase it drove under the trace share, which the seed's fold (D34, and D41's carried
++     * gas at a junction) then removes, or that a vessel's closure is driving to nothing ({@link #vanishing}), is refused,
++     * and the refusal is written to the record, so the TP answer does not propose it again in this solve: a boiling liquid
++     * in a vessel with no room for a bubble pressurises and stays liquid, a drop formed in a gas at its dew point
++     * re-evaporates. A proposed phase that stands seeds the node, and the seed is taken only when it then holds a phase the
++     * node lacks that is not in the record and none that was refused: nothing the fold removes is added, so the check and
++     * the fold agree.</li>
+      * </ul>
+      * The rule decides which phases a node is laid out with; how much of each it holds is its rows' answer. It holds for
+      * any material: a pure water node at its saturation pressure, whose TP answer is all liquid on one side and all steam
+@@ -817,9 +826,10 @@ public final class FluidThermodynamics {
+                 var seed=folded(own==null?start:own.withSolidState(kept.solids(),kept.solidMoments()),junction);
+                 // The D26 amendment: the own split's verdict on a proposed phase is where its closure took it; the TP-based
+                 // fallback seed is no closure and refuses nothing.
+-                if(own!=null)refused=proposed&~lacking(kept,seed);
++                if(own!=null)refused=proposed&(~lacking(kept,seed)|(junction?0:vanishing(start,own)));
+                 if(refused!=0)SolverDiagnostics.count(SolverDiagnostics.phaseRefusals);
+-                if((lacking(kept,seed)&~excluded)!=0)checked=seed;
++                int added=lacking(kept,seed)&~excluded;
++                if(added!=0&&(added&refused)==0)checked=seed;
+             }
+         }
+         if(record!=null)record[at]|=phaseBits(state)&~phaseBits(checked)|refused;
+@@ -840,6 +850,19 @@ public final class FluidThermodynamics {
+      * nothing (a supersaturated gas whose CO2 has no liquid to stand in).
+      */
+     private int lacking(State node,State answer){return ownPhaseBits(answer)&~ownPhaseBits(node)|phaseBits(answer)&~phaseBits(node);}
++    /**
++     * The phases ({@link #phaseBits}) a vessel's own closure from {@code start} is driving to nothing at {@code end}, its
++     * answer or the last iterate it stopped at (the D26 amendment by direction, owner decision of 2026-10-16, form 4): each
++     * holds less than {@link #VANISHING_SHARE} of {@code end}'s fluid amount and a smaller share than it held at
++     * {@code start}. A phase the closure grows, however small, is not among them.
++     */
++    static int vanishing(State start,State end) {
++        double[] s=phaseAmounts(start),e=phaseAmounts(end);double ts=sum(s),te=sum(e);int bits=0;
++        for(int k=0;k<4;k++)if(e[k]<VANISHING_SHARE*te&&e[k]*ts<s[k]*te)bits|=1<<k;
++        return bits;
++    }
++    /** A state's fluid amount by phase, in {@link #phaseBits} order: hydrocarbon liquid, vapour, free water, water vapour. */
++    private static double[] phaseAmounts(State state){return new double[]{sum(state.liquidView()),sum(state.vaporView()),state.waterLiquid(),state.waterVapor()};}
+     /**
+      * The TP-based state of {@link #phaseCheck} (decision D26): the TP answer {@code equilibrium} at {@code kept}'s
+      * temperature and pressure, for {@code kept}'s totals, with the populated phases of {@code kept} it lacks, so that no
+diff --git a/src/test/java/com/wormzjl/createcheme/science/fluid/network/PrecipitatedSolidsTest.java b/src/test/java/com/wormzjl/createcheme/science/fluid/network/PrecipitatedSolidsTest.java
+index 198f3b8e..33aa5671 100644
+--- a/src/test/java/com/wormzjl/createcheme/science/fluid/network/PrecipitatedSolidsTest.java
++++ b/src/test/java/com/wormzjl/createcheme/science/fluid/network/PrecipitatedSolidsTest.java
+@@ -1,6 +1,7 @@
+ package com.wormzjl.createcheme.science.fluid.network;
+ 
+ import com.wormzjl.createcheme.fluid.support.FluidTestSupport;
++import com.wormzjl.createcheme.science.fluid.diagnostics.SolverDiagnostics;
+ import com.wormzjl.createcheme.science.fluid.solver.PhaseLayout;
+ import com.wormzjl.createcheme.science.fluid.state.ParticleSize;
+ import com.wormzjl.createcheme.science.fluid.state.SolidInventory;
+@@ -293,6 +294,30 @@ class PrecipitatedSolidsTest {
+         assertEquals(1,splits[0],"no second own split in the solve");
+     }
+ 
++    /**
++     * Form 4 (ii), the D26 amendment by direction: a liquid-full LNG tank beside dry ice whose own closure stops short of
++     * nothing holds no vapour. Seed 48's tank a moment earlier (157.3903 K, 1.3811 MPa): the TP answer proposes 87 mol of
++     * vapour, and the tank's closure, with no room for it, has driven it down to 6.0e-5 mol (2.8e-9 of the moles, still
++     * falling) when its 24 iterations end. That is above the trace share, which kept it and seeded it; the next pass
++     * folded it, the pass key cycled and the step halved (seed 48's storm). The closure is driving the vapour to nothing:
++     * the check refuses it, and one step of the tank fed its own LNG at its own pressure takes one pass and one own split.
++     */
++    @Test void aLiquidFullLngTankWhoseClosureStopsShortOfNothingHoldsNoVapour() {
++        var dryIce=new SolidInventory(List.of(new SolidInventory.Population(co2().material(),new ParticleSize("0.00025"),27.681970836122474)));
++        double t=157.39032741149214,p=1381057.0648888762;double[] lng={169.40129908820836,19565.177187575668,1285.9959066479023,393.12480966757914};
++        var state=pilot.state(t,p,lng,new double[lng.length],0,0,p).withSolids(dryIce);
++        double capacity=state.liquidVolume()+dryIce.volume();
++        var tank=new PassiveNetwork.Reservoir(1,0,state,PassiveNetwork.NodeKind.RESERVOIR,new PassiveNetwork.Inventory(capacity,PhaseLayout.totalAmounts(state),state.internalEnergy(),dryIce));
++        var feed=new PassiveNetwork.Reservoir(2,0,pilot.state(t,p,lng,new double[lng.length],0,0,p),PassiveNetwork.NodeKind.GENERATOR);
++        var graph=new PassiveNetwork(List.of(tank,feed),List.of(new PassiveNetwork.Pipe(10,0,1,new PipeResistance.Geometry(10,.02,.000045,0))));
++        SolverDiagnostics.reset();SolverDiagnostics.ENABLED=true;PassiveStepSolver.Result step;
++        try{step=new PassiveStepSolver(pilot).solve(graph,.05,()->{});}finally{SolverDiagnostics.ENABLED=false;}
++        assertNull(step.states().getFirst().vaporProperties(),"no vapour");
++        assertEquals(1,SolverDiagnostics.activeSetPasses.sum(),"one pass: no cycle");
++        assertEquals(1,SolverDiagnostics.phaseSeeds.sum(),"one own split");
++        assertEquals(1,SolverDiagnostics.phaseRefusals.sum(),"the vapour is refused");
++    }
++
+     /**
+      * Form 4 (i): a frosted gas tank's stand-in is decided by its own split, and refused. Nitrogen with 10 % CO2 at 1 MPa,
+      * frosted at its refresh, a kelvin colder at a step's point (its outflow expands it): the gas is supersaturated again,
+-- 
+2.45.1.windows.1
+

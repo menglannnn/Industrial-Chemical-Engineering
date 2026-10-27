@@ -2,7 +2,7 @@
   "schema_version": 1,
   "id": "icheme:tjl20_methane",
   "component": "Methane",
-  "revision": "tjl20-methane-nist-r1",
+  "revision": "tjl20-methane-nist-r1-example-density",
   "source": "Example override: illustrative hypothetical liquid density; not a measured dataset",
   "molecular_weight_kg_per_mol": 0.0160428,
   "normal_boiling_point_kelvin": 111.66,

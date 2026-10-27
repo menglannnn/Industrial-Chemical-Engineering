@@ -29,7 +29,7 @@ public final class InlineMoverGeometry {
         volute(body,up,axial,r,low,lid,n);
         var pads=new Mesh();
         for(int sign:new int[]{-1,1})pads.block(plus(up.along(.04*r),scale(up.side(),sign*1.02*r)),scale(along,.38*axial),scale(UP,.16*r),scale(up.side(),.09*r),Material.FLANGE);
-        var arrows=MoverPortMarkings.fittingOverhanging(LineGeometry.overhanging(pads),key.facing(),-.6*axial,.6*axial);
+        var arrows=PortMarkings.fittingOverhanging(LineGeometry.overhanging(pads),key.facing(),-.6*axial,.6*axial);
         double motorBase;
         if(compressor){
             // LMC: a distinct lower gear barrel and wide horizontal split beneath the ribbed upper casting.

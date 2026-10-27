@@ -1,0 +1,4 @@
+com.wormzjl.icheme.client.gui.screens.inventory.V3ClientPresetsTest
+com.wormzjl.icheme.client.gui.screens.inventory.V3ColumnInputDraftTest
+com.wormzjl.icheme.client.gui.screens.inventory.V3EditorDraftTest
+com.wormzjl.icheme.client.gui.screens.inventory.V3PumparoundDraftTest

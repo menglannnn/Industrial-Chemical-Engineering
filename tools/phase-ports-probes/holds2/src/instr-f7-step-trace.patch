@@ -1,0 +1,34 @@
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveIntervalSolver.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveIntervalSolver.java
+index 31760678..c58b2a9a 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveIntervalSolver.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveIntervalSolver.java
+@@ -230,6 +230,7 @@ public final class PassiveIntervalSolver {
+                 double change=stateChange(accepted,result.states());
+                 boolean jump=change>STATE_CAP&&previousStateChange>0&&step<=.51*previousStateStep&&change>=.9*previousStateChange;
+                 boolean ok=step<=transitionFloor||change<=STATE_CAP||jump;
++                if(F7_TRACE)f7Trace(elapsed,step,ok,jump,accepted,result);
+                 SolverDiagnostics.attempt(attempt,step,ok,ok&&jump&&step>transitionFloor?"be-jump":ok&&step<=transitionFloor&&change>STATE_CAP?"be-floor":"be-state",change);
+                 if(!ok){previousStateChange=change;previousStateStep=step;throw new StateChangeRejection("Backward-Euler state change "+change);}
+                 accepted=replace(accepted,result);last=result;elapsed+=step;acceptedCount++;consecutiveRejects=0;previousStateChange=0;
+@@ -360,6 +361,21 @@ public final class PassiveIntervalSolver {
+     private double[] carriedFlows(PassiveNetwork graph) {
+         return carriedFlows!=null&&carriedModes!=null&&carriedKey.equals(flowKey(graph))?carriedFlows:null;
+     }
++    public static volatile boolean F7_TRACE=false;
++    private void f7Trace(double elapsed,double step,boolean ok,boolean jump,PassiveNetwork before,PassiveStepSolver.Result result) {
++        var sb=new StringBuilder("F7_STEP t="+elapsed+" dt="+step+" ok="+ok+" jump="+jump);
++        var after=result.states();
++        for(int i=0;i<after.size();i++) {
++            var node=before.reservoirs().get(i);if(node.kind()!=PassiveNetwork.NodeKind.RESERVOIR)continue;
++            var a=node.state();var b=after.get(i);
++            sb.append(" node=").append(i).append(" P0=").append(a.pressure()).append(" P1=").append(b.pressure())
++              .append(" dP/P=").append(Math.abs(b.pressure()-a.pressure())/Math.max(100,a.pressure()))
++              .append(" m0=").append(a.mass()).append(" m1=").append(b.mass()).append(" dm/m=").append(Math.abs(b.mass()-a.mass())/Math.max(1e-12,a.mass()))
++              .append(" liq0=").append(model.liquidMass(a)).append(" liq1=").append(model.liquidMass(b));
++        }
++        sb.append(" flows=").append(Arrays.toString(result.massFlows())).append(" modes=").append(result.modes());
++        System.out.println(sb);
++    }
+     /** The largest relative pressure or mass change of a vessel (a RESERVOIR node). */
+     private static double stateChange(PassiveNetwork before,List<FluidThermodynamics.State> after) {
+         double change=0;

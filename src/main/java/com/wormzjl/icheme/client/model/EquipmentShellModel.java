@@ -3,7 +3,8 @@ package com.wormzjl.icheme.client.model;
 import com.wormzjl.icheme.IChemE;
 import com.wormzjl.icheme.client.MachineAnimation;
 import com.wormzjl.icheme.science.equipment.Mesh;
-import com.wormzjl.icheme.science.equipment.MoverPortMarkings;
+import com.wormzjl.icheme.science.equipment.Paint;
+import com.wormzjl.icheme.science.equipment.PortMarkings;
 import com.wormzjl.icheme.science.equipment.ShapeRasterizer;
 import com.wormzjl.icheme.world.level.block.entity.EquipmentShellBlockEntity;
 import net.minecraft.client.renderer.RenderType;
@@ -99,7 +100,7 @@ public final class EquipmentShellModel implements IDynamicBakedModel {
      * quads carry its paint channel as their tint index, so the cell's paint colours them as the chunk is meshed.
      */
     private Layers bake(ShapeRasterizer.CellKey key) {
-        return layers(ShapeRasterizer.fixedSurface(key), bake(MoverPortMarkings.surface(key), sprites, true));
+        return layers(ShapeRasterizer.fixedSurface(key), bake(PortMarkings.surface(key), sprites, true));
     }
 
     private Layers layers(List<Mesh.Polygon> polygons, List<BakedQuad> markings) {
@@ -119,13 +120,48 @@ public final class EquipmentShellModel implements IDynamicBakedModel {
      * {@code painted}: tinted by the material's paint channel (a vessel's), or never (a pipeline device's).
      */
     public static List<BakedQuad> bake(List<Mesh.Polygon> polygons, TextureAtlasSprite[] sprites, boolean painted) {
+        java.util.function.ToIntFunction<Mesh.Material> tints = painted ? Mesh.Material::channel : material -> -1;
+        return bake(polygons, sprites, tints);
+    }
+
+    /** As {@link #bake(List, TextureAtlasSprite[], boolean)}, each material's quads with the tint index {@code tint} gives it (-1: none). */
+    public static List<BakedQuad> bake(List<Mesh.Polygon> polygons, TextureAtlasSprite[] sprites, java.util.function.ToIntFunction<Mesh.Material> tints) {
         var out = new ArrayList<BakedQuad>();
         for (var polygon : polygons) {
-            int tint = painted ? polygon.material().channel() : -1;
+            int tint = tints.applyAsInt(polygon.material());
             for (int first = 1; first + 1 < polygon.size(); first += 2)
                 out.add(quad(polygon, sprites[polygon.material().ordinal()], tint, 0, first, first + 1, Math.min(first + 2, polygon.size() - 1)));
         }
         return List.copyOf(out);
+    }
+
+    /**
+     * A painted line's sprites for every {@link #painted} mask, indexed by it (index 0 is {@code bare}): {@code bare} with
+     * its painted parts swapped for the neutral sprites the line's tint colours, {@code painted_pipe} for the primary
+     * ({@link Paint#BODY}, the pipe) and {@code painted_flange} for the secondary ({@link Paint#STRUCTURE}, the flanges).
+     */
+    public static TextureAtlasSprite[][] paintedLines(IGeometryBakingContext context, Function<Material, TextureAtlasSprite> sprites, TextureAtlasSprite[] bare) {
+        var out = new TextureAtlasSprite[4][];
+        for (int painted = 0; painted < 4; painted++) {
+            out[painted] = bare.clone();
+            if ((painted >> Paint.BODY & 1) != 0 && context.hasMaterial("painted_pipe")) out[painted][Mesh.Material.PIPE.ordinal()] = sprites.apply(context.getMaterial("painted_pipe"));
+            if ((painted >> Paint.STRUCTURE & 1) != 0 && context.hasMaterial("painted_flange")) out[painted][Mesh.Material.FLANGE.ordinal()] = sprites.apply(context.getMaterial("painted_flange"));
+        }
+        return out;
+    }
+
+    /** A line's painted mask: a bit per channel with a paint, {@link Paint#BODY} for {@code paint} and {@link Paint#STRUCTURE} for {@code secondary}. */
+    public static int painted(int paint, int secondary) {
+        return (paint != Paint.BARE ? 1 << Paint.BODY : 0) | (secondary != Paint.BARE ? 1 << Paint.STRUCTURE : 0);
+    }
+
+    /**
+     * The tint indices a line's quads take: its pipe {@code tint} + {@link Paint#BODY} and its flanges {@code tint} +
+     * {@link Paint#STRUCTURE}, each where {@code painted} has that channel; bolts, valves and the rest keep their colours.
+     */
+    public static java.util.function.ToIntFunction<Mesh.Material> lineTints(int painted, int tint) {
+        return material -> material == Mesh.Material.PIPE && (painted >> Paint.BODY & 1) != 0 ? tint + Paint.BODY
+                : material == Mesh.Material.FLANGE && (painted >> Paint.STRUCTURE & 1) != 0 ? tint + Paint.STRUCTURE : -1;
     }
 
     /** One sprite per material from the model's textures (named {@link Mesh.Material#texture()}), the particle where one is missing. */

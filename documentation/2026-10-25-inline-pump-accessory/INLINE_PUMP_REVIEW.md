@@ -1,0 +1,15 @@
+# Inline pump and compressor accessory review
+
+Branch codex/inline-pump-accessory from955d6618;2026-10-25. Implementation commit: e61751aa.
+
+Expected: a horizontal line-mounted pump supplies0.01m3/s up to the existing500kPa reference rise; gas compressor supplies0.05m3/s up to ratio3, with native phase/reversal/work/heat limits. Body size is decorative. Owner selected Sundyne LMC in place of Spencer and restricted both fittings to horizontal straight pipes.
+
+Previously: these items placed standalone block devices. Now: they install on the same pipe ID/entity/bore/spec through shared fitting interaction and queued native actuator controls. Two side arrow panels, upright motors, distinct Grundfos pump and Sundyne geared compressor bodies scale with bore and can exceed a block. Existing GUI/units/debugger/tool/wrench/recovery paths are reused. Constructor-built machines retain their controls/switches/sounds. No physics model or simplification changed.
+
+- Verification: 53 targeted tests, zero failures/errors, jar succeeds with client closed. InlineMoverAccessoryTest covers four horizontal directions, native graph/outlet mapping equivalence, unchanged ownership/contents, vertical/occupied rejection, pending control/diameter edits, removal/reinstall idempotence, active/pending round-trip, invalid controls, eligibility and finite/winding/overhang meshes. Existing pump/compressor physics and fitting/gauge tests also pass.
+- Software rendering:74 native geometry views including item looks, four headings, both mover types, three diameters and three viewing angles. All finite; native winding test passes. Reviewed default/max silhouettes; oil canister raised clear of arrow. Sources and logs in tools/inline-mover-accessories; no detached tracked probe or new Gradle switch/task, no gate scope change.
+- No Minecraft run: controls/layout reuse existing GUIs and drawing is judged by software renders. Owner manual checks: both hands, survival consume/refund, rejection/duplicate install, direct interaction/GUI/tool priority, flow direction/limits/phase errors, reload, wrench immediate appearance and neighbor flange/side-connection behavior. Only fresh worlds; no old-save compatibility check.
+- Formats retained19/12, accessory1 and payloads fluid-14/instruments-1. Version0.11.2 retained. No automatic integration/main merge; full quick/slow qualification remains required before later merge, with retained baseline failures separate.
+- Code guide updated: equipment, fluid-runtime, client-gui and verification. Reference approval, plan and contracts are in this batch; logs compressed in canonical tooling.
+
+Integration update2026-10-25: owner resumed; all final changes integrated into claude/floating-roof-tanks-81d68b as f658697c. Quick1409/1 and slow185/1, two exact retained baseline failures/no new failure; ten local files preserved; target compile/package passes and client running. This supersedes feature-delivery pause status. See documentation/2026-10-25-sight-glass-ratio-seams-sound/MERGE_REVIEW.md.

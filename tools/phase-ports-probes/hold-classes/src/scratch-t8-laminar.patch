@@ -1,0 +1,13 @@
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/network/NetworkReduction.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/NetworkReduction.java
+index 0fe9fa78..e04c82d1 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/NetworkReduction.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/NetworkReduction.java
+@@ -532,7 +532,7 @@ public final class NetworkReduction {
+     private static double loss(List<PassiveNetwork.Pipe> path,double q,double density,double viscosity) {
+         double total=0;
+         for(var pipe:path) {
+-            if(pipe.filter()==null)total+=pipe.pressureDrop(q,density,viscosity);
++            if(pipe.filter()==null){for(var section:pipe.sections())total+=128*viscosity*section.length()/(Math.PI*density*Math.pow(section.diameter(),4))*q;} // SCRATCH t8: the laminar slope only (A117)
+             else{double loading=pipe.filter().loading();total+=pipe.filter().cleanResistance()*(viscosity/.001)*(1+99*loading*loading)*q/density;}
+         }
+         return total;

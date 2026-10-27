@@ -43,6 +43,10 @@ public final class ModBlockEntities {
     private ModBlockEntities() {
     }
 
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<com.wormzjl.icheme.world.level.block.entity.PipeRackBlockEntity>>
+            PIPE_RACK = BLOCK_ENTITY_TYPES.register("pipe_rack",
+                    () -> BlockEntityType.Builder.of(com.wormzjl.icheme.world.level.block.entity.PipeRackBlockEntity::new, ModBlocks.PIPE_RACK.get()).build(null));
+
     public static void register(IEventBus modEventBus) {
         BLOCK_ENTITY_TYPES.register(modEventBus);
     }

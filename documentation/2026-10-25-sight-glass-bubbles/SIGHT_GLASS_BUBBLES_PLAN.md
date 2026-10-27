@@ -1,0 +1,10 @@
+# Multiphase sight-glass motion and NBP colours
+
+Owner request2026-10-25. Continue in the existing owned worktree on codex/sight-glass-bubbles from8c008b56. The earlier integration/client launch remain paused; do not update the target checkout.
+
+- Extend the ephemeral requested sight-glass display with a validated0..255 multiphase strength, derived from accepted transported phase volumes/combined solids and the existing recent-flow test. Single homogeneous liquid, stopped/unavailable or gas-only flow has no bubble signal. Keep the existing haze policy and schedule/cache replay; animate locally, with no new process calculation or tick-driven simulation.
+- Draw restrained moving bubble/droplet rings inside both clear window apertures, behind the glass and ahead of the liquid. Scale with the aperture and clip by construction. Deterministic device seeds and game time prevent frame-to-frame randomness; the effect is illustrative and not a phase/direction/velocity measurement.
+- Revise sight-glass wire protocol1→2 for colour plus one visual-strength byte. Retain checkpoint19/unit12 and the other protocols; live display state remains ephemeral. No migration.
+- Generate the bundled crude pseudo-component RGB values from their actual property-record NBP using a monotone pale-gold→amber→brown→near-black palette. Preserve explicit required appearance records, estimated labels, transparency, datapack override behavior and all scientific/transport data/fingerprints. This is estimated presentation, not an optical model.
+- Use minimal focused tests for phase/flow gating, display codec validation, contained/moving bubble geometry, default NBP colour ordering and existing appearance/mixing contracts. Run targeted tests/package with no client running. Produce native software animation/static views and a labelled NBP swatch chart; no new Minecraft check or desktop input.
+- Record review/index/code-guide/changelog and canonical tooling/evidence; deliver without merging, client launch or mod version bump.

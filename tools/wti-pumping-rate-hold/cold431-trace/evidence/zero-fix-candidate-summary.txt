@@ -1,0 +1,4 @@
+TRACE_RESULT form=candidate number=1 request=97 elapsed=836388800 worker=836244600 cpu=828125000 candidate=true detail=FULL
+targetedBalanceLines=0 segments=2
+segment=1 duration=0.05 attempts=18 accepted=0 rejected=0 transitions=17 zeroVelocity=0 finalEdge=15 finalPipe=8040474164728818871 finalStep=7.62939453125E-7
+segment=2 duration=0.05 attempts=5 accepted=3 rejected=1 transitions=0 zeroVelocity=0 finalEdge=none finalPipe=none finalStep=none

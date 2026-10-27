@@ -1,0 +1,533 @@
+commit 54c1d24ddb89f2a1c0cd60c629a79e83c4c9b312
+Author: wormzjl <wormzjl@gmail.com>
+Date:   Fri Oct 16 01:27:37 2026 +0800
+
+    thermo: an added phase starts at the node's own split (D26, option A)
+    
+    Owner decision D26 (2026-10-16). The outer phase check of D25 added a phase that the TP answer
+    holds and the node lacks as a nucleus of 1e-6 of the node's amount. Two junctions cycled on it
+    (quick check at 8a06b22f, class E7):
+    - seed 35: 366 K crude let down to about 1 atm in a junction flashes 0.35 of its 4.64 mol
+      (10.8 L). The 4.6e-6 mol nucleus could not grow 7e4-fold in one pass, and the cap corrections
+      alternated.
+    - seed 86: 85 C water meets 281 K nitrogen in a junction. The bubbles saturate with steam (58 of
+      171 kPa) and grow from 0.71 to 1.08 L beside 1.03 L of water. The steam nucleus left the gas at
+      0.71 L, the D41 fold dried it again, and the pass key repeated.
+    
+    Physics: a node at fixed amounts and energy (and volume, or pressure) has one equilibrium. The
+    check now seeds an added phase there, at the node's own split:
+    - a pipe junction: the engine's PH answer at its pressure and enthalpy (its mixing rows, D46),
+      NetworkPhaseEngine.ph, the target moved to the engine's datum by the spine's formation
+      enthalpies;
+    - a vessel: its own InventoryEquilibrium closure of what the point holds (UV while the wall is
+      taut, PH at the ambient pressure while slack). No new closure code: InventoryEquilibrium.split
+      calls close() from the TP answer with the populated phases it lacks (tpSeed). Where the
+      closure stops short of its tolerance, its last iterate is the seed: from the TP split of a
+      liquid-full vessel at its bubble point (several vessel volumes of vapour), 24 iterations end
+      within about 1e-5 of the vessel's small bubble;
+    - the seed is folded (D34 trace, D41 carried gas) and taken only if it then holds a phase the
+      node lacks: nothing the fold removes is added;
+    - where the node's own flash fails, the TP-based state seeds (counter phaseSeedFallbacks; zero in
+      every check below).
+    PHASE_NUCLEUS_FRACTION and nucleated() are deleted. phaseCorrection stops at the node it
+    corrects (the later verdicts were discarded, and an own split is a flash). The refresh's regime
+    loop seeds the same way. innerUv (M3a) is not on this path: a vessel's split is the network's own
+    closure, not the engine's UV.
+    
+    Checks: seeds 35, 86 and 116 clean (phaseSeeds 2, 2, 150; no fallback). LiquidFullBubblePointTest
+    4/4: the states print as at 8a06b22f; C2H6 interval 4 takes 7 substeps (was 9). NetworkPhaseEngineTest
+    row rewritten: N2 vapour held 1 % above its saturation pressure at 100 K starts, in a junction, with
+    0.048 of its 40 mol condensed at 100.143 K; water 1 % below its saturation pressure at 350 K boils
+    4.3e-4 mol at 349.757 K; 1e-9 below, the steam is a trace and nothing is added. fluidScienceTest
+    260/0. Quick check (200 seeds): random 195 clean with main's classes (C 101 175, E10 4 200, E3 157),
+    defaults 200 clean.
+    
+    Moved lines:
+    - PhasePortPriority oil-water-overflow, slice 56: the liquid-full tank loses its last gas by another
+      substep path (9 accepted and 5 rejected, was 10 and 6). It ends the slice 0.24 Pa lower, which at
+      water's compressibility is 1.1e-10 of its volume, and is within 0.01 Pa from the next slice.
+    - STACK_PASS fails. The upper tank keeps 0.47 g of water (the bound is 0.3 g), with its gas 0.89 K
+      colder and 272 Pa lower. Physics: the last 1.3 g drains through the bottom outlet and the gas
+      stays saturated. Code: a failed pass drains that water to a trace, the fold removes it and A85
+      keeps it out for the solve. The passes after that hold all the tank's water as steam,
+      supersaturated (about 25 % at 295.7 K). The vessel's own split condenses 0.0685 mol of it at 298.96 K,
+      450 Pa above the rest state. From there the coupled Newton reaches points the equation gate
+      refuses: the bottom outlet's water column is stated over 2 g of water. Smaller steps drain the
+      water slowly, and the run comes to rest with a puddle whose 5 mPa level head does not reopen the
+      closed run. Under D25 the nucleus kept the iterate's lower pressure, the pass converged at rest,
+      and the water drained in slice 14. Left to the owner (M2 report).
+    
+    Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/diagnostics/SolverDiagnostics.java b/src/main/java/com/wormzjl/createcheme/science/fluid/diagnostics/SolverDiagnostics.java
+index b9a8c1166..7e3dc28a8 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/diagnostics/SolverDiagnostics.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/diagnostics/SolverDiagnostics.java
+@@ -110,6 +110,10 @@ public final class SolverDiagnostics {
+      * solved again because the reconstruction folded a phase the pass had solved. */
+     public static final LongAdder traceFolds=new LongAdder();
+     public static final LongAdder traceFoldPasses=new LongAdder();
++    /** Outer phase checks that seeded a phase a node lacks at the node's own split ({@code FluidThermodynamics.phaseCheck},
++     * decision D26: a vessel's closure of its inventory, a junction's PH answer), and those that seeded the TP-based state
++     * instead because the node's own flash failed or none was given. */
++    public static final LongAdder phaseSeeds=new LongAdder(),phaseSeedFallbacks=new LongAdder();
+     // ---- properties ----
+     public static final LongAdder stateCalls=new LongAdder();
+     /** The subset of {@link #stateCalls} performed while building a Jacobian: the node decodes a
+@@ -216,6 +220,7 @@ public final class SolverDiagnostics {
+         map.put("equationGatePolishesAccepted",equationGatePolishesAccepted);map.put("traceFlushes",traceFlushes);
+         map.put("restIntervals",restIntervals);map.put("restStops",restStops);
+         map.put("traceFolds",traceFolds);map.put("traceFoldPasses",traceFoldPasses);
++        map.put("phaseSeeds",phaseSeeds);map.put("phaseSeedFallbacks",phaseSeedFallbacks);
+         map.put("luFactorizations",luFactorizations);map.put("luFactorNanos",luFactorNanos);
+         map.put("luSolves",luSolves);map.put("luSolveNanos",luSolveNanos);
+         map.put("luChecks",luChecks);map.put("luRefinements",luRefinements);
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/network/InventoryEquilibrium.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/InventoryEquilibrium.java
+index 706d69be5..532b31ffb 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/InventoryEquilibrium.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/InventoryEquilibrium.java
+@@ -4,6 +4,7 @@ import com.wormzjl.createcheme.science.fluid.solver.*;
+ import com.wormzjl.createcheme.science.fluid.thermo.FluidThermodynamics;
+ import com.wormzjl.createcheme.science.thermo.PhaseSupport;
+ import java.util.*;
++import java.util.function.UnaryOperator;
+ 
+ /** Refreshes a derived state from conserved inventory before an interval, never inside a network residual. */
+ public final class InventoryEquilibrium {
+@@ -36,12 +37,14 @@ public final class InventoryEquilibrium {
+         // seed 707 booked 1e-42 mol of crude and 1e-84 mol of water vapour into an empty 1 m3 tank; the closure's Newton,
+         // differencing that water with a step 1e19 times the vessel's contents, found no finite trial at any step size.
+         if(PassiveStepSolver.holdsNothing(inventory,state))return state;
+-        // Owner decision D25: the regime test is the outer phase check (FluidThermodynamics.phaseCheck). A phase leaves only
+-        // when the closure empties it (the trace fold of its point, also of a failed closure's last iterate), the phases
+-        // the TP answer finds missing are added, and no populated phase set is swapped for another on a TP verdict: a
+-        // vessel of pure water at its saturation line keeps its liquid and gains its steam, and its volume and energy set
+-        // the split. A phase the fold removed is not added again within this solve (A85), so the regimes only grow.
++        // Owner decisions D25 and D26: the regime test is the outer phase check (FluidThermodynamics.phaseCheck). A phase
++        // leaves only when the closure empties it (the trace fold of its point, also of a failed closure's last iterate);
++        // where the TP answer finds a phase missing, the vessel is seeded at its own split, this closure of its inventory
++        // (split below) started from the TP answer with the phases the vessel holds, and no populated phase set is
++        // swapped for another on a TP verdict: a vessel of pure water at its saturation line keeps its liquid and gains
++        // the steam its volume and energy give. A phase the check removed is not added again within this solve (A85).
+         var seen=new HashSet<String>();int excluded=0;
++        UnaryOperator<FluidThermodynamics.State> own=start->split(model,start,inventory,workFrom,checkpoint);
+         for(int pass=0;pass<16;pass++) {
+             checkpoint.run();if(!seen.add(regime(state)))throw new SparseNewton.Nonconvergence("Inventory equilibrium phase cycle");
+             FluidThermodynamics.State candidate;
+@@ -49,12 +52,12 @@ public final class InventoryEquilibrium {
+             catch(SparseNewton.Nonconvergence failure) {
+                 if(failure.lastVariables()==null)throw failure;
+                 var trial=layout(model,state,null).decode(failure.lastVariables(),0);
+-                var checked=model.phaseCheck(trial,false,excluded,null,checkpoint);
++                var checked=model.phaseCheck(trial,false,excluded,null,own,checkpoint);
+                 if(regime(checked).equals(regime(state)))throw failure;
+                 excluded|=FluidThermodynamics.phaseBits(trial)&~FluidThermodynamics.phaseBits(checked);state=checked.withSolids(inventory.solids());continue;
+             }
+             if(candidate==state)return state;
+-            var checked=model.phaseCheck(candidate,false,excluded,null,checkpoint);
++            var checked=model.phaseCheck(candidate,false,excluded,null,own,checkpoint);
+             if(checked!=candidate){excluded|=FluidThermodynamics.phaseBits(candidate)&~FluidThermodynamics.phaseBits(checked);state=checked;continue;}
+             return candidate;
+         }
+@@ -114,6 +117,28 @@ public final class InventoryEquilibrium {
+         if(norm(residual)>1e-8)throw new SparseNewton.Nonconvergence("Inventory closure does not meet full equation closure");
+         return closed;
+     }
++    /**
++     * Owner decision D26: a vessel's own split, the seed of a phase the outer phase check adds
++     * ({@code FluidThermodynamics.phaseCheck}): its closure ({@link #close}) at {@code inventory}, from {@code start} (a state
++     * holding the phases to lay the vessel out with), the wall's work booked from the bag volume {@code workFrom}: the
++     * equilibrium of its energy and volume while the wall is taut, of its enthalpy at the ambient pressure while slack (of
++     * its energy there with {@code workFrom} {@code NaN}, as at the interval's refresh, {@link #solve}).
++     * It is only a seed, so where the closure stops short of its tolerance its last iterate, the nearest it came, is the
++     * split, given the inventory's amounts ({@link ConservativeTransport#repartition}): from the TP split of a liquid-full
++     * vessel cooled past its bubble point (several vessel volumes of vapour) the closure's 24 iterations end within about
++     * 1e-5 of the bubble it holds. {@code null} where the closure leaves no iterate or refuses the state; the check then
++     * seeds its TP-based state.
++     */
++    static FluidThermodynamics.State split(FluidThermodynamics model,FluidThermodynamics.State start,PassiveNetwork.Inventory inventory,double workFrom,
++                                           Runnable checkpoint) {
++        try{return close(model,start,inventory,null,workFrom,checkpoint);}
++        catch(SparseNewton.Nonconvergence failure) {
++            if(failure.lastVariables()==null)return null;
++            try{return ConservativeTransport.repartition(model,layout(model,start,null).decode(failure.lastVariables(),0),inventory.moles());}
++            catch(IllegalArgumentException refused){return null;}
++        }
++        catch(IllegalArgumentException refused){return null;}
++    }
+     /**
+      * The vessel's own layout of {@code state} under {@code support}, or under the support the model's trace truncation
+      * policy gives {@code state} (what the next solve's first pass lays the vessel out with) when it is null or no longer
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+index 0b3b38b7b..08a960e61 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+@@ -2048,12 +2048,13 @@ public final class PassiveStepSolver {
+         return phaseCorrection(graph,states,checkpoint,null,null);
+     }
+     /**
+-     * The outer phase check of a pass's point, node by node ({@link FluidThermodynamics#phaseCheck}, owner decision D25):
+-     * a phase leaves a node only when the solve empties it (the trace fold of the point, at a converged point whose
++     * The outer phase check of a pass's point, node by node ({@link FluidThermodynamics#phaseCheck}, owner decisions D25 and
++     * D26): a phase leaves a node only when the solve empties it (the trace fold of the point, at a converged point whose
+      * reconstruction already folded it as at an unsuccessful pass's last iterate), a phase the node's TP answer holds and
+-     * the node does not is added, and no populated phase set is swapped for another on a TP verdict. Never inside a Newton
+-     * residual or Jacobian evaluation. One node is corrected per call, as one active-set change per pass; null when none
+-     * changes.
++     * the node does not is added at the node's own split (a junction's PH answer, a vessel's closure of what the point
++     * holds: {@link #vesselSplit}), and no populated phase set is swapped for another on a TP verdict. Never inside a Newton
++     * residual or Jacobian evaluation. One node is corrected per call, as one active-set change per pass, and the nodes
++     * after it are not checked (their verdicts would be discarded, and an own split is a flash); null when none changes.
+      *
+      * <p>{@code prepared}, when given, is the pass's per-node prepared temperature state: a node's flash at exactly that
+      * temperature reuses its Peng-Robinson workspace instead of preparing a new one (the arithmetic is the same).
+@@ -2062,18 +2063,28 @@ public final class PassiveStepSolver {
+      * stays finite.
+      */
+     private List<FluidThermodynamics.State> phaseCorrection(PassiveNetwork graph,List<FluidThermodynamics.State> states,Runnable checkpoint,FluidThermodynamics.Prepared[] prepared,int[] foldedPhases) {
+-        var corrected=new ArrayList<FluidThermodynamics.State>();boolean changed=false;
+         for(int i=0;i<states.size();i++) {
+-            var state=states.get(i);var node=graph.reservoirs().get(i);if(node.fixed()){corrected.add(state);continue;}
++            var state=states.get(i);var node=graph.reservoirs().get(i);if(node.fixed())continue;
+             FluidThermodynamics.State checked;
+-            try{checked=model.phaseCheck(state,node.junction(),foldedPhases==null?0:foldedPhases[i],prepared==null?null:prepared[i],checkpoint);}
++            try{checked=model.phaseCheck(state,node.junction(),foldedPhases==null?0:foldedPhases[i],prepared==null?null:prepared[i],
++                    node.junction()?null:start->vesselSplit(node,state,start,checkpoint),checkpoint);}
+             catch(com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation violation){throw violation.at(node.id());}
+-            if(checked!=state&&!changed) {
+-                changed=true;corrected.add(checked);
+-                if(foldedPhases!=null)foldedPhases[i]|=phaseCode(state)&~phaseCode(checked)&15;
+-            }else corrected.add(state);
++            if(checked==state)continue;
++            if(foldedPhases!=null)foldedPhases[i]|=phaseCode(state)&~phaseCode(checked)&15;
++            var corrected=new ArrayList<>(states);corrected.set(i,checked);return corrected;
+         }
+-        return changed?corrected:null;
++        return null;
++    }
++    /**
++     * Owner decision D26: a vessel's own split at a pass's point {@code state} ({@link InventoryEquilibrium#split}), from
++     * {@code start}: the closure of what the point holds, its amounts and internal energy, the wall's work booked from its
++     * bag volume, so the equilibrium of its energy and volume while the wall is taut and of its enthalpy at the ambient
++     * pressure while slack; {@code null} where that closure fails.
++     */
++    private FluidThermodynamics.State vesselSplit(PassiveNetwork.Reservoir node,FluidThermodynamics.State state,FluidThermodynamics.State start,Runnable checkpoint) {
++        double capacity=node.inventory().volume();
++        return InventoryEquilibrium.split(model,start,new PassiveNetwork.Inventory(capacity,PhaseLayout.totalAmounts(state),state.internalEnergy(),state.solids()),
++                PhaseLayout.bagVolume(state,capacity),checkpoint);
+     }
+     /**
+      * The pass's seeds with their trace phases folded ({@code FluidThermodynamics.folded}, decision D34); the list itself
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/FluidThermodynamics.java b/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/FluidThermodynamics.java
+index 50695146a..f92f15fc7 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/FluidThermodynamics.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/FluidThermodynamics.java
+@@ -10,10 +10,12 @@ import com.wormzjl.createcheme.science.thermo.phase.EquilibriumResult;
+ import com.wormzjl.createcheme.science.thermo.phase.FluidTpEquilibrium;
+ import com.wormzjl.createcheme.science.thermo.phase.PhaseContract;
+ import com.wormzjl.createcheme.science.thermo.phase.PhaseKind;
++import com.wormzjl.createcheme.science.fluid.state.EnergyReference;
+ import com.wormzjl.createcheme.science.fluid.state.SolidInventory;
+ import java.util.Arrays;
+ import java.util.List;
+ import java.util.Objects;
++import java.util.function.UnaryOperator;
+ 
+ /**
+  * Immutable fluid property snapshot and standalone TP initializer; coupled steps consume phase() directly. Phase
+@@ -622,41 +624,43 @@ public final class FluidThermodynamics {
+         return (state.liquidVolume()>0?1:0)|(state.vaporProperties()!=null?2:0)|(state.waterLiquid()>0?4:0)|(state.waterVapor()>0?8:0);
+     }
+     /**
+-     * Owner decision D25: the share of a node's fluid amount the phases {@link #phaseCheck} adds enter with, together (a
+-     * nucleus; the TP answer's whole amount of them when that is less). Three orders above the trace share
+-     * ({@link #PHASE_TRACE_FRACTION}), so the node's rows resolve it and grow it to the node's own equilibrium or empty it;
+-     * small enough that the seed keeps the populated phases' volume and energy (a vapour nucleus beside a liquid at the
+-     * ambient pressure adds about 0.2 % of its volume).
+-     */
+-    public static final double PHASE_NUCLEUS_FRACTION=1e-6;
+-    /**
+-     * The outer phase check of one node of the fluid network (owner decision D25), never inside a residual. A node at
+-     * fixed amounts, energy and volume has one equilibrium (a pipe junction: at its mixing rows' enthalpy and the network's
+-     * pressure); the node's own rows find it once its layout holds every phase that equilibrium needs, while a TP answer
+-     * at the node's temperature and pressure tells which phases are missing but not how much of each the node holds. So
+-     * the check never swaps one populated phase set for another on a TP verdict:
++     * The outer phase check of one node of the fluid network (owner decisions D25 and D26), never inside a residual. A node
++     * at fixed amounts, energy and volume has one equilibrium (a pipe junction: at its mixing rows' enthalpy and the
++     * network's pressure); the node's own rows find it once its layout holds every phase that equilibrium needs, while a
++     * TP answer at the node's temperature and pressure tells which phases are missing but not how much of each the node
++     * holds. So the check never swaps one populated phase set for another on a TP verdict, and an added phase starts at the
++     * node's own split:
+      * <ul>
+      * <li>a phase leaves only when the solve empties it: the trace fold ({@link #folded}, D34) removes a phase {@code state}
+      * holds below the trace share, also where {@code state} is an unsuccessful solve's last iterate;</li>
+-     * <li>a phase the TP answer ({@link #flashTP}: {@link #equilibriumTP} with its fold) holds and the node does not is
+-     * added, unless it is among {@code excluded} ({@link #phaseBits}: the phases the trace rule removed from the node in
+-     * this solve, A85): it enters at the TP answer's composition as a nucleus of {@link #PHASE_NUCLEUS_FRACTION} of the
+-     * node's amount (the TP answer's whole amount when less), taken per component from the populated phases in
+-     * proportion, so the populated phases stay with their compositions and the totals are the node's to rounding;</li>
+      * <li>a node holding every phase its material can form (both hydrocarbon phases or none, both water phases or none)
+-     * has none to add, and no TP answer is formed.</li>
++     * has none to add, and no TP answer is formed;</li>
++     * <li>where the TP answer ({@link #flashTP}: {@link #equilibriumTP} with its fold) holds a phase the node lacks that is
++     * not among {@code excluded} ({@link #phaseBits}: the phases the trace rule removed from the node in this solve, A85),
++     * the node is seeded at its own split (D26), the equilibrium of what it holds: a pipe junction's PH answer at its
++     * pressure and enthalpy ({@link #equilibriumPH}), a vessel's {@code vesselSplit}, the network's closure of its
++     * inventory (UV while its wall is taut, PH at the ambient pressure while slack), started from the TP answer with the
++     * node's populated phases it lacks ({@link #tpSeed}). Where the node's own flash fails, or none is given, that
++     * TP-based state seeds instead; it is only a seed, the node's rows give the answer;</li>
++     * <li>the seed is restated with the fold (D34, and D41's carried gas at a junction) and taken only when it then holds a
++     * phase the node lacks that is not excluded: nothing the fold removes is added, so the check and the fold agree.</li>
+      * </ul>
+      * The rule decides which phases a node is laid out with; how much of each it holds is its rows' answer. It holds for
+      * any material: a pure water node at its saturation pressure, whose TP answer is all liquid on one side and all steam
+-     * on the other, keeps its liquid and gains the steam, and a rigid vessel cooled past its bubble point gains a vapour
+-     * nucleus instead of the TP split, whose vapour the vessel cannot hold.
++     * on the other, keeps its liquid and gains the steam its energy and volume give; a rigid vessel cooled past its bubble
++     * point gains the small vapour of its own energy and volume, not the TP split's several vessel volumes; a liquid
++     * junction let down below its bubble point starts flashed at its enthalpy, and water and a gas mixed in a junction
++     * start with the gas saturated with steam where that makes the gas the larger phase (the bubbles grow), as a dry
++     * carried gas where it does not.
+      *
+-     * <p>{@code junction}: whether the node is a pipe junction (the carried gas of D41 in the fold); {@code prepared}, when
+-     * given, is the node's prepared temperature state (used only at exactly that temperature).
++     * <p>{@code junction}: whether the node is a pipe junction (the carried gas of D41 in the fold, its own split the PH
++     * answer); {@code prepared}, when given, is the node's prepared temperature state (used only at exactly that
++     * temperature); {@code vesselSplit}, a vessel's own split from a start holding the phases to lay it out with, or
++     * {@code null} where the vessel's flash fails (ignored for a junction).
+      *
+      * @return {@code state} itself when it keeps its phases and gains none; otherwise the node's new seed
+      */
+-    public State phaseCheck(State state,boolean junction,int excluded,Prepared prepared,Runnable checkpoint) {
++    public State phaseCheck(State state,boolean junction,int excluded,Prepared prepared,UnaryOperator<State> vesselSplit,Runnable checkpoint) {
+         var kept=folded(state,junction);
+         boolean hydrocarbonComplete=(kept.liquidProperties()==null)==(kept.vaporProperties()==null);
+         boolean waterComplete=kept.waterLiquid()>0&&kept.waterVapor()>0||kept.waterLiquid()+kept.waterVapor()==0;
+@@ -666,30 +670,39 @@ public final class FluidThermodynamics {
+         for(int i=0;i<n;i++)totals[i]=kept.liquidView()[i]+kept.vaporView()[i];
+         totals[n]=kept.waterLiquid()+kept.waterVapor();
+         var equilibrium=folded(equilibriumTP(kept.temperature(),kept.pressure(),totals,checkpoint,prepared).withSolidState(kept.solids(),kept.solidMoments()),junction);
+-        int added=phaseBits(equilibrium)&~phaseBits(kept)&~excluded;
+-        return added==0?kept:nucleated(kept,equilibrium,added,prepared);
+-    }
+-    /** {@code state} with the phases {@code added} ({@link #phaseBits}) of {@code equilibrium} entering as a nucleus; see
+-     * {@link #phaseCheck}. A hydrocarbon vapour the node did not hold is at the equilibrium's partial pressure. */
+-    private State nucleated(State state,State equilibrium,int added,Prepared prepared) {
+-        boolean liquid=(added&1)!=0,vapour=(added&2)!=0,water=(added&4)!=0,steam=(added&8)!=0;
+-        double[] l=state.liquid(),v=state.vapor(),el=equilibrium.liquidView(),ev=equilibrium.vaporView();
+-        double entering=(liquid?sum(el):0)+(vapour?sum(ev):0)+(water?equilibrium.waterLiquid():0)+(steam?equilibrium.waterVapor():0);
+-        double total=sum(l)+sum(v)+state.waterLiquid()+state.waterVapor();
+-        double scale=Math.min(1,PHASE_NUCLEUS_FRACTION*total/entering);
++        if((phaseBits(equilibrium)&~phaseBits(kept)&~excluded)==0)return kept;
++        var start=tpSeed(kept,equilibrium,prepared);
++        // A junction's energy is its enthalpy (its mixing rows, D46): the solve's, before the fold restated it.
++        State own=junction?equilibriumPH(kept.temperature(),kept.pressure(),state.enthalpy()-state.solidMoments().enthalpy(state.temperature(),state.pressure()),totals,checkpoint)
++                :vesselSplit==null?null:vesselSplit.apply(start);
++        SolverDiagnostics.count(own==null?SolverDiagnostics.phaseSeedFallbacks:SolverDiagnostics.phaseSeeds);
++        var seed=folded(own==null?start:own.withSolidState(kept.solids(),kept.solidMoments()),junction);
++        return (phaseBits(seed)&~phaseBits(kept)&~excluded)==0?kept:seed;
++    }
++    /**
++     * The TP-based state of {@link #phaseCheck} (decision D26): the TP answer {@code equilibrium} at {@code kept}'s
++     * temperature and pressure, for {@code kept}'s totals, with the populated phases of {@code kept} it lacks, so that no
++     * TP verdict takes a populated phase away (D25). Where the answer holds every phase of {@code kept} it is the answer;
++     * otherwise each component is shared between the answer's phases and those kept phases in proportion to what each
++     * holds of it (pure water the answer states all steam: half its water liquid, half steam), and a gas holding
++     * hydrocarbons and steam is at Dalton's hydrocarbon partial pressure, a dry gas at the node's pressure. The answer
++     * itself where that gas would pass the steam approximation's qualified partial pressure. The start of a vessel's own
++     * closure, and the seed where a node's own flash fails.
++     */
++    private State tpSeed(State kept,State equilibrium,Prepared prepared) {
++        int answer=phaseBits(equilibrium),lacking=phaseBits(kept)&~answer;
++        if(lacking==0)return equilibrium;
++        double[] kl=kept.liquidView(),kv=kept.vaporView(),el=equilibrium.liquidView(),ev=equilibrium.vaporView();
++        double[] l=new double[kl.length],v=new double[kl.length];double nv=0;
+         for(int c=0;c<l.length;c++) {
+-            double enter=(liquid?scale*el[c]:0)+(vapour?scale*ev[c]:0);
+-            if(!(enter>0))continue;
+-            double keep=Math.max(0,1-enter/(l[c]+v[c]));
+-            l[c]=liquid?scale*el[c]:l[c]*keep;v[c]=vapour?scale*ev[c]:v[c]*keep;
+-        }
+-        double wl=state.waterLiquid(),wv=state.waterVapor(),enter=(water?scale*equilibrium.waterLiquid():0)+(steam?scale*equilibrium.waterVapor():0);
+-        if(enter>0) {
+-            double keep=Math.max(0,1-enter/(wl+wv));
+-            wl=water?scale*equilibrium.waterLiquid():wl*keep;wv=steam?scale*equilibrium.waterVapor():wv*keep;
++            double a=(answer&1)!=0?el[c]:(lacking&1)!=0?kl[c]:0,b=(answer&2)!=0?ev[c]:(lacking&2)!=0?kv[c]:0,total=kl[c]+kv[c];
++            l[c]=b>0?total*(a/(a+b)):total;v[c]=total-l[c];nv+=v[c];
+         }
+-        double pc=vapour?equilibrium.hydrocarbonPartialPressure():state.hydrocarbonPartialPressure();
+-        return adoptingState(state.temperature(),state.pressure(),l,v,wl,wv,pc,prepared).withSolidState(state.solids(),state.solidMoments());
++        double a=(answer&4)!=0?equilibrium.waterLiquid():(lacking&4)!=0?kept.waterLiquid():0;
++        double b=(answer&8)!=0?equilibrium.waterVapor():(lacking&8)!=0?kept.waterVapor():0,water=kept.waterLiquid()+kept.waterVapor();
++        double wl=b>0?water*(a/(a+b)):water,wv=water-wl,p=kept.pressure();
++        try{return adoptingState(kept.temperature(),p,l,v,wl,wv,nv>0&&wv>0?p*(nv/(nv+wv)):p,prepared).withSolidState(kept.solids(),kept.solidMoments());}
++        catch(IllegalArgumentException steamLimit){return equilibrium;}
+     }
+ 
+     /**
+@@ -758,6 +771,28 @@ public final class FluidThermodynamics {
+         for(int evaluation=result.diagnostics().kernelEvaluations();evaluation>0;evaluation--)checkpoint.run();
+         return adopt(t,p,overall,result,given);
+     }
++    /**
++     * A pipe junction's own split (owner decision D26, {@link #phaseCheck}): the engine's PH equilibrium of {@code overall}
++     * (the conserved basis, water last) at the junction's pressure {@code p} and its fluid enthalpy {@code h} (J, the
++     * network's datum), under the competition of the junction's TP request at {@code t} ({@link #crystalsCompete}), as a
++     * network state ({@link #adopt}, unfolded); {@code null} where the engine does not converge or answers a phase set the
++     * network cannot carry. The engine of a spine package states energies on the spine's formation datum, the network on
++     * its sensible one (D10), so the target moves by the formation enthalpies; a spine-less package's engine is on the
++     * network's datum. {@code checkpoint} runs as for {@link #equilibriumTP}. Never inside a residual.
++     */
++    State equilibriumPH(double t,double p,double h,double[] overall,Runnable checkpoint) {
++        var spine=hydrocarbon.spine();double target=h;
++        if(spine.isPresent()) {
++            var formation=spine.get().formationReference();
++            target=EnergyReference.sensible(formation.components()).rebase(h,Arrays.copyOf(overall,hydrocarbon.componentCount()),formation);
++        }
++        checkpoint.run();
++        var result=phaseEngine().ph(p,target,overall,crystalsCompete(t,overall));
++        for(int evaluation=result.diagnostics().kernelEvaluations();evaluation>0;evaluation--)checkpoint.run();
++        if(!result.converged()||result.phases().isEmpty())return null;
++        try{return adopt(result.phases().getFirst().temperature(),p,overall,result,null);}
++        catch(IllegalArgumentException refused){return null;}
++    }
+ 
+     /** The crystals the package admits, in declaration order; empty without a crystal competition. */
+     List<String> crystals(){return crystalIds;}
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/NetworkPhaseEngine.java b/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/NetworkPhaseEngine.java
+index 7a0e60a6a..010700b3c 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/NetworkPhaseEngine.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/NetworkPhaseEngine.java
+@@ -19,7 +19,8 @@ import java.util.List;
+ /**
+  * The equilibrium engine of one network model: {@link FluidTpEquilibrium} on the network package's contract, with the
+  * network's own free water, as the one service that decides a node's phases ({@link FluidThermodynamics#equilibriumTP}:
+- * the outer active-set check, the inventory refresh, placement and boundary charges).
++ * the outer active-set check, the inventory refresh, placement and boundary charges), and of a pipe junction's own split
++ * where the outer check adds a phase ({@link #ph}, D26).
+  *
+  * <p>The evaluator carries the network's exact equation of state: on a package with a reference spine
+  * {@link CubicPhaseEvaluator#forPackage} (the same {@link SpinePackageData} as {@link HydrocarbonModel}); on a package
+@@ -27,8 +28,9 @@ import java.util.List;
+  * (they enter the vapour branch's shift and the gas volume of the free-water rule, so a translation-free evaluator would
+  * put the partial pressure elsewhere). Volume and {@code ln phi} are then bit for bit the network's. The ideal-gas
+  * functions of a spine-less package are its {@code shifted_polynomial_5} fits on the network's sensible datum (zero
+- * enthalpy and entropy at 298.15 K and 1e5 Pa): the engine needs them only for the states it reports, which the network
+- * does not read; phase decisions are the cubic's and the water rule's.</p>
++ * enthalpy and entropy at 298.15 K and 1e5 Pa, the network's own ideal-gas enthalpy): the engine needs them for the
++ * states it reports, which the network does not read, and for a junction's PH seed (its own rows then solve it); TP phase
++ * decisions are the cubic's and the water rule's.</p>
+  *
+  * <p>The engine's workspaces are per-thread scratch ({@link FluidTpEquilibrium.Workspace}), kept in a thread-local of
+  * this instance so a model shared by several island workers never shares one; the engine carries nothing between calls
+@@ -89,6 +91,11 @@ final class NetworkPhaseEngine {
+     EquilibriumResult tp(double t,double p,double[] overall,boolean crystals) {
+         return engine.tp(EquilibriumRequest.tp(t,p,species,overall,crystals?PhaseCompetition.FLUID_AND_CRYSTALS:PhaseCompetition.FLUID_ONLY),workspaces.get());
+     }
++    /** The PH equilibrium of {@code overall} at {@code p} with enthalpy {@code h} (J, on the engine's datum), under the
++     * competition {@code crystals} selects as for {@link #tp}: a pipe junction's own split (D26). */
++    EquilibriumResult ph(double p,double h,double[] overall,boolean crystals) {
++        return engine.ph(EquilibriumRequest.ph(p,h,species,overall,crystals?PhaseCompetition.FLUID_AND_CRYSTALS:PhaseCompetition.FLUID_ONLY),workspaces.get());
++    }
+ 
+     /**
+      * The network's free water as the engine's {@link FreeWaterModel}: the very methods {@link FluidThermodynamics#state}
+diff --git a/src/test/java/com/wormzjl/createcheme/science/fluid/network/LiquidFullBubblePointTest.java b/src/test/java/com/wormzjl/createcheme/science/fluid/network/LiquidFullBubblePointTest.java
+index 90fe4e5f3..536a93d17 100644
+--- a/src/test/java/com/wormzjl/createcheme/science/fluid/network/LiquidFullBubblePointTest.java
++++ b/src/test/java/com/wormzjl/createcheme/science/fluid/network/LiquidFullBubblePointTest.java
+@@ -19,9 +19,10 @@ import static org.junit.jupiter.api.Assertions.*;
+  * ... active-set pass", about 500 accepted and 530 rejected substeps, no partial commit), while pure methane passed: the
+  * outer check seeded the two-phase layout with the TP split at the single phase's overshot (T, P), several vessel volumes
+  * of vapour a rigid vessel cannot hold, and the two-phase Newton's last iterate (a trace of vapour) was one phase again,
+- * repeating the first pass's active set. On main the outer phase check of owner decision D25 answers it
+- * ({@link FluidThermodynamics#phaseCheck}): the vapour enters the liquid-full vessel as a nucleus beside the liquid it
+- * keeps, and the two-phase rows grow it to the vessel's own split; no TP verdict takes a phase away. Each vessel: 1 L
++ * repeating the first pass's active set. On main the outer phase check of owner decisions D25 and D26 answers it
++ * ({@link FluidThermodynamics#phaseCheck}): the vapour enters the liquid-full vessel at the vessel's own split, its closure
++ * of what it holds ({@link InventoryEquilibrium#split}: the small vapour of its energy and volume beside the liquid it
++ * keeps), and no TP verdict takes a phase away. Each vessel: 1 L
+  * charged liquid-full at 5 MPa, cooled by -200 W through the network's energy input (a 1e-12 mol/s methane trace), 5 s
+  * intervals; the rigid liquid's pressure falls about 0.9 to 1 MPa per interval and crosses the bubble pressure (about
+  * 2.0 MPa at 166 K with 2 % C2H6 or CO2, 1.4 MPa at 154 K with 2 % N2) in the fourth.
+diff --git a/src/test/java/com/wormzjl/createcheme/science/fluid/thermo/NetworkPhaseEngineTest.java b/src/test/java/com/wormzjl/createcheme/science/fluid/thermo/NetworkPhaseEngineTest.java
+index 54c378a94..989a0ff6f 100644
+--- a/src/test/java/com/wormzjl/createcheme/science/fluid/thermo/NetworkPhaseEngineTest.java
++++ b/src/test/java/com/wormzjl/createcheme/science/fluid/thermo/NetworkPhaseEngineTest.java
+@@ -165,36 +165,57 @@ class NetworkPhaseEngineTest {
+     }
+ 
+     /**
+-     * Owner decision D25 where T and P leave the split undetermined. At a pure component's coexistence pressure a standalone
+-     * flash states the liquid; the network's outer phase check ({@link FluidThermodynamics#phaseCheck}) keeps a node's
+-     * populated phases and adds the one that answer finds missing, for one component as for any material: a node holding
+-     * both phases keeps itself, a vapour-only node gains a liquid nucleus of {@code PHASE_NUCLEUS_FRACTION} of its amount
+-     * beside its vapour, the totals its own, and a phase the trace rule removed in this solve is not added back. Pure water
+-     * just below its saturation pressure (all steam by the flash) keeps its liquid and gains a steam nucleus.
++     * Owner decisions D25 and D26 where T and P leave the split undetermined. At a pure component's coexistence pressure a
++     * standalone flash states the liquid; the network's outer phase check ({@link FluidThermodynamics#phaseCheck}) keeps a
++     * node's populated phases, and a phase that answer finds missing enters at the node's own split, for one component as
++     * for any material. A node holding both phases keeps itself. A pipe junction's own split is its PH answer: nitrogen
++     * vapour held 1 % above its saturation pressure at 100 K condenses the liquid its enthalpy gives, at the saturation
++     * temperature of its pressure, and liquid water 1 % below its saturation pressure at 350 K boils off the steam its
++     * enthalpy gives; 1e-9 below, that steam (about 4e-11 of the water) is a trace the fold removes, so nothing is added.
++     * Where a vessel's own flash fails, the TP answer seeds with the populated phase it lacks (each half of the
++     * component). A phase the trace rule removed in this solve is not added back.
+      */
+     @Test
+-    void theOuterCheckKeepsThePopulatedPhasesAndAddsTheMissingOneWhereTAndPLeaveTheSplitOpen() {
++    void theOuterCheckKeepsThePopulatedPhasesAndSeedsTheMissingOneAtTheNodesOwnSplit() {
+         double t = 100, p = saturationPressure(t);
+         var flash = model.flashTP(t, p, pure(nitrogen, 40, 0), () -> {});
+         assertEquals(40, sum(flash.liquidView()), 0, "a standalone flash at coexistence states the liquid");
+         double[] liquid = new double[n - 1], vapor = new double[n - 1], none = new double[n - 1];
+         liquid[nitrogen] = 30;vapor[nitrogen] = 10;
+         var both = model.state(t, p, liquid, vapor, 0, 0, p);
+-        assertSame(both, model.phaseCheck(both, false, 0, null, () -> {}), "a node holding both phases keeps its layout");
++        assertSame(both, model.phaseCheck(both, false, 0, null, null, () -> {}), "a node holding both phases keeps its layout");
++        // A junction: the PH answer at its pressure and enthalpy.
++        double above = 1.01 * p;
+         vapor[nitrogen] = 40;
++        var supersaturated = model.state(t, above, none, vapor, 0, 0, above);
++        var condensed = model.phaseCheck(supersaturated, true, 0, null, null, () -> {});
++        System.out.printf("N2 vapour at %.6f Pa, 100 K: junction seed %.6f K, liquid %.6e of 40 mol%n", above, condensed.temperature(), sum(condensed.liquidView()));
++        assertTrue(sum(condensed.liquidView()) > 0 && sum(condensed.vaporView()) > 0, "the liquid its enthalpy condenses beside the vapour");
++        assertEquals(above, condensed.pressure(), 0, "at the junction's pressure");
++        assertEquals(above, saturationPressure(condensed.temperature()), 1e-7 * above, "at the saturation temperature of that pressure");
++        assertEquals(supersaturated.enthalpy(), condensed.enthalpy(), 1e-9 * Math.abs(supersaturated.enthalpy()), "at the junction's enthalpy");
++        assertEquals(40, sum(condensed.liquidView()) + sum(condensed.vaporView()), 1e-12, "the junction's own amount");
++        // A vessel whose own flash fails: the TP answer (all liquid) with the vapour the node holds.
+         var gas = model.state(t, p, none, vapor, 0, 0, p);
+-        var checked = model.phaseCheck(gas, false, 0, null, () -> {});
+-        assertEquals(40 * FluidThermodynamics.PHASE_NUCLEUS_FRACTION, sum(checked.liquidView()), 1e-18, "a liquid nucleus");
+-        assertEquals(40, sum(checked.liquidView()) + sum(checked.vaporView()), 1e-12, "the node's own amount");
+-        assertNotNull(checked.vaporProperties(), "the vapour stays");
+-        assertSame(gas, model.phaseCheck(gas, false, FluidThermodynamics.phaseBits(flash), null, () -> {}),
++        var starts = new ArrayList<FluidThermodynamics.State>();
++        var seeded = model.phaseCheck(gas, false, 0, null, start -> {starts.add(start);return null;}, () -> {});
++        assertEquals(1, starts.size(), "the vessel's own split is asked once");
++        assertSame(starts.getFirst(), seeded, "its failure seeds the TP-based state");
++        assertEquals(20, sum(seeded.liquidView()), 1e-12, "the answer's liquid");
++        assertEquals(20, sum(seeded.vaporView()), 1e-12, "beside the node's vapour");
++        assertSame(gas, model.phaseCheck(gas, false, FluidThermodynamics.phaseBits(flash), null, null, () -> {}),
+                 "a phase the trace rule removed in this solve is not added back");
+-        double tw = 350, pw = model.saturationPressure(tw) * (1 - 1e-9);
+-        var water = model.state(tw, pw, none, none, 1, 0, pw);
+-        assertEquals(0, model.flashTP(tw, pw, pure(nitrogen, 0, 1), () -> {}).waterLiquid(), 0, "the flash: all steam");
+-        var wet = model.phaseCheck(water, false, 0, null, () -> {});
+-        assertEquals(FluidThermodynamics.PHASE_NUCLEUS_FRACTION, wet.waterVapor(), 1e-21, "a steam nucleus");
+-        assertEquals(1, wet.waterLiquid() + wet.waterVapor(), 1e-15, "the liquid stays, the water its own");
++        double tw = 350, saturation = model.saturationPressure(tw);
++        assertEquals(0, model.flashTP(tw, .99 * saturation, pure(nitrogen, 0, 1), () -> {}).waterLiquid(), 0, "the flash: all steam");
++        var superheated = model.state(tw, .99 * saturation, none, none, 1, 0, .99 * saturation);
++        var boiled = model.phaseCheck(superheated, true, 0, null, null, () -> {});
++        System.out.printf("water at %.3f Pa, 350 K: junction seed %.6f K, steam %.6e of 1 mol%n", .99 * saturation, boiled.temperature(), boiled.waterVapor());
++        assertTrue(boiled.waterLiquid() > 0 && boiled.waterVapor() > 0, "the liquid stays and the steam its enthalpy gives enters");
++        assertEquals(.99 * saturation, model.saturationPressure(boiled.temperature()), 1e-7 * saturation, "at the saturation temperature");
++        assertEquals(superheated.enthalpy(), boiled.enthalpy(), 1e-9 * Math.abs(superheated.enthalpy()), "at the junction's enthalpy");
++        assertEquals(1, boiled.waterLiquid() + boiled.waterVapor(), 1e-15, "the water its own");
++        var barely = model.state(tw, saturation * (1 - 1e-9), none, none, 1, 0, saturation * (1 - 1e-9));
++        assertSame(barely, model.phaseCheck(barely, true, 0, null, null, () -> {}), "a trace of steam is not added");
+     }
+ 
+     /**

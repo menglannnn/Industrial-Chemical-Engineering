@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "kind": "mixture",
+  "name": "Pilot: N2 + 10 % CO2",
+  "translation_key": "",
+  "package": "icheme:pilot_cryogenic",
+  "basis": "mole",
+  "components": [
+    {"id": "Nitrogen", "amount": 90},
+    {"id": "CarbonDioxide", "amount": 10}
+  ]
+}

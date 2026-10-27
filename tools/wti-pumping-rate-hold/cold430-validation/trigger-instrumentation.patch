@@ -1,0 +1,14 @@
+--- a/src/main/java/com/wormzjl/icheme/science/fluid/network/PassiveStepSolver.java
++++ b/src/main/java/com/wormzjl/icheme/science/fluid/network/PassiveStepSolver.java
+@@ -2629,9 +2629,11 @@
+                 // component crosses half the hull; sweep-first for every large step worsened cold 311/567 and defaults 397.
+                 if(step!=null)for(int i=0;i<count;i++)if(regularized[i]&&Math.abs(step[i])>.5*(high-low)){targeted=true;break;}
+                 if(targeted){if(++sweeps>12)break;double[] was=p.clone(),wasResidual=residual.clone();double wasMerit=merit;
++                    if(Boolean.getBoolean("cold430.validation.trace"))System.out.println("C430_TARGET iteration="+iteration+" floor="+floor+" regularized="+Arrays.toString(regularized)+" step="+Arrays.toString(step));
+                     // Reuse the junction bisection, but only on the rows meeting both conditions above.
+                     for(int i=0;i<count;i++)regularized[i]&=Math.abs(step[i])>.5*(high-low);
+                     sweep(p,regularized);merit=residual(p,residual,null);
++                    if(Boolean.getBoolean("cold430.validation.trace"))System.out.println("C430_SWEEP iteration="+iteration+" selected="+Arrays.toString(regularized)+" before="+wasMerit+" after="+merit);
+                     if(merit<wasMerit){double moved=0;for(int i=0;i<nodes;i++)if(unknown[i]>=0)moved=Math.max(moved,Math.abs(p[i]-was[i])/Math.max(1,Math.abs(was[i])));
+                         if(moved<1e-12)break;accepted=true;}
+                     else{System.arraycopy(was,0,p,0,nodes);System.arraycopy(wasResidual,0,residual,0,count);merit=wasMerit;}}

@@ -1,0 +1,3 @@
+# frame-time-probe (batch 2026-10-15-custom-equipment-rendering)
+`FrameTimeProbe.java`: the client command `/fpsprobe <warm-up s> <measurement s> <label>` and the save autopilot of the FPS pairs and shader lanes (usage in `../README.md`). Measurement only; removed from `src/mcpCompat/java/com/wormzjl/createcheme/mcpcompat/FrameTimeProbe.java` by commit 03be157b (parent 6cd0d020); `git show 6cd0d020:src/mcpCompat/java/com/wormzjl/createcheme/mcpcompat/FrameTimeProbe.java` equals the stored copy.
+Re-attach: copy the file back to that path (it registers itself with `@EventBusSubscriber` in the `createcheme_mcp_compat` mod), or `git apply -R detach.patch` on a tree that has 03be157b.

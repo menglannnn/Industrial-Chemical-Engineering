@@ -1,0 +1,168 @@
+    /**
+     * A step of the free-water rule where the water boils (or, below its melting line, sublimes) at the state pressure:
+     * one side has all water condensed (liquid or ice) and no gas at all (no hydrocarbons, or a hydrocarbon liquid
+     * without vapour), the other all water as steam.
+     */
+    private static boolean condensedStep(EquilibriumResult condensedSide, EquilibriumResult steamSide) {
+        if (condensedSide == null || steamSide == null) return false;
+        EquilibriumResult.FreeWater condensed = condensedSide.freeWater();
+        EquilibriumResult.FreeWater steam = steamSide.freeWater();
+        if (condensed == null || steam == null) return false;
+        if (!(condensed.condensed() > 0.0) || condensed.waterVapor() != 0.0 || steam.condensed() != 0.0) return false;
+        for (PhaseAmounts phase : condensedSide.phases()) if (phase.kind() == PhaseKind.VAPOR) return false;
+        return true;
+    }
+
+    /**
+     * A step of the free-water rule where the water freezes at its melting temperature (WP4): the colder side holds the
+     * condensed water as ice, the warmer as liquid; the gas and the hydrocarbons are continuous across the line (the
+     * ice's fugacity meets the liquid's on it, {@link FreeWaterIce}), so the step is the condensed water's alone.
+     */
+    private static boolean freezeStep(EquilibriumResult iceSide, EquilibriumResult liquidSide) {
+        if (iceSide == null || liquidSide == null) return false;
+        EquilibriumResult.FreeWater ice = iceSide.freeWater();
+        EquilibriumResult.FreeWater liquid = liquidSide.freeWater();
+        if (ice == null || liquid == null) return false;
+        return ice.ice() > 0.0 && ice.liquidWater() == 0.0 && liquid.liquidWater() > 0.0 && liquid.ice() == 0.0;
+    }
+
+    /**
+     * Water's saturation temperature at {@code p} near the closed bracket {@code [low, high]}, by bisection on the
+     * condensed water's vapour pressure ({@link #condensedPressure}: the ice's below the melting line, the liquid's above);
+     * NaN unless it lies within 1e-6 (relative) of the bracket, where the step is then water boiling (or subliming) at the
+     * state pressure.
+     */
+    private double saturationTemperature(double p, double low, double high, Workspace w) {
+        double margin = 1.0e-6 * high;
+        double a = Math.max(w.minimumT, low - margin);
+        double b = Math.min(w.maximumT, high + margin);
+        if (!(condensedPressure(a, p) < p) || !(condensedPressure(b, p) >= p)) return Double.NaN;
+        for (int k = 0; k < 200 && Math.nextUp(a) < b; k++) {
+            double middle = 0.5 * (a + b);
+            if (condensedPressure(middle, p) < p) a = middle; else b = middle;
+        }
+        return 0.5 * (a + b);
+    }
+
+    /**
+     * The pressure at which free water at {@code t} boils or sublimes, Pa: the liquid's saturation pressure, or below the
+     * melting line the ice's fugacity at that pressure itself (two fixed-point steps; the ice's fugacity moves by 7e-10 per
+     * pascal, so the second leaves it to rounding).
+     */
+    private double condensedSaturationPressure(double t) {
+        double p = freeWater.saturationPressure(t);
+        if (!frozen(t, p)) return p;
+        p = freeWater.ice().fugacity(t, p);
+        return freeWater.ice().fugacity(t, p);
+    }
+
+    /**
+     * Free water boiling (or subliming) at the state pressure {@code p}, the condensed water's vapour pressure at
+     * {@code t}: the hydrocarbons as on the condensed side (their liquid at {@code (t, p)}, no vapour), the water split into
+     * steam at {@code p_w = p} and condensed water (its liquid, or its ice below the melting line), the steam fraction from
+     * the energy (PH) or volume (UV) balance. The free-water rule's own limit of both water phases ({@code p_w = p_sat}),
+     * which its TP answer leaves on one side of the step. Null when the balance puts the fraction outside [0, 1] by more
+     * than the specification tolerance: the target lies in a part of the step no state of the rule spans (hydrocarbon
+     * vapour appearing with the steam), which the caller types as not converged; null as well beside a competing crystal,
+     * whose hydrocarbons are not one liquid.
+     */
+    private EquilibriumResult waterBoiling(Specification specification, double t, double p, double target,
+                                           EquilibriumResult condensedSide, PhaseCompetition competition, Workspace w) {
+        if (condensedSide.freeWater().hydrocarbon().holdsCrystal()) return null;
+        boolean energy = specification == Specification.PH;
+        boolean frozen = frozen(t, p);
+        double saturation = frozen ? freeWater.ice().fugacity(t, p) : freeWater.saturationPressure(t);
+        PhaseState liquid = null;
+        double hydrocarbonValue = 0.0;
+        if (w.hydrocarbonTotal > 0.0) {
+            liquid = evaluator.evaluate(t, p, w.feed, Root.LIQUID, w.phases, w.liquidState);
+            w.outerKernel++;
+            hydrocarbonValue = w.hydrocarbonTotal * (energy ? liquid.molarEnthalpy() : liquid.molarVolume());
+        }
+        double waterValue;
+        if (frozen) {
+            CrystalReference.State ice = freeWater.ice().properties(t, p);
+            waterValue = energy ? ice.enthalpy() : ice.volume();
+        } else {
+            freeWater.liquid(t, p, w.waterProperties);
+            waterValue = energy ? w.waterProperties[1] : w.waterProperties[0];
+        }
+        double water = w.waterTotal;
+        double steamValue = energy ? freeWater.vapor().enthalpy(t) : R * t / p;
+        double span = water * (steamValue - waterValue);
+        double beta = (target - hydrocarbonValue - water * waterValue) / span;
+        double allowance = SPECIFICATION_TOLERANCE * (energy ? w.total * R * t : Math.abs(target)) / Math.abs(span);
+        if (!(beta >= -allowance && beta <= 1.0 + allowance)) return null;
+        beta = Math.clamp(beta, 0.0, 1.0);
+        double steam;
+        double condensed;
+        if (beta <= 0.5) {
+            steam = beta * water;
+            condensed = water - steam;
+        } else {
+            condensed = (1.0 - beta) * water;
+            steam = water - condensed;
+        }
+        List<PhaseAmounts> phases = new ArrayList<>(3);
+        if (steam > 0.0) phases.add(gasPhase(t, p, p, 0.0, steam, null, w));
+        if (liquid != null) phases.add(new PhaseAmounts(PhaseKind.LIQUID, null, t, p, expand(w.feed), liquid.copy()));
+        if (condensed > 0.0) phases.add(condensedPhase(t, p, saturation, condensed, frozen, w));
+        var split = freeWaterSplit(condensedSide.freeWater().hydrocarbon(), saturation, p, steam > 0.0 ? p : 0.0, condensed,
+                steam, frozen);
+        String note = "free water " + (frozen ? "subliming" : "boiling") + " at the state pressure (" + t + " K, "
+                + (frozen ? "f_ice " : "p_sat ") + saturation + " Pa): steam fraction " + beta + " from the "
+                + (energy ? "energy" : "volume") + " balance";
+        return converged(competition, Classification.FREE_WATER, phases, List.of(), diagnostics(w, null, false), null, split, note);
+    }
+
+    /**
+     * Free water freezing at its melting line (WP4), {@code t = T_m(p)}: the TP answer there with its condensed water
+     * liquid (the gas, the hydrocarbons and the steam are the same on both sides of the line), the condensed water split
+     * into ice and liquid by the energy (PH) or volume (UV) balance, {@code target = X_L - beta n_c (x_L - x_s)}: the ice
+     * fraction {@code beta}. Null where the liquid side has no condensed liquid, or the balance puts {@code beta} outside
+     * [0, 1] by more than the specification tolerance (the search goes on).
+     */
+    private EquilibriumResult waterFreezing(Specification specification, double t, double p, double target,
+                                            PhaseCompetition competition, Workspace w) {
+        boolean energy = specification == Specification.PH;
+        EquilibriumResult warm = evaluateTp(t, p, competition, false, w);
+        w.outerEvaluations++;
+        w.outerKernel += w.kernelEvaluations;
+        w.outerDerivative += w.derivativeEvaluations;
+        if (!warm.converged() || warm.freeWater() == null) return null;
+        EquilibriumResult.FreeWater split = warm.freeWater();
+        double condensed = split.liquidWater();
+        if (!(condensed > 0.0) || split.ice() != 0.0) return null;
+        freeWater.liquid(t, p, w.waterProperties);
+        CrystalReference.State solid = freeWater.ice().properties(t, p);
+        double liquidValue = energy ? w.waterProperties[1] : w.waterProperties[0];
+        double iceValue = energy ? solid.enthalpy() : solid.volume();
+        double value = energy ? warm.enthalpy() : warm.volume();
+        double span = condensed * (iceValue - liquidValue);
+        double beta = (target - value) / span;
+        double allowance = SPECIFICATION_TOLERANCE * (energy ? w.total * R * t : Math.abs(target)) / Math.abs(span);
+        if (!(beta >= -allowance && beta <= 1.0 + allowance)) return null;
+        beta = Math.clamp(beta, 0.0, 1.0);
+        double ice;
+        double liquid;
+        if (beta <= 0.5) {
+            ice = beta * condensed;
+            liquid = condensed - ice;
+        } else {
+            liquid = (1.0 - beta) * condensed;
+            ice = condensed - liquid;
+        }
+        double saturation = split.saturationPressure();
+        List<PhaseAmounts> phases = new ArrayList<>(warm.phases().size() + 1);
+        for (PhaseAmounts phase : warm.phases()) if (phase.kind() != PhaseKind.FREE_WATER) phases.add(phase);
+        if (liquid > 0.0) phases.add(freeWaterPhase(t, p, saturation, liquid, w));
+        if (ice > 0.0) phases.add(icePhase(t, p, saturation, ice, w));
+        var frozen = new EquilibriumResult.FreeWater(split.hydrocarbon(), saturation, split.hydrocarbonPressure(),
+                split.waterPartialPressure(), liquid, split.waterVapor(), ice);
+        String note = "free water freezing at its melting temperature (" + t + " K at " + p + " Pa): ice fraction " + beta
+                + " from the " + (energy ? "energy" : "volume") + " balance";
+        return new EquilibriumResult(Specification.TP, EquilibriumResult.Status.CONVERGED, null, warm.detail() + "; " + note,
+                warm.identity(), warm.competition(), Classification.FREE_WATER, phases, List.of(), warm.coverage(),
+                warm.diagnostics(), frozen, warm.deposition());
+    }
+

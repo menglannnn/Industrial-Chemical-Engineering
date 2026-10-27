@@ -1,0 +1,10 @@
+# M4 GUI check, step 1 (bridge.js cmds; MSYS_NO_PATHCONV=1 in Git Bash): platform and the two generators, unconnected.
+# A new generator holds water at 298.15 K (FluidWorldAuthority); each is configured before anything joins it, so no
+# water reaches the cold tank. Row at z = 78, devices at y = 101 on a 17 x 17 platform at y = 100.
+gamerule doDaylightCycle false
+gamerule doMobSpawning false
+gamerule doWeatherCycle false
+time set noon
+fill 54 100 70 70 100 86 minecraft:white_concrete
+setblock 60 101 78 createcheme:fluid_generator
+setblock 62 101 75 createcheme:fluid_generator

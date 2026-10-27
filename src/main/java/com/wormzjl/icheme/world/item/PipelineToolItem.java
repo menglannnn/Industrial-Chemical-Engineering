@@ -5,13 +5,16 @@ import com.mojang.serialization.DataResult;
 import com.wormzjl.icheme.registry.ModItems;
 import com.wormzjl.icheme.runtime.fluid.FluidWorldAuthority;
 import com.wormzjl.icheme.runtime.fluid.PhysicalFluidTopology;
+import com.wormzjl.icheme.runtime.fluid.PhysicalRegistry;
 import com.wormzjl.icheme.science.equipment.PipeSizes;
 import com.wormzjl.icheme.science.fluid.network.PipeResistance;
 import com.wormzjl.icheme.science.fluid.topology.TopologyCompiler;
 import com.wormzjl.icheme.world.inventory.PipelineToolMenu;
 import com.wormzjl.icheme.world.level.block.FluidDeviceBlock;
+import com.wormzjl.icheme.world.level.block.entity.EquipmentShellBlockEntity;
 import com.wormzjl.icheme.world.level.block.entity.FluidDeviceBlockEntity;
 import net.minecraft.ChatFormatting;
+import net.minecraft.core.BlockPos;
 import io.netty.buffer.ByteBuf;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.codec.ByteBufCodecs;
@@ -46,11 +49,12 @@ public final class PipelineToolItem extends Item {
     public InteractionResult onItemUseFirst(ItemStack stack, UseOnContext context) {
         var player = context.getPlayer();
         if (player == null) return InteractionResult.PASS;
-        if (player.isShiftKeyDown()) return configure(player, context.getHand());
         var level = context.getLevel();
         var pos = context.getClickedPos();
+        // Sneaking resizes a pipe's whole line; anywhere else it opens the tool's menu.
+        boolean line = player.isShiftKeyDown();
         if (!(level.getBlockState(pos).getBlock() instanceof FluidDeviceBlock block)
-                || block.kind() != TopologyCompiler.Kind.PIPE) return InteractionResult.PASS;
+                || block.kind() != TopologyCompiler.Kind.PIPE) return line ? configure(player, context.getHand()) : InteractionResult.PASS;
         var settings = stack.get(ModItems.PIPELINE_TOOL_SETTINGS.get());
         if (settings == null || !player.mayBuild() || player.isSpectator() || !level.mayInteract(player, pos))
             return InteractionResult.FAIL;
@@ -61,8 +65,22 @@ public final class PipelineToolItem extends Item {
                 world.at(position).filter(record -> record.device().id() == entity.fluidIdentity()
                         && record.device().kind() == TopologyCompiler.Kind.PIPE).ifPresent(record -> {
                     var device = record.device();
+                    if (line) {
+                        // A pipe beside a nozzle takes at most what the nozzle takes (NozzleBore); a rack lane meets no nozzle.
+                        int pipes = world.resizeLine(device.id(), settings.diameter(), d -> d.position().lane() > 0 ? PipeSizes.MAX_BORE
+                                : EquipmentShellBlockEntity.largestBoreBeside(level, new BlockPos(d.position().x(), d.position().y(), d.position().z()), d.joints()));
+                        player.displayClientMessage(pipes == PhysicalRegistry.LANE_TOO_NARROW ? Component.translatable("item.icheme.pipeline_tool.lane_too_narrow", Double.toString(settings.diameter()))
+                                : pipes == PhysicalRegistry.NOZZLE_TOO_SMALL ? Component.translatable("item.icheme.pipeline_tool.nozzle_too_small", Double.toString(settings.diameter()))
+                                : pipes < 0 ? Component.translatable("item.icheme.pipeline_tool.line_too_long", FluidWorldAuthority.LINE_LIMIT)
+                                : Component.translatable("item.icheme.pipeline_tool.line_resized", pipes, Double.toString(settings.diameter())), true);
+                        return;
+                    }
                     var geometry = device.geometry();
                     if (geometry.diameter() == settings.diameter()) return;
+                    if (settings.diameter() > EquipmentShellBlockEntity.largestBoreBeside(level, pos, entity.joints()) + 1e-9) {
+                        player.displayClientMessage(Component.translatable("item.icheme.pipeline_tool.nozzle_too_small", Double.toString(settings.diameter())), true);
+                        return;
+                    }
                     var resized = new PipeResistance.Geometry(geometry.length(), settings.diameter(), geometry.roughness(), geometry.minorLoss());
                     world.edit(device.id(), record.revision(), device.withGeometry(resized), record.spec());
                 });
@@ -85,6 +103,7 @@ public final class PipelineToolItem extends Item {
                 .withStyle(ChatFormatting.AQUA));
         tooltip.add(Component.translatable("item.icheme.pipeline_tool.configure").withStyle(ChatFormatting.GRAY));
         tooltip.add(Component.translatable("item.icheme.pipeline_tool.apply").withStyle(ChatFormatting.GRAY));
+        tooltip.add(Component.translatable("item.icheme.pipeline_tool.apply_line").withStyle(ChatFormatting.GRAY));
     }
 
     /** The tool's internal diameter in metres; the same bounds govern storage, wire and editor input. */

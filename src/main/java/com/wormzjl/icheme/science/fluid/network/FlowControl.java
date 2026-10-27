@@ -3,7 +3,7 @@ package com.wormzjl.icheme.science.fluid.network;
 import com.wormzjl.icheme.science.math.DeterministicMath;
 
 /** Immutable actuator settings; the active regime belongs to a solve attempt, never to this shared value. */
-public sealed interface FlowControl permits FlowControl.Passive,FlowControl.Mover,FlowControl.PressureValve {
+public sealed interface FlowControl permits FlowControl.Passive,FlowControl.Mover,FlowControl.Valve {
     record Passive() implements FlowControl {}
     /**
      * A device that moves fluid from its connection's first end (its suction) to its second at a set suction volume flow,
@@ -111,8 +111,38 @@ public sealed interface FlowControl permits FlowControl.Passive,FlowControl.Move
         }
         @Override public String deviceName(){return "compressor";}
     }
+    /** A passive throttling actuator. It never adds shaft work or pressure. */
+    sealed interface Valve extends FlowControl permits PressureValve,ControlValve {
+        double targetPressure();
+        default boolean pressureControl(){return true;}
+        default boolean bare(){return false;}
+        default double targetMassFlow(double density){return Double.NaN;}
+    }
+    enum ValveSource { NONE, PRESSURE, MASS_FLOW, VOLUME_FLOW }
+    /** Configured facts; source identity/revision invalidate endpoint carry when a component or target changes. */
+    record ControlValve(ValveSource source,double targetPressure,double massTarget,double volumeTarget,java.util.UUID sensor,long revision) implements Valve {
+        public ControlValve(ValveSource source,double target,java.util.UUID sensor,long revision){this(source,source==ValveSource.PRESSURE||source==ValveSource.NONE?target:200000,source==ValveSource.MASS_FLOW?target:1,source==ValveSource.VOLUME_FLOW?target:.01,sensor,revision);}
+        public ControlValve {
+            java.util.Objects.requireNonNull(source);
+            if(!Double.isFinite(targetPressure)||targetPressure<=0||!Double.isFinite(massTarget)||massTarget<0||!Double.isFinite(volumeTarget)||volumeTarget<0||revision<0||
+                    source==ValveSource.NONE&&sensor!=null)throw new IllegalArgumentException("Invalid control valve");
+        }
+        public static ControlValve unconfigured(){return new ControlValve(ValveSource.NONE,200000,null,0);}
+        @Override public boolean pressureControl(){return source==ValveSource.PRESSURE;}
+        @Override public boolean bare(){return sensor==null;}
+        public double target(){return switch(source){case NONE,PRESSURE->targetPressure;case MASS_FLOW->massTarget;case VOLUME_FLOW->volumeTarget;};}
+        @Override public double targetMassFlow(double density){return source==ValveSource.MASS_FLOW?massTarget:volumeTarget*density;}
+        public ControlValve withTarget(double value){return new ControlValve(source,source==ValveSource.PRESSURE?value:targetPressure,source==ValveSource.MASS_FLOW?value:massTarget,source==ValveSource.VOLUME_FLOW?value:volumeTarget,sensor,Math.addExact(revision,1));}
+        public ControlValve withSource(ValveSource source,java.util.UUID sensor,long revision){return new ControlValve(source,targetPressure,massTarget,volumeTarget,sensor,revision);}
+    }
+    /** Effective flow-area opening, using the host bore and local density. */
+    static double opening(double massFlow,double head,double density,double boreArea) {
+        if(head<=0)return 1;
+        if(massFlow==0)return 0;
+        return 1/Math.sqrt(1+2*density*boreArea*boreArea*head/(massFlow*massFlow));
+    }
     /** Sustains upstream absolute pressure; reverse flow is closed. */
-    record PressureValve(double targetPressure) implements FlowControl {
+    record PressureValve(double targetPressure) implements Valve {
         public PressureValve {if(!Double.isFinite(targetPressure)||targetPressure<=0)throw new IllegalArgumentException("Invalid valve target");}
     }
     /**
@@ -128,5 +158,5 @@ public sealed interface FlowControl permits FlowControl.Passive,FlowControl.Move
      * persists as an endpoint mode like the head limit. The velocity cap is no mode: it is part of every throttling
      * line's law ({@code PassiveStepSolver.saturated}, 2026-10-18).
      */
-    enum Mode { PASSIVE, PUMP_TARGET, PUMP_HEAD_LIMIT, VALVE_REGULATING, VALVE_OPEN, CLOSED, INLET_WRONG_PHASE, PUMP_SUCTION_LIMIT }
+    enum Mode { PASSIVE, PUMP_TARGET, PUMP_HEAD_LIMIT, VALVE_REGULATING, VALVE_OPEN, CLOSED, INLET_WRONG_PHASE, PUMP_SUCTION_LIMIT, VALVE_CONFLICT }
 }

@@ -1,0 +1,13 @@
+{
+  "date": "2026-10-25",
+  "implementation": "52b9f8b0",
+  "branch": "codex/inline-pump-accessory",
+  "tests": 1,
+  "failures_and_errors": 0,
+  "target": "InlineMoverAccessoryTest.eligibilityAndMeshesCoverBothAxesHeadingsAndDiameterExtremes",
+  "native_views": 100,
+  "minecraft_runs": 0,
+  "jar": "icheme-0.11.2.jar",
+  "jar_sha256": "e321d593e612e86d647fba3c2030f86f5ecff0820dae4711a6e46a9e643d95d9",
+  "scope": "Closed visible nozzle throats; no physics, collision, format or protocol change"
+}

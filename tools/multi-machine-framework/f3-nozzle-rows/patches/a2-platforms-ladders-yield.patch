@@ -1,0 +1,20 @@
+--- a/src/main/java/com/wormzjl/icheme/science/equipment/ColumnStructure.java
++++ b/src/main/java/com/wormzjl/icheme/science/equipment/ColumnStructure.java
+@@ -307,7 +307,7 @@
+         boolean blocked(double row, double heading) {
+             double[][] clear = {{outer, -REACH}, {face + 1, -REACH}, {face + 1, REACH}, {outer, REACH}};
+             double edge = plan.deckRadius();
+-            for (var p : plan.platforms()) {
++            for (var p : List.<Platform>of()) {
+                 if (row >= p.level() + DECK + RAIL + BAR || row + 1 <= p.level() - .65) continue;
+                 int pieces = Math.max(1, (int) Math.ceil((p.to() - p.from()) / ARC));
+                 for (int k = 0; k < pieces; k++) {
+@@ -317,7 +317,7 @@
+                     if (overlap(clear, piece)) return true;
+                 }
+             }
+-            for (var l : plan.ladders()) {
++            for (var l : List.<Ladder>of()) {
+                 if (row >= l.top() || row + 1 <= l.base()) continue;
+                 double r = outer + STANDOFF;
+                 var cage = new double[][]{local(outer, l.angle(), -CAGE_HALF, heading), local(r + 2 * CAGE_HALF, l.angle(), -CAGE_HALF, heading),

@@ -1,0 +1,16 @@
+{
+  "counts": {
+    "tests": 1409,
+    "failures": 1,
+    "errors": 0,
+    "skipped": 0
+  },
+  "failures": [
+    {
+      "class_name": "com.wormzjl.icheme.science.equipment.ShapeRasterizerTest",
+      "method": "aDrumsFluidNodeIsAShellCell()",
+      "reason": "org.opentest4j.AssertionFailedError: EquipmentShape[kind=PUMP, diameter=0.05, tangentLength=1.0, orientation=HORIZONTAL, front=NORTH, support=0, trays=null, connections=[], bank=Bank[parallel=1, series=1], boot=false] ==> expected: <null> but was: <Cell[x=0, y=1, z=0]>"
+    }
+  ],
+  "new_failures": []
+}

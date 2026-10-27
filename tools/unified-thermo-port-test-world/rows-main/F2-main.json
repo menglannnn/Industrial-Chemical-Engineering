@@ -1,0 +1,43 @@
+{
+  "id": "F2-main",
+  "title": "F2 on main 0.8.0 with inert solids: water with 10 % of 100 um demo particles fills a tank vented at the top, then a pump on the bottom port, first below the deposition speed (0.0001 m3/s, 0.05 m/s against 0.076 m/s), then 0.005 m3/s (2.5 m/s)",
+  "blocks": {
+    "G":   {"at": [22, 102, 28], "block": "generator"},
+    "Pm":  {"at": [23, 102, 28], "block": "pipe"},
+    "T":   {"at": [24, 102, 28], "block": "reservoir"},
+    "Pt":  {"at": [24, 103, 28], "block": "pipe"},
+    "Vt":  {"at": [24, 104, 28], "block": "void"},
+    "Pb":  {"at": [24, 101, 28], "block": "pipe"},
+    "Pb2": {"at": [24, 101, 29], "block": "pipe"},
+    "Pb3": {"at": [24, 101, 30], "block": "pipe"},
+    "Vb":  {"at": [24, 101, 31], "block": "void"},
+    "U":   {"at": [24, 101, 31], "block": "pump", "facing": "south"},
+    "Pp":  {"at": [24, 101, 32], "block": "pipe"},
+    "Vp":  {"at": [24, 101, 33], "block": "void"}
+  },
+  "steps": [
+    {"op": "place", "ids": ["G"]},
+    {"op": "set", "id": "G", "mixture": "Water slurry (10% solids, 100 µm)", "pressure": 200000, "temperatureK": 298.15},
+    {"op": "place", "ids": ["Vt", "Pt", "Pm", "T"]},
+    {"op": "wait", "s": 30},
+    {"op": "read", "ids": ["T"], "tag": "fill"},
+    {"op": "remove", "ids": ["Pm"]},
+    {"op": "wait", "s": 10},
+    {"op": "place", "ids": ["Vb", "Pb3", "Pb2", "Pb"]},
+    {"op": "wait", "s": 10},
+    {"op": "read", "ids": ["T", "Pb3"], "tag": "drain"},
+    {"op": "remove", "ids": ["Vb"]},
+    {"op": "place", "ids": ["U"]},
+    {"op": "set", "id": "U", "flow": 0.0001, "head": 500000},
+    {"op": "place", "ids": ["Vp", "Pp"]},
+    {"op": "wait", "s": 20},
+    {"op": "read", "ids": ["U", "Pb3"], "tag": "slow"},
+    {"op": "trace", "kind": "f2", "id": "U"},
+    {"op": "set", "id": "U", "flow": 0.005, "head": 500000},
+    {"op": "wait", "s": 15},
+    {"op": "read", "ids": ["U", "Pp", "T"], "tag": "fast"},
+    {"op": "trace", "kind": "f2", "id": "U"},
+    {"op": "wait", "s": 30},
+    {"op": "read", "ids": ["U", "T"], "tag": "later"}
+  ]
+}

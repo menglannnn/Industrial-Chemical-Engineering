@@ -1,0 +1,186 @@
+{
+  "screen": "ColumnCalculatorV3Screen",
+  "widgets": [
+    {
+      "i": 0,
+      "c": "Button",
+      "x": 18,
+      "y": 36,
+      "w": 201,
+      "h": 18,
+      "press": true
+    },
+    {
+      "i": 1,
+      "c": "Button",
+      "x": 222,
+      "y": 36,
+      "w": 201,
+      "h": 18,
+      "press": true
+    },
+    {
+      "i": 2,
+      "c": "Button",
+      "x": 426,
+      "y": 36,
+      "w": 201,
+      "h": 18,
+      "press": true
+    },
+    {
+      "i": 3,
+      "c": "Button",
+      "x": 630,
+      "y": 36,
+      "w": 201,
+      "h": 18,
+      "press": true
+    },
+    {
+      "i": 4,
+      "c": "Button",
+      "x": 18,
+      "y": 447,
+      "w": 64,
+      "h": 18,
+      "press": true
+    },
+    {
+      "i": 5,
+      "c": "Button",
+      "x": 716,
+      "y": 447,
+      "w": 120,
+      "h": 18,
+      "press": true
+    },
+    {
+      "i": 6,
+      "c": "Button",
+      "x": 18,
+      "y": 62,
+      "w": 100,
+      "h": 18,
+      "press": true
+    },
+    {
+      "i": 7,
+      "c": "Button",
+      "x": 124,
+      "y": 62,
+      "w": 86,
+      "h": 18,
+      "press": true
+    },
+    {
+      "i": 8,
+      "c": "Button",
+      "x": 216,
+      "y": 62,
+      "w": 112,
+      "h": 18,
+      "press": true
+    },
+    {
+      "i": 9,
+      "c": "Button",
+      "x": 334,
+      "y": 62,
+      "w": 104,
+      "h": 18,
+      "press": true
+    },
+    {
+      "i": 10,
+      "c": "EditBox",
+      "x": 23,
+      "y": 97,
+      "w": 58,
+      "h": 18,
+      "press": false
+    },
+    {
+      "i": 11,
+      "c": "EditBox",
+      "x": 88,
+      "y": 97,
+      "w": 72,
+      "h": 18,
+      "press": false
+    },
+    {
+      "i": 12,
+      "c": "EditBox",
+      "x": 246,
+      "y": 97,
+      "w": 82,
+      "h": 18,
+      "press": false
+    },
+    {
+      "i": 13,
+      "c": "EditBox",
+      "x": 334,
+      "y": 97,
+      "w": 65,
+      "h": 18,
+      "press": false
+    },
+    {
+      "i": 14,
+      "c": "EditBox",
+      "x": 246,
+      "y": 129,
+      "w": 62,
+      "h": 18,
+      "press": false
+    },
+    {
+      "i": 15,
+      "c": "EditBox",
+      "x": 314,
+      "y": 129,
+      "w": 70,
+      "h": 18,
+      "press": false
+    },
+    {
+      "i": 16,
+      "c": "EditBox",
+      "x": 23,
+      "y": 309,
+      "w": 76,
+      "h": 18,
+      "press": false
+    },
+    {
+      "i": 17,
+      "c": "EditBox",
+      "x": 23,
+      "y": 343,
+      "w": 65,
+      "h": 18,
+      "press": false
+    },
+    {
+      "i": 18,
+      "c": "EditBox",
+      "x": 95,
+      "y": 343,
+      "w": 50,
+      "h": 18,
+      "press": false
+    },
+    {
+      "i": 19,
+      "c": "EditBox",
+      "x": 246,
+      "y": 331,
+      "w": 112,
+      "h": 18,
+      "press": false
+    }
+  ],
+  "total": 20
+}

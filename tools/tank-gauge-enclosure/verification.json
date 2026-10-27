@@ -1,0 +1,38 @@
+{
+  "tests": 8,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 0,
+  "classes": [
+    {
+      "class": "ShapeRasterizerTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "class": "EquipmentRefreshTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  ],
+  "build": "success",
+  "native_views": 12,
+  "game_check": false,
+  "new_test": "tankGaugeHasAClearGlassSleeveAndConnectedEndPipesInEveryHeading",
+  "custom_glass": {
+    "size": [
+      64,
+      256
+    ],
+    "alpha_extrema": [
+      2,
+      55
+    ],
+    "continuous_pane_uv": true,
+    "minecraft_texture": false
+  }
+}

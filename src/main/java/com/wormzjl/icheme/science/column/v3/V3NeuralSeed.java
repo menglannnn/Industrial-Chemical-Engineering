@@ -19,7 +19,8 @@ public final class V3NeuralSeed {
         this.input = Objects.requireNonNull(input, "input");
         this.propertyRevision = Objects.requireNonNull(propertyRevision, "propertyRevision");
         this.branch = Objects.requireNonNull(branch, "branch");
-        if (propertyRevision.isBlank() || propertyRevision.length() > 128) throw new IllegalArgumentException("Invalid property revision");
+        if (propertyRevision.isBlank() || propertyRevision.length() > com.wormzjl.icheme.science.material.MaterialCatalog.MAX_IDENTITY)
+            throw new IllegalArgumentException("Invalid property revision");
         int nodes = input.stageCount() + 2, components = input.componentBasis().componentCount();
         this.liquid = copyFlows(liquid, nodes, components);
         this.vapor = copyFlows(vapor, nodes, components);

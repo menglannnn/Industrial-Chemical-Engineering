@@ -1,0 +1,3 @@
+E1 interval-start rate pass does not converge                seeds=   1 smallest=   85 list= 85
+E5 step line search stalls                                   seeds=   2 smallest=    6 list= 6 446
+E6 step Newton iteration limit                               seeds=   2 smallest=  101 list= 101 430

@@ -16,13 +16,13 @@ class NitrogenInitializationTest {
     private static final String COLUMN="icheme:tjl20_methane";
     private static final String NETWORK=FluidMaterialCatalog.NETWORK_PACKAGE;
     @Test void placementCreatesRealNitrogenInventoryWithoutChangingTheColumnPackage() {
-        var catalog=MaterialCatalog.bundled();var original=catalog.requirePackage(COLUMN).fingerprint();
+        var catalog=MaterialCatalog.bundled();var original=catalog.requirePackage(COLUMN);
         var model=FluidThermodynamics.forNetwork(catalog,NETWORK);var state=model.initialNitrogenCharge(1,298.15,101325,()->{});
         assertEquals(catalog.requirePackage(NETWORK).components().size(),model.hydrocarbon.componentCount());assertEquals(1,state.volume(),1e-12);assertEquals(0,state.liquidVolume());
         assertTrue(state.mass()>1.13&&state.mass()<1.16);assertEquals(0,state.waterLiquid()+state.waterVapor());
         int nitrogen=model.hydrocarbon.components().indexOf("Nitrogen");assertEquals(catalog.requirePackage(NETWORK).components().indexOf("Nitrogen"),nitrogen);assertTrue(state.vapor()[nitrogen]>40);
         assertTrue(model.viscosity.vapor(298.15,state.vapor(),0)>1.7e-5);
-        assertEquals(original,catalog.requirePackage(COLUMN).fingerprint());assertEquals(model.hydrocarbon.componentCount()-1,catalog.requirePackage(COLUMN).components().size());
+        assertSame(original,catalog.requirePackage(COLUMN));assertEquals(model.hydrocarbon.componentCount()-1,catalog.requirePackage(COLUMN).components().size());
     }
     @Test void onlyTheConfiguredNetworkPackageIsAcceptedWithoutSaveMigration() {
         var catalog=MaterialCatalog.bundled();

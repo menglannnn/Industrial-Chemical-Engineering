@@ -1,0 +1,41 @@
+--- a/src/main/java/com/wormzjl/icheme/science/equipment/ColumnStructure.java
++++ b/src/main/java/com/wormzjl/icheme/science/equipment/ColumnStructure.java
+@@ -366,6 +366,7 @@
+                     for (int side : tried) {
+                         int[] facing = EquipmentShape.side(side);
+                         var nozzle = s.side(role, s.axis(), at, facing[0], facing[1], apothem, od);
++                        if (role == EquipmentShape.Role.FEED) System.out.println("FEED at " + at + " side " + side + " pass " + pass + " free " + free(nozzle, half, side) + " ladder " + ladderMeets(at, side, neck, pass) + " severs " + severs(at, side, neck) + " neck " + neck + " rows " + rows);
+                         if (free(nozzle, half, side) && !ladderMeets(at, side, neck, pass) && !severs(at, side, neck)) {
+                             placed.add(nozzle);
+                             sides.add(new ColumnDesign.SideNozzle(role, index, home, side, turned >= 0, nozzle));
+@@ -453,16 +454,13 @@
+         }
+ 
+         /**
+-         * Half a deck's cut round a nozzle whose neck keeps {@code neck} to each side: the widest angle, seen from the axis,
+-         * of its room's points on a deck from {@code outer} plus the gap out to {@code deck}: the neck's where it crosses
+-         * the deck's inner edge, the pipe's block's at its near corner on the flange face where the deck reaches past it.
+-         * Each part is grown by a rail's bar, so the rail across the cut end stands clear of it. (Each part is a rectangle
+-         * starting at the shell or at the face, so the angle stays under 90° on a slim column.)
++         * Half a deck's cut round a nozzle whose neck keeps {@code neck} to each side: the widest angle its room takes on a
++         * deck from {@code outer} plus the gap out to {@code deck}: the neck's at the deck's inner edge, the pipe's block's
++         * at the flange face where the deck reaches past it.
+          */
+         static double cutHalf(double outer, double face, double deck, double neck) {
+-            double in = outer + GAP, n = neck + BAR, b = REACH + BAR;
+-            double cut = DeterministicMath.atan2(n, Math.max(outer, Math.sqrt(Math.max(0, in * in - n * n))));
+-            return deck > face ? Math.max(cut, DeterministicMath.atan2(b, Math.max(face, Math.sqrt(Math.max(0, in * in - b * b))))) : cut;
++            double cut = Math.asin(Math.min(1, neck / (outer + GAP)));
++            return deck > face ? Math.max(cut, Math.asin(Math.min(1, REACH / face))) : cut;
+         }
+ 
+         /** The flange faces' plane, from the axis (the axis runs through a cell centre). */
+@@ -573,7 +571,7 @@
+          * piece, a rail's width from its ends, clear of every room from the top deck ({@code level}) to {@code top}.
+          */
+         double davit(double preferred, List<Platform> deck, int level, double top) {
+-            double margin = DeterministicMath.asin(Math.min(1, .3 / mast));
++            double margin = Math.asin(Math.min(1, .3 / mast));
+             for (int j = 0; j <= 72; j++) {
+                 double angle = preferred + STEP * (j % 2 == 1 ? (j + 1) / 2 : -(j / 2));
+                 boolean on = false;

@@ -1,0 +1,1002 @@
+commit dc174f2776567f206f25e7f822e8fdd9d610f571
+Author:     wormzjl <wormzjl@gmail.com>
+AuthorDate: Sat Oct 24 17:01:50 2026 +0800
+Commit:     wormzjl <wormzjl@gmail.com>
+CommitDate: Sat Oct 24 17:01:50 2026 +0800
+
+    Install pressure control valves on pipes and strengthen cutoff levers
+
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 37044312..5662521f 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -17,6 +17,8 @@ All notable changes to Industrial Chemical Engineering (IChemE, formerly CreateC
+ 
+ ### Added
+ 
++- Convert the Pressure Control Valve into a straight-pipe accessory with the existing pressure controls, a scalable globe body and full-height diaphragm actuator; preserve host pipe identity, diameter and queued edits, and give cutoff valves larger reinforced levers and fitted inventory icons (batch: `2026-10-24-pressure-valve-accessory`).
++
+ - Pipeline Check Valve accessory for straight pipes: aim-directed arrows fitted to the casting facets, queued empty-hand direction reversal, permanent one-way transport that survives solid-closure reopening, and survival installation/recovery without replacing pipe identity/settings; checkpoint 18 / storage-unit 11 requires a fresh world (commits `4e5c504d`, `9ffb294f`, batch: `2026-10-24-pipeline-check-valve`).
+ - Pipeline Shutoff Valve accessory for straight pipes: scalable flanged ball-valve housing and quarter-turn lever, empty-hand open/close controls, axis-locked mechanical joints and queued hydraulic isolation/reopening that preserves pipe identity and equipment contents; checkpoint 17 / storage-unit 10 requires a fresh world (commit `4dd96fde`, batch: `2026-10-23-pipeline-shutoff-valve`).
+ - Fluid Void displays accepted incoming fluid/solid composition; Fluid Generators gain a persistent On/Off switch, place Off and show feed phase ratios; shared fluid equipment screens switch all flow rates and suction-flow inputs between seconds and hours, and reservoirs show current/maximum volume (commits `0f208c52`, `89168361`, batch: `2026-10-23-fluid-device-controls-display`).
+diff --git a/src/main/java/com/wormzjl/icheme/client/model/FluidDeviceModel.java b/src/main/java/com/wormzjl/icheme/client/model/FluidDeviceModel.java
+index bc32adcd..c0c45ef6 100644
+--- a/src/main/java/com/wormzjl/icheme/client/model/FluidDeviceModel.java
++++ b/src/main/java/com/wormzjl/icheme/client/model/FluidDeviceModel.java
+@@ -6,6 +6,7 @@ import com.wormzjl.icheme.science.equipment.PipeSizes;
+ import com.wormzjl.icheme.science.equipment.SightGlassGeometry;
+ import com.wormzjl.icheme.science.equipment.ShutoffValveGeometry;
+ import com.wormzjl.icheme.science.equipment.CheckValveGeometry;
++import com.wormzjl.icheme.science.equipment.PressureValveGeometry;
+ import com.wormzjl.icheme.science.fluid.topology.TopologyCompiler;
+ import com.wormzjl.icheme.world.level.block.FluidDeviceBlock;
+ import com.wormzjl.icheme.world.level.block.entity.FluidDeviceBlockEntity;
+@@ -48,7 +49,7 @@ public final class FluidDeviceModel implements IDynamicBakedModel {
+     public static final ResourceLocation LOADER_ID = ResourceLocation.fromNamespaceAndPath(IChemE.MOD_ID, "fluid_device");
+     /** {@code "loader": "icheme:fluid_device", "kind": "pipe"} (a {@link TopologyCompiler.Kind}), textures per material. */
+     public static final IGeometryLoader<Geometry> LOADER = (json, context) ->
+-            new Geometry(TopologyCompiler.Kind.valueOf(GsonHelper.getAsString(json, "kind").toUpperCase(Locale.ROOT)),GsonHelper.getAsBoolean(json,"sight_glass_accessory",false),GsonHelper.getAsBoolean(json,"shutoff_valve_accessory",false),GsonHelper.getAsBoolean(json,"check_valve_accessory",false));
++            new Geometry(TopologyCompiler.Kind.valueOf(GsonHelper.getAsString(json, "kind").toUpperCase(Locale.ROOT)),GsonHelper.getAsBoolean(json,"sight_glass_accessory",false),GsonHelper.getAsBoolean(json,"shutoff_valve_accessory",false),GsonHelper.getAsBoolean(json,"check_valve_accessory",false),GsonHelper.getAsBoolean(json,"pressure_valve_accessory",false));
+     private static final int CACHE = 4096;
+     private static final ChunkRenderTypeSet SOLID = ChunkRenderTypeSet.of(RenderType.solid());
+     private static final ChunkRenderTypeSet GLASS = ChunkRenderTypeSet.of(RenderType.solid(),RenderType.translucent());
+@@ -56,18 +57,20 @@ public final class FluidDeviceModel implements IDynamicBakedModel {
+     private final boolean accessory;
+     private final boolean shutoffAccessory;
+     private final boolean checkAccessory;
++    private final boolean pressureAccessory;
+     private final TextureAtlasSprite[] sprites;
+     private final TextureAtlasSprite particle;
+     private final ItemTransforms transforms;
+-    private record Look(SightGlassGeometry.Key geometry,boolean sightGlass,FluidDeviceBlock.Shutoff shutoff){}
++    private record Look(SightGlassGeometry.Key geometry,boolean sightGlass,FluidDeviceBlock.Shutoff shutoff,boolean pressureValve){}
+     private record Baked(List<BakedQuad> solid,List<BakedQuad> glass){}
+     private final Map<Look,Baked> quads = new ConcurrentHashMap<>();
+ 
+-    private FluidDeviceModel(TopologyCompiler.Kind kind,boolean accessory,boolean shutoffAccessory,boolean checkAccessory, TextureAtlasSprite[] sprites, TextureAtlasSprite particle, ItemTransforms transforms) {
++    private FluidDeviceModel(TopologyCompiler.Kind kind,boolean accessory,boolean shutoffAccessory,boolean checkAccessory,boolean pressureAccessory, TextureAtlasSprite[] sprites, TextureAtlasSprite particle, ItemTransforms transforms) {
+         this.kind = kind;
+         this.accessory=accessory;
+         this.shutoffAccessory=shutoffAccessory;
+         this.checkAccessory=checkAccessory;
++        this.pressureAccessory=pressureAccessory;
+         this.sprites = sprites;
+         this.particle = particle;
+         this.transforms = transforms;
+@@ -78,7 +81,7 @@ public final class FluidDeviceModel implements IDynamicBakedModel {
+         if (side != null) return List.of();
+         var geometry=state!=null&&state.getBlock() instanceof FluidDeviceBlock?sightGlassKey(state,data):new SightGlassGeometry.Key(LineGeometry.Key.item(kind));
+         var shutoff=checkAccessory?FluidDeviceBlock.Shutoff.CHECK:shutoffAccessory?FluidDeviceBlock.Shutoff.OPEN:state!=null&&FluidDeviceBlock.hasPipeValve(state)?state.getValue(FluidDeviceBlock.SHUTOFF):FluidDeviceBlock.Shutoff.NONE;
+-        var key = new Look(geometry,accessory||state!=null&&FluidDeviceBlock.hasSightGlass(state),shutoff);
++        var key = new Look(geometry,accessory||state!=null&&FluidDeviceBlock.hasSightGlass(state),shutoff,pressureAccessory||state!=null&&FluidDeviceBlock.hasPressureValve(state));
+         var cached = quads.get(key);
+         if(cached==null){if(quads.size()>=CACHE)quads.clear();cached=quads.computeIfAbsent(key,this::bake);}
+         if(renderType==RenderType.translucent())return cached.glass;
+@@ -87,6 +90,7 @@ public final class FluidDeviceModel implements IDynamicBakedModel {
+     }
+ 
+     private Baked bake(Look look) {
++        if(look.pressureValve)return new Baked(EquipmentShellModel.bake(PressureValveGeometry.polygons(look.geometry.pipe(),pressureAccessory),sprites,false),List.of());
+         if(look.shutoff==FluidDeviceBlock.Shutoff.CHECK)return new Baked(EquipmentShellModel.bake(CheckValveGeometry.polygons(look.geometry.pipe(),checkAccessory),sprites,false),List.of());
+         if(look.shutoff!=FluidDeviceBlock.Shutoff.NONE)return new Baked(EquipmentShellModel.bake(ShutoffValveGeometry.polygons(look.geometry.pipe(),look.shutoff==FluidDeviceBlock.Shutoff.OPEN,shutoffAccessory),sprites,false),List.of());
+         if(!look.sightGlass)return new Baked(EquipmentShellModel.bake(LineGeometry.polygons(look.geometry.pipe()),sprites,false),List.of());
+@@ -149,10 +153,10 @@ public final class FluidDeviceModel implements IDynamicBakedModel {
+         return ItemOverrides.EMPTY;
+     }
+ 
+-    public record Geometry(TopologyCompiler.Kind kind,boolean accessory,boolean shutoffAccessory,boolean checkAccessory) implements IUnbakedGeometry<Geometry> {
++    public record Geometry(TopologyCompiler.Kind kind,boolean accessory,boolean shutoffAccessory,boolean checkAccessory,boolean pressureAccessory) implements IUnbakedGeometry<Geometry> {
+         @Override
+         public BakedModel bake(IGeometryBakingContext context, ModelBaker baker, Function<Material, TextureAtlasSprite> sprites, ModelState state, ItemOverrides overrides) {
+-            return new FluidDeviceModel(kind,accessory,shutoffAccessory,checkAccessory, EquipmentShellModel.sprites(context, sprites), sprites.apply(context.getMaterial("particle")), context.getTransforms());
++            return new FluidDeviceModel(kind,accessory,shutoffAccessory,checkAccessory,pressureAccessory, EquipmentShellModel.sprites(context, sprites), sprites.apply(context.getMaterial("particle")), context.getTransforms());
+         }
+     }
+ }
+diff --git a/src/main/java/com/wormzjl/icheme/network/FluidNetwork.java b/src/main/java/com/wormzjl/icheme/network/FluidNetwork.java
+index 7c34c7ef..ec1e4663 100644
+--- a/src/main/java/com/wormzjl/icheme/network/FluidNetwork.java
++++ b/src/main/java/com/wormzjl/icheme/network/FluidNetwork.java
+@@ -190,7 +190,7 @@ public final class FluidNetwork {
+     public static MenuData snapshot(FluidWorldAuthority world,WorldTopologyLedger.Registration record,FluidView view){
+         if(view.identity()!=record.device().id()||view.inputRevision()!=record.revision())
+             throw new IllegalArgumentException("Presentation snapshot registration mismatch");
+-        return new MenuData(record.device().kind(),view,Controls.from(record),world.components(),world.presets(),"",
++        return new MenuData(record.device().hydraulicKind(),view,Controls.from(record),world.components(),world.presets(),"",
+             world.materialNames(),Arrays.stream(world.model().molecularWeights()).boxed().toList());
+     }
+     /** Sends a published snapshot to an installed, requested menu; replay uses an empty reply. The presentation checked
+@@ -237,7 +237,7 @@ public final class FluidNetwork {
+                 if(controls.composition().length!=world.components().size())throw new IllegalArgumentException("Composition differs from the server network axis");
+                 var old=Objects.requireNonNull(world.registrations().get(payload.identity));var d=old.device();
+                 var geometry=d.geometry();var control=d.control();var spec=old.spec();
+-                switch(d.kind()) {
++                switch(d.hydraulicKind()) {
+                     case PIPE,FILTER->geometry=new PipeResistance.Geometry(geometry.length(),controls.diameter,PipeResistance.DEFAULT_ROUGHNESS_METRES,geometry.minorLoss());
+                     case PUMP->control=new FlowControl.Pump(controls.volumeFlow,controls.maximumAddedPressure,controls.power==Power.ON);
+                     case COMPRESSOR->control=new FlowControl.Compressor(controls.volumeFlow,controls.maximumPressureRatio,controls.power==Power.ON);
+@@ -248,7 +248,7 @@ public final class FluidNetwork {
+                 }
+                 // Refused here, before anything is queued, outside the package envelope (the input box, plan decision 9):
+                 // the reply with the next bucket reads "Not applied: ..." with the envelope named.
+-                switch(d.kind()) {
++                switch(d.hydraulicKind()) {
+                     case GENERATOR,VOID->spec.validate(world.model(),d.kind());
+                     case VALVE->world.model().domain().requireInputPressure(controls.pressure);
+                     default->{}
+diff --git a/src/main/java/com/wormzjl/icheme/registry/ModBlockEntities.java b/src/main/java/com/wormzjl/icheme/registry/ModBlockEntities.java
+index 914846e1..5aa5b5e0 100644
+--- a/src/main/java/com/wormzjl/icheme/registry/ModBlockEntities.java
++++ b/src/main/java/com/wormzjl/icheme/registry/ModBlockEntities.java
+@@ -12,7 +12,7 @@ public final class ModBlockEntities {
+     public static final DeferredRegister<BlockEntityType<?>> BLOCK_ENTITY_TYPES =
+             DeferredRegister.create(Registries.BLOCK_ENTITY_TYPE, IChemE.MOD_ID);
+     public static final DeferredHolder<BlockEntityType<?>,BlockEntityType<com.wormzjl.icheme.world.level.block.entity.FluidDeviceBlockEntity>> FLUID_DEVICE=BLOCK_ENTITY_TYPES.register("fluid_device",()->BlockEntityType.Builder.of(com.wormzjl.icheme.world.level.block.entity.FluidDeviceBlockEntity::new,
+-            ModBlocks.FLUID_RESERVOIR.get(),ModBlocks.FLUID_PIPE.get(),ModBlocks.FLUID_PUMP.get(),ModBlocks.FLUID_COMPRESSOR.get(),ModBlocks.PRESSURE_CONTROL_VALVE.get(),ModBlocks.FLUID_GENERATOR.get(),ModBlocks.FLUID_VOID.get(),ModBlocks.INLINE_FILTER.get()).build(null));
++            ModBlocks.FLUID_RESERVOIR.get(),ModBlocks.FLUID_PIPE.get(),ModBlocks.FLUID_PUMP.get(),ModBlocks.FLUID_COMPRESSOR.get(),ModBlocks.FLUID_GENERATOR.get(),ModBlocks.FLUID_VOID.get(),ModBlocks.INLINE_FILTER.get()).build(null));
+ 
+     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<ColumnCalculatorV3BlockEntity>>
+             COLUMN_CALCULATOR_V3 = BLOCK_ENTITY_TYPES.register(
+diff --git a/src/main/java/com/wormzjl/icheme/registry/ModBlocks.java b/src/main/java/com/wormzjl/icheme/registry/ModBlocks.java
+index 0b2d0e87..5a90a38c 100644
+--- a/src/main/java/com/wormzjl/icheme/registry/ModBlocks.java
++++ b/src/main/java/com/wormzjl/icheme/registry/ModBlocks.java
+@@ -15,7 +15,6 @@ public final class ModBlocks {
+     public static final DeferredBlock<com.wormzjl.icheme.world.level.block.FluidDeviceBlock> FLUID_PIPE=fluid("fluid_pipe",com.wormzjl.icheme.science.fluid.topology.TopologyCompiler.Kind.PIPE);
+     public static final DeferredBlock<com.wormzjl.icheme.world.level.block.FluidDeviceBlock> FLUID_PUMP=fluid("fluid_pump",com.wormzjl.icheme.science.fluid.topology.TopologyCompiler.Kind.PUMP);
+     public static final DeferredBlock<com.wormzjl.icheme.world.level.block.FluidDeviceBlock> FLUID_COMPRESSOR=fluid("fluid_compressor",com.wormzjl.icheme.science.fluid.topology.TopologyCompiler.Kind.COMPRESSOR);
+-    public static final DeferredBlock<com.wormzjl.icheme.world.level.block.FluidDeviceBlock> PRESSURE_CONTROL_VALVE=fluid("pressure_control_valve",com.wormzjl.icheme.science.fluid.topology.TopologyCompiler.Kind.VALVE);
+     public static final DeferredBlock<com.wormzjl.icheme.world.level.block.FluidDeviceBlock> FLUID_GENERATOR=fluid("fluid_generator",com.wormzjl.icheme.science.fluid.topology.TopologyCompiler.Kind.GENERATOR);
+     public static final DeferredBlock<com.wormzjl.icheme.world.level.block.FluidDeviceBlock> FLUID_VOID=fluid("fluid_void",com.wormzjl.icheme.science.fluid.topology.TopologyCompiler.Kind.VOID);
+     public static final DeferredBlock<com.wormzjl.icheme.world.level.block.FluidDeviceBlock> INLINE_FILTER=fluid("inline_filter",com.wormzjl.icheme.science.fluid.topology.TopologyCompiler.Kind.FILTER);
+diff --git a/src/main/java/com/wormzjl/icheme/registry/ModItems.java b/src/main/java/com/wormzjl/icheme/registry/ModItems.java
+index bc233a0b..8b7ead36 100644
+--- a/src/main/java/com/wormzjl/icheme/registry/ModItems.java
++++ b/src/main/java/com/wormzjl/icheme/registry/ModItems.java
+@@ -12,7 +12,7 @@ public final class ModItems {
+     public static final DeferredItem<BlockItem> FLUID_PIPE=ITEMS.registerSimpleBlockItem("fluid_pipe",ModBlocks.FLUID_PIPE);
+     public static final DeferredItem<BlockItem> FLUID_PUMP=ITEMS.registerSimpleBlockItem("fluid_pump",ModBlocks.FLUID_PUMP);
+     public static final DeferredItem<BlockItem> FLUID_COMPRESSOR=ITEMS.registerSimpleBlockItem("fluid_compressor",ModBlocks.FLUID_COMPRESSOR);
+-    public static final DeferredItem<BlockItem> PRESSURE_CONTROL_VALVE=ITEMS.registerSimpleBlockItem("pressure_control_valve",ModBlocks.PRESSURE_CONTROL_VALVE);
++    public static final DeferredItem<com.wormzjl.icheme.world.item.PipelinePressureValveItem> PRESSURE_CONTROL_VALVE=ITEMS.registerItem("pressure_control_valve",com.wormzjl.icheme.world.item.PipelinePressureValveItem::new);
+     public static final DeferredItem<BlockItem> FLUID_GENERATOR=ITEMS.registerSimpleBlockItem("fluid_generator",ModBlocks.FLUID_GENERATOR);
+     public static final DeferredItem<BlockItem> FLUID_VOID=ITEMS.registerSimpleBlockItem("fluid_void",ModBlocks.FLUID_VOID);
+     public static final DeferredItem<BlockItem> INLINE_FILTER=ITEMS.registerSimpleBlockItem("inline_filter",ModBlocks.INLINE_FILTER);
+diff --git a/src/main/java/com/wormzjl/icheme/runtime/fluid/FluidWorldAuthority.java b/src/main/java/com/wormzjl/icheme/runtime/fluid/FluidWorldAuthority.java
+index cda86e1e..b1db306f 100644
+--- a/src/main/java/com/wormzjl/icheme/runtime/fluid/FluidWorldAuthority.java
++++ b/src/main/java/com/wormzjl/icheme/runtime/fluid/FluidWorldAuthority.java
+@@ -171,6 +171,10 @@ public final class FluidWorldAuthority implements AutoCloseable {
+     public WorldTopologyLedger.Registration place(PhysicalFluidTopology.Position position,TopologyCompiler.Kind kind,PhysicalFluidTopology.Direction facing,PhysicalFluidTopology.Cutoff cutoff) {
+         return place(position,kind,facing,List.of(),cutoff);
+     }
++    /** Rebuild installed pressure controls directly from static block state, without an intermediate passive pipe. */
++    public WorldTopologyLedger.Registration place(PhysicalFluidTopology.Position position,TopologyCompiler.Kind kind,PhysicalFluidTopology.Direction facing,PhysicalFluidTopology.Cutoff cutoff,boolean pressureValve) {
++        return place(position,kind,facing,List.of(),cutoff,pressureValve);
++    }
+     /** A complete multi-cell mover uses the same controls and geometry as its one-block counterpart. */
+     public WorldTopologyLedger.Registration placeMover(PhysicalFluidTopology.Position suction,TopologyCompiler.Kind kind,List<PhysicalFluidTopology.Port> ports) {
+         if(kind!=TopologyCompiler.Kind.PUMP&&kind!=TopologyCompiler.Kind.COMPRESSOR||ports.isEmpty())throw new IllegalArgumentException("Expected a multi-cell mover");
+@@ -180,8 +184,13 @@ public final class FluidWorldAuthority implements AutoCloseable {
+         return place(position,kind,facing,ports,PhysicalFluidTopology.Cutoff.NONE);
+     }
+     private WorldTopologyLedger.Registration place(PhysicalFluidTopology.Position position,TopologyCompiler.Kind kind,PhysicalFluidTopology.Direction facing,List<PhysicalFluidTopology.Port> ports,PhysicalFluidTopology.Cutoff cutoff) {
++        return place(position,kind,facing,ports,cutoff,false);
++    }
++    private WorldTopologyLedger.Registration place(PhysicalFluidTopology.Position position,TopologyCompiler.Kind kind,PhysicalFluidTopology.Direction facing,List<PhysicalFluidTopology.Port> ports,PhysicalFluidTopology.Cutoff cutoff,boolean pressureValve) {
+         owned();
++        if(pressureValve&&kind!=TopologyCompiler.Kind.PIPE)throw new IllegalArgumentException("Only a pipe hosts a pressure-control accessory");
+         long id=topology.nextIdentity();var control=switch(kind){case PUMP->new FlowControl.Pump(.01,500000);case COMPRESSOR->new FlowControl.Compressor(.05,3.0);case VALVE->new FlowControl.PressureValve(200000);default->new FlowControl.Passive();};
++        if(pressureValve)control=new FlowControl.PressureValve(200000);
+         double diameter=kind==TopologyCompiler.Kind.PIPE?placedPipeDiameter(position):.05;
+         var device=new PhysicalFluidTopology.Device(id,position,kind,facing,new PipeResistance.Geometry(1,diameter,PipeResistance.DEFAULT_ROUGHNESS_METRES,0),control,ports,kind!=TopologyCompiler.Kind.GENERATOR,cutoff);
+         var spec=kind==TopologyCompiler.Kind.GENERATOR?FluidDeviceSpec.water(catalog):FluidDeviceSpec.nitrogen(catalog);
+@@ -240,6 +249,9 @@ public final class FluidWorldAuthority implements AutoCloseable {
+     public boolean installPipeValve(long id,PhysicalFluidTopology.Direction facing,PhysicalFluidTopology.Cutoff kind) {
+         owned();return registry.installPipeValve(id,facing,kind);
+     }
++    public boolean installPipePressureValve(long id,PhysicalFluidTopology.Direction facing) {
++        owned();return registry.installPipePressureValve(id,facing);
++    }
+     /** Rapid clicks toggle the latest queued value, never the older drawn lever. */
+     public void togglePipeCutoff(long id) {
+         owned();registry.togglePipeCutoff(id);
+@@ -323,7 +335,7 @@ public final class FluidWorldAuthority implements AutoCloseable {
+             var entity=loaded.getBlockEntity(cell); // Includes saved cells not yet promoted from pending NBT.
+             if(entity instanceof FluidDeviceBlockEntity pipe) {
+                 var position=new PhysicalFluidTopology.Position(name,cell.getX(),cell.getY(),cell.getZ());
+-                var record=registry.at(position).orElseGet(()->place(position,pipe.kind(),PhysicalFluidTopology.Direction.valueOf(pipe.getBlockState().getValue(FluidDeviceBlock.FACING).name()),FluidDeviceBlock.cutoff(pipe.getBlockState())));
++                var record=registry.at(position).orElseGet(()->place(position,pipe.kind(),PhysicalFluidTopology.Direction.valueOf(pipe.getBlockState().getValue(FluidDeviceBlock.FACING).name()),FluidDeviceBlock.cutoff(pipe.getBlockState()),FluidDeviceBlock.hasPressureValve(pipe.getBlockState())));
+                 if(pipe.fluidIdentity()!=record.device().id())pipe.bindIdentity(record.device().id());else deviceLoaded(record.device().id());
+             } else if(entity instanceof EquipmentShellBlockEntity shell&&shell.shape()!=null&&shell.shape().fluidDevice()) {
+                 var origin=shell.origin();
+diff --git a/src/main/java/com/wormzjl/icheme/runtime/fluid/PhysicalFluidTopology.java b/src/main/java/com/wormzjl/icheme/runtime/fluid/PhysicalFluidTopology.java
+index c021080a..4db04ab9 100644
+--- a/src/main/java/com/wormzjl/icheme/runtime/fluid/PhysicalFluidTopology.java
++++ b/src/main/java/com/wormzjl/icheme/runtime/fluid/PhysicalFluidTopology.java
+@@ -58,8 +58,9 @@ public final class PhysicalFluidTopology {
+             Objects.requireNonNull(position);Objects.requireNonNull(kind);Objects.requireNonNull(facing);Objects.requireNonNull(geometry);Objects.requireNonNull(control);
+             Objects.requireNonNull(cutoff);
+             if(kind!=TopologyCompiler.Kind.PIPE&&cutoff!=Cutoff.NONE)throw new IllegalArgumentException("Only a pipe has a cutoff accessory");
+-            boolean valid=switch(kind) {case PUMP->control instanceof FlowControl.Pump;case COMPRESSOR->control instanceof FlowControl.Compressor;case VALVE->control instanceof FlowControl.PressureValve;default->control instanceof FlowControl.Passive;};
++            boolean valid=switch(kind) {case PUMP->control instanceof FlowControl.Pump;case COMPRESSOR->control instanceof FlowControl.Compressor;case VALVE->control instanceof FlowControl.PressureValve;case PIPE->control instanceof FlowControl.Passive||control instanceof FlowControl.PressureValve;default->control instanceof FlowControl.Passive;};
+             if(!valid)throw new IllegalArgumentException("Device/control mismatch");
++            if(control instanceof FlowControl.PressureValve&&cutoff!=Cutoff.NONE)throw new IllegalArgumentException("A pressure valve cannot carry a cutoff accessory");
+             if(kind!=TopologyCompiler.Kind.GENERATOR&&!generatorEnabled)throw new IllegalArgumentException("Only a generator has a source switch");
+             ports=List.copyOf(ports);
+             if(ports.isEmpty()&&control instanceof FlowControl.Mover mover&&!mover.enabled())throw new IllegalArgumentException("Only constructed movers have a power switch");
+@@ -83,7 +84,9 @@ public final class PhysicalFluidTopology {
+                 throw new IllegalArgumentException("A mover needs exactly one suction and one discharge port");
+         }
+         boolean boundary(){return kind==TopologyCompiler.Kind.RESERVOIR||kind==TopologyCompiler.Kind.GENERATOR||kind==TopologyCompiler.Kind.VOID;}
+-        boolean actuator(){return kind==TopologyCompiler.Kind.PUMP||kind==TopologyCompiler.Kind.COMPRESSOR||kind==TopologyCompiler.Kind.VALVE;}
++        /** A pipe keeps its mechanical identity when an installed pressure controller makes it an actuator. */
++        public TopologyCompiler.Kind hydraulicKind(){return kind==TopologyCompiler.Kind.PIPE&&control instanceof FlowControl.PressureValve?TopologyCompiler.Kind.VALVE:kind;}
++        boolean actuator(){var hydraulic=hydraulicKind();return hydraulic==TopologyCompiler.Kind.PUMP||hydraulic==TopologyCompiler.Kind.COMPRESSOR||hydraulic==TopologyCompiler.Kind.VALVE;}
+         /** Copy edits preserve accessories, ports and the independent generator switch. */
+         public Device withGeometry(PipeResistance.Geometry value){return new Device(id,position,kind,facing,value,control,ports,generatorEnabled,cutoff);}
+         public Device withFacing(Direction value){return new Device(id,position,kind,value,geometry,control,ports,generatorEnabled,cutoff);}
+@@ -169,7 +172,7 @@ public final class PhysicalFluidTopology {
+         for(var d:devices) {
+             if(physical.putIfAbsent(d.id,d)!=null)throw new IllegalArgumentException("Duplicate physical identity or position");
+             for(var cell:d.cells())if(positions.putIfAbsent(cell,d)!=null)throw new IllegalArgumentException("Duplicate physical identity or position");
+-            var p=d.position;nodes.add(new TopologyCompiler.Node(d.id,d.kind,p.y));points.put(d.id,new Point(p.x,p.y,p.z));
++            var p=d.position;nodes.add(new TopologyCompiler.Node(d.id,d.hydraulicKind(),p.y));points.put(d.id,new Point(p.x,p.y,p.z));
+             if(d.boundary()) {
+                 var state=boundaryStates.get(d.id);
+                 var expected=switch(d.kind){case RESERVOIR->PassiveNetwork.NodeKind.RESERVOIR;case GENERATOR->PassiveNetwork.NodeKind.GENERATOR;case VOID->PassiveNetwork.NodeKind.VOID;default->throw new AssertionError();};
+@@ -188,6 +191,7 @@ public final class PhysicalFluidTopology {
+                 var owner=d.boundary()?other:d;links.add(new TopologyCompiler.Link(linkId,d.id,other.id,scaled(owner.geometry,.5)));
+                 if(d.kind==TopologyCompiler.Kind.RESERVOIR){tankFaces.put(linkId,direction);tankPorts.put(linkId,d.portAt(contact.cell(),direction));}
+                 else if(other.kind==TopologyCompiler.Kind.RESERVOIR){tankFaces.put(linkId,opposite(direction));tankPorts.put(linkId,other.portAt(next,opposite(direction)));}
++                if(d.outletAt(contact.cell(),direction)||other.outletAt(next,opposite(direction)))outletLinks.add(linkId);
+                 linkOwner.put(linkId++,owner.id);
+             } else {
+                 long middle=virtual--;var a=points.get(d.id);var b=points.get(other.id);var p=new Point((a.x+b.x)/2,(a.y+b.y)/2,(a.z+b.z)/2);
+@@ -328,7 +332,7 @@ public final class PhysicalFluidTopology {
+      */
+     private static PipeResistance.Geometry half(Device device,Device line) {
+         var g=device.geometry;
+-        if(device.actuator()&&line.kind==TopologyCompiler.Kind.PIPE)g=new PipeResistance.Geometry(g.length(),line.geometry.diameter(),line.geometry.roughness(),g.minorLoss());
++        if(device.kind!=TopologyCompiler.Kind.PIPE&&device.actuator()&&line.kind==TopologyCompiler.Kind.PIPE)g=new PipeResistance.Geometry(g.length(),line.geometry.diameter(),line.geometry.roughness(),g.minorLoss());
+         return scaled(g,.5);
+     }
+     private static PipeResistance.Geometry scaled(PipeResistance.Geometry g,double fraction){return new PipeResistance.Geometry(g.length()*fraction,g.diameter(),g.roughness(),g.minorLoss()*fraction);}
+diff --git a/src/main/java/com/wormzjl/icheme/runtime/fluid/PhysicalRegistry.java b/src/main/java/com/wormzjl/icheme/runtime/fluid/PhysicalRegistry.java
+index c8576981..3117611f 100644
+--- a/src/main/java/com/wormzjl/icheme/runtime/fluid/PhysicalRegistry.java
++++ b/src/main/java/com/wormzjl/icheme/runtime/fluid/PhysicalRegistry.java
+@@ -113,14 +113,26 @@ public final class PhysicalRegistry {
+     public boolean installPipeValve(long id,PhysicalFluidTopology.Direction axis,PhysicalFluidTopology.Cutoff kind) {
+         if(kind!=PhysicalFluidTopology.Cutoff.OPEN&&kind!=PhysicalFluidTopology.Cutoff.CHECK)throw new IllegalArgumentException("Invalid installed pipe valve");
+         var record=registrations().get(id);
+-        if(record==null||record.device().kind()!=TopologyCompiler.Kind.PIPE||record.device().cutoff()!=PhysicalFluidTopology.Cutoff.NONE)return false;
++        if(!canInstallValve(record,axis))return false;
++        queueCutoff(record,axis,kind);return true;
++    }
++    /** Uses the existing pressure-valve control on the same host pipe and projected revision. */
++    public boolean installPipePressureValve(long id,PhysicalFluidTopology.Direction axis) {
++        var record=registrations().get(id);if(!canInstallValve(record,axis))return false;
++        var d=record.device();var device=new PhysicalFluidTopology.Device(d.id(),d.position(),d.kind(),axis,d.geometry(),new FlowControl.PressureValve(200000),d.ports(),d.generatorEnabled(),d.cutoff());
++        submit(List.of(new WorldTopologyLedger.Edit(id,new WorldTopologyLedger.Registration(device,record.spec(),Math.addExact(record.revision(),1)))),topology.nextIdentity(),null);
++        return true;
++    }
++    private boolean canInstallValve(WorldTopologyLedger.Registration record,PhysicalFluidTopology.Direction axis) {
++        Objects.requireNonNull(axis);
++        if(record==null||record.device().kind()!=TopologyCompiler.Kind.PIPE||record.device().cutoff()!=PhysicalFluidTopology.Cutoff.NONE||!(record.device().control() instanceof FlowControl.Passive))return false;
+         // Check projected physical neighbours too: chunk loading or an unapplied branch must not hide a junction.
+         for(var direction:PhysicalFluidTopology.Direction.values()) {
+             var next=record.device().position().offset(direction);var neighbour=topology.latestAt(next);
+             if(neighbour!=null&&neighbour.device().mechanicallyMeets(next,PhysicalFluidTopology.opposite(direction))
+                     &&direction.x*axis.x+direction.y*axis.y+direction.z*axis.z==0)return false;
+         }
+-        queueCutoff(record,axis,kind);return true;
++        return true;
+     }
+     /** Clicks compose on pending state instead of all toggling the last published lever. */
+     public void togglePipeCutoff(long id) {
+diff --git a/src/main/java/com/wormzjl/icheme/science/equipment/LineGeometry.java b/src/main/java/com/wormzjl/icheme/science/equipment/LineGeometry.java
+index cb409cf7..4ba68be8 100644
+--- a/src/main/java/com/wormzjl/icheme/science/equipment/LineGeometry.java
++++ b/src/main/java/com/wormzjl/icheme/science/equipment/LineGeometry.java
+@@ -68,9 +68,23 @@ public final class LineGeometry {
+ 
+     /** The block's polygons, cell-local. */
+     public static List<Polygon> polygons(Key key) {
++        if(key.kind()==Kind.VALVE)return PressureValveGeometry.polygons(key,false);
+         return mesh(key).cell(0, 0, 0);
+     }
+ 
++    /** Keep decorative overhangs in their owning block model, with UV/cell clipping intact. */
++    static List<Polygon> overhanging(Mesh mesh) {
++        var bounds=mesh.bounds();if(bounds==null)return List.of();var out=new ArrayList<Polygon>();
++        for(int x=(int)Math.floor(bounds[0]);x<=Math.floor(bounds[3]);x++)
++            for(int y=(int)Math.floor(bounds[1]);y<=Math.floor(bounds[4]);y++)
++                for(int z=(int)Math.floor(bounds[2]);z<=Math.floor(bounds[5]);z++)for(var polygon:mesh.cell(x,y,z)) {
++                    var positions=polygon.positions().clone();
++                    for(int v=0;v<positions.length;v+=3){positions[v]+=x;positions[v+1]+=y;positions[v+2]+=z;}
++                    out.add(new Polygon(positions,polygon.uvs(),polygon.normals(),polygon.material()));
++                }
++        return List.copyOf(out);
++    }
++
+     static Mesh mesh(Key key) {
+         var m = new Mesh();
+         switch (key.kind()) {
+@@ -283,47 +297,7 @@ public final class LineGeometry {
+      * along the actuator's direction (up over a horizontal line, horizontal beside a vertical one).
+      */
+     private static void valve(Mesh m, Key key) {
+-        double od = line(key), body = Math.min(.42, .6 * PipeSizes.flange(od));
+-        int sides = PipeSizes.sides(2 * body);
+-        m.sphere(CENTRE, body, Math.max(12, sides), Material.MACHINE);
+-        lineNozzles(m, key, .7 * body, od);
+-        int vertical = key.facing() >> 1 == 0 ? 1 : 0;
+-        int up = vertical == 1 ? (key.facing() == UP ? NORTH : SOUTH) : UP;
+-        var f = frame(up, ref(up));
+-        double bonnet = body + .06, yoke = Math.max(.04, Math.min(.2, .3 * body + .06)), casing = Math.min(.7, .3 + .5 * od);
+-        // The casing stands 0.3 of its diameter plus its 0.02 m rim above the yoke; all of it stays in the block.
+-        double room = .49 - bonnet - .02;
+-        if (yoke + .3 * casing > room) {
+-            double k = Math.max(0, room) / (yoke + .3 * casing);
+-            yoke *= k;
+-            casing *= k;
+-        }
+-        m.frustum(f, .45 * body, .3 * body, .8 * body, bonnet, sides, Material.MACHINE);
+-        m.annulus(f, 0, .3 * body, bonnet, sides, 1, Material.MACHINE);
+-        if (casing < .08) return;
+-        // Yoke: two legs from the bonnet to the casing, the stem between them.
+-        double leg = Math.min(.025, .1 * casing), spread = .3 * body;
+-        var across = side(f);
+-        for (int s = -1; s <= 1; s += 2) {
+-            var a = f.at(0, 0, bonnet);
+-            var b = f.at(0, 0, bonnet + yoke);
+-            for (int c = 0; c < 3; c++) {
+-                a[c] += s * spread * across[c];
+-                b[c] += s * spread * across[c];
+-            }
+-            m.bar(a, b, leg, f.ref(), Material.STEELWORK);
+-        }
+-        m.bar(f.along(bonnet), f.along(bonnet + yoke), .4 * leg, f.ref(), Material.STEELWORK);
+-        // Diaphragm casing: two shallow cones about a rim, the lower one bolted to the yoke.
+-        double rc = casing / 2, z0 = bonnet + yoke, zr = z0 + .12 * casing, z1 = zr + .02, top = z1 + .18 * casing;
+-        int n = Math.max(12, PipeSizes.sides(casing));
+-        m.frustum(f, .3 * rc, rc, z0, zr, n, Material.ACTUATOR);
+-        m.annulus(f, 0, .3 * rc, z0, n, -1, Material.ACTUATOR);
+-        m.prism(f, rc + .01, zr, z1, n, Material.ACTUATOR);
+-        m.annulus(f, rc, rc + .01, zr, n, -1, Material.ACTUATOR);
+-        m.annulus(f, rc, rc + .01, z1, n, 1, Material.ACTUATOR);
+-        m.frustum(f, rc, .45 * rc, z1, top, n, Material.ACTUATOR);
+-        m.annulus(f, 0, .45 * rc, top, n, 1, Material.ACTUATOR);
++        PressureValveGeometry.build(m,key);
+     }
+ 
+     /**
+diff --git a/src/main/java/com/wormzjl/icheme/science/equipment/MoverPortMarkings.java b/src/main/java/com/wormzjl/icheme/science/equipment/MoverPortMarkings.java
+index c094f015..7e74ada7 100644
+--- a/src/main/java/com/wormzjl/icheme/science/equipment/MoverPortMarkings.java
++++ b/src/main/java/com/wormzjl/icheme/science/equipment/MoverPortMarkings.java
+@@ -61,6 +61,10 @@ public final class MoverPortMarkings {
+     }
+     /** Paint on actual axial casting facets, within their available station/width bounds. */
+     public static List<Mesh.Polygon> fitting(List<Mesh.Polygon> surface,int facing,double from,double to) {
++        return fitting(surface,facing,from,to,Math.PI/8);
++    }
++    /** A bonnet can leave diagonal facets clearer than the cardinal panels of a plain casting. */
++    static List<Mesh.Polygon> fitting(List<Mesh.Polygon> surface,int facing,double from,double to,double angleOffset) {
+         var mesh=new Mesh();var axis=LineGeometry.step(facing);var patches=new LinkedHashMap<Plane,Patch>();
+         for(var polygon:surface) {
+             if(polygon.material()!=Mesh.Material.FLANGE||polygon.size()<3)continue;
+@@ -82,7 +86,7 @@ public final class MoverPortMarkings {
+         }
+         int bodyFace=facing|1;var reference=LineGeometry.ref(bodyFace);var tangent=Mesh.cross(LineGeometry.step(bodyFace),reference);var selected=new LinkedHashSet<Patch>();
+         for(int q=0;q<4;q++) {
+-            double angle=Math.PI/8+q*Math.PI/2,c=DeterministicMath.cos(angle),s=DeterministicMath.sin(angle),best=-2;Patch choice=null;
++            double angle=angleOffset+q*Math.PI/2,c=DeterministicMath.cos(angle),s=DeterministicMath.sin(angle),best=-2;Patch choice=null;
+             for(var patch:patches.values()) {double score=c*Mesh.dot(patch.normal,reference)+s*Mesh.dot(patch.normal,tangent);if(score>best){best=score;choice=patch;}}
+             if(choice!=null)selected.add(choice);
+         }
+diff --git a/src/main/java/com/wormzjl/icheme/science/equipment/PressureValveGeometry.java b/src/main/java/com/wormzjl/icheme/science/equipment/PressureValveGeometry.java
+new file mode 100644
+index 00000000..1634a60b
+--- /dev/null
++++ b/src/main/java/com/wormzjl/icheme/science/equipment/PressureValveGeometry.java
+@@ -0,0 +1,70 @@
++package com.wormzjl.icheme.science.equipment;
++
++import java.util.ArrayList;
++import java.util.List;
++import static com.wormzjl.icheme.science.equipment.Mesh.*;
++
++/** Flanged globe casting, bolted bonnet, exposed stem/yoke and a full-height diaphragm actuator. */
++public final class PressureValveGeometry {
++    private static final double[] CENTRE={.5,.5,.5};
++    private PressureValveGeometry(){}
++
++    public static List<Polygon> polygons(LineGeometry.Key key,boolean accessory) {
++        var mesh=new Mesh();body(mesh,key,accessory);
++        double half=half(PipeSizes.outsideOf(key.outside()));
++        var arrows=MoverPortMarkings.fitting(mesh.cell(0,0,0),key.facing(),-.42*half,.42*half,Math.PI/4);
++        finish(mesh,key,accessory);var out=new ArrayList<>(LineGeometry.overhanging(mesh));out.addAll(arrows);
++        return List.copyOf(out);
++    }
++    static void build(Mesh mesh,LineGeometry.Key key){body(mesh,key,false);finish(mesh,key,false);}
++    private static double radius(double od){return Math.min(.495,Math.max(.105,.62*od+.06));}
++    private static double half(double od){return Math.min(.31,Math.max(.105,.20+.12*od));}
++    private static double[] stem(int facing){return (facing&~1)==0?new double[]{0,0,-1}:new double[]{0,1,0};}
++
++    private static void body(Mesh mesh,LineGeometry.Key key,boolean accessory) {
++        double od=PipeSizes.outsideOf(key.outside()),r=radius(od),h=half(od);int sides=Math.max(16,PipeSizes.sides(2*r));
++        var frame=new Frame(CENTRE,LineGeometry.step(key.facing()|1),stem(key.facing()));
++        mesh.frustum(frame,.67*r,r,-h,-.50*h,sides,Material.FLANGE);
++        mesh.prism(frame,r,-.50*h,.50*h,sides,Material.FLANGE);
++        mesh.frustum(frame,r,.67*r,.50*h,h,sides,Material.FLANGE);
++        double hole=accessory?Math.min(.44*od,.60*r):0;
++        for(int sign:new int[]{-1,1})mesh.annulus(frame,hole,.67*r,sign*h,sides,sign,Material.FLANGE);
++        if(hole>0)mesh.bore(frame,hole,-h,h,sides,Material.OPENING);
++    }
++
++    private static void finish(Mesh mesh,LineGeometry.Key key,boolean accessory) {
++        double od=PipeSizes.outsideOf(key.outside()),r=radius(od),h=half(od);
++        int axis=key.facing()&~1;var run=LineGeometry.step(axis|1);var stem=stem(key.facing());var f=new Frame(CENTRE,stem,run);
++        double bonnet=Math.max(.075,.19*od),yoke=Math.max(.22,.42*od),casing=Math.min(.96,Math.max(.34,.30+.75*od));
++        double shoulder=.82*r,seat=r+bonnet,top=seat+yoke,rc=casing/2;
++        int n=Math.max(16,PipeSizes.sides(casing));
++        mesh.frustum(f,.48*r,.30*r,shoulder,seat,12,Material.MACHINE);
++        mesh.annulus(f,0,.30*r,seat,12,1,Material.MACHINE);
++        mesh.ring(f,.28*r,.54*r,seat-.035,seat+.015,12,3,Material.FLANGE);
++        mesh.bolts(f,od,.29*r,.54*r,seat+.015,1,Material.BOLT);
++        double leg=Math.max(.016,.045*casing),spread=Math.max(.045,.28*r);var across=f.side();
++        for(int sign:new int[]{-1,1}) {
++            var a=f.along(seat+.015);var b=f.along(top);
++            for(int i=0;i<3;i++){a[i]+=sign*spread*across[i];b[i]+=sign*.72*spread*across[i];}
++            mesh.bar(a,b,leg,run,Material.STEELWORK);
++        }
++        mesh.cylinder(f,Math.max(.007,.020*od),seat,top+.03,10,Material.BOLT);
++        mesh.cylinder(f,Math.max(.013,.035*od),seat+.06*yoke,seat+.20*yoke,6,Material.GUARD);
++        mesh.ring(f,0,.30*rc,top-.025,top+.025,12,3,Material.FLANGE);
++        // Full-sized diaphragm and bolted split rim; no scaling down to the host block's top face.
++        double rim=top+.15*casing,edge=rim+.035,cap=edge+.23*casing;
++        mesh.frustum(f,.30*rc,rc,top,rim,n,Material.ACTUATOR);
++        mesh.annulus(f,0,.30*rc,top,n,-1,Material.ACTUATOR);
++        mesh.ring(f,rc,.96*rc+.025,rim,edge,n,3,Material.FLANGE);
++        mesh.prism(f,rc,rim,edge,n,Material.ACTUATOR);
++        mesh.frustum(f,rc,.34*rc,edge,cap,n,Material.ACTUATOR);
++        mesh.annulus(f,0,.34*rc,cap,n,1,Material.ACTUATOR);
++        mesh.cylinder(f,.13*rc,cap,cap+.025,8,Material.BOLT);
++        for(int i=0;i<8;i++)mesh.cylinder(new Frame(f.at(i*Math.PI/4,.92*rc,edge),stem,run),Math.max(.007,.018*casing),0,.022,6,Material.BOLT);
++        if(!accessory)for(int face:new int[]{axis,axis^1}) {
++            var end=LineGeometry.end(key,face,od);
++            end=new LineGeometry.End(end.outside(),true,end.reducer(),end.reducer()+PipeSizes.flangeThickness(end.outside())+PipeSizes.hub(end.outside()),end.joined());
++            LineGeometry.arm(mesh,face,h,od,end,LineGeometry.ref(face),PipeSizes.sides(od),true);
++        }
++    }
++}
+diff --git a/src/main/java/com/wormzjl/icheme/science/equipment/ShutoffValveGeometry.java b/src/main/java/com/wormzjl/icheme/science/equipment/ShutoffValveGeometry.java
+index 8b23407b..93076903 100644
+--- a/src/main/java/com/wormzjl/icheme/science/equipment/ShutoffValveGeometry.java
++++ b/src/main/java/com/wormzjl/icheme/science/equipment/ShutoffValveGeometry.java
+@@ -1,6 +1,5 @@
+ package com.wormzjl.icheme.science.equipment;
+ 
+-import java.util.ArrayList;
+ import java.util.List;
+ import static com.wormzjl.icheme.science.equipment.Mesh.*;
+ 
+@@ -33,25 +32,21 @@ public final class ShutoffValveGeometry {
+         mesh.cylinder(bonnet,1.65*neck,.80*radius,radius+.30*rise,12,Material.FLANGE);
+         mesh.cylinder(bonnet,neck,radius,radius+rise,12,Material.BOLT);
+         mesh.cylinder(bonnet,1.35*neck,radius+.50*rise,radius+.66*rise,6,Material.BOLT);
+-        double length=Math.min(.43,Math.max(.16,.70*od)),width=Math.max(.028,Math.min(.115,.17*od)),thickness=Math.max(.014,.045*od);
++        double length=Math.min(.95,Math.max(.36,1.10*od)),width=Math.max(.065,Math.min(.19,.24*od)),thickness=Math.max(.035,.085*od);
+         var pivot=bonnet.along(radius+rise);double[] lever=open?run:cross(stem,run);
+-        bar(mesh,pivot,lever,stem,width,thickness,-.035,length,Material.FLANGE);
+-        bar(mesh,pivot,lever,stem,1.08*width,1.2*thickness,.18*length,length,Material.GUARD);
+-        mesh.cylinder(new Frame(pivot,stem,run),1.05*neck,-thickness,thickness,6,Material.BOLT);
++        bar(mesh,pivot,lever,stem,1.35*width,1.15*thickness,-.28*length,.12*length,Material.FLANGE);
++        bar(mesh,pivot,lever,stem,width,thickness,0,length,Material.FLANGE);
++        var rib=pivot.clone();for(int i=0;i<3;i++)rib[i]-=.65*thickness*stem[i];
++        bar(mesh,rib,lever,stem,.48*width,.65*thickness,-.10*length,.65*length,Material.STEELWORK);
++        bar(mesh,pivot,lever,stem,1.28*width,1.50*thickness,.48*length,length,Material.GUARD);
++        bar(mesh,pivot,lever,stem,1.30*width,1.55*thickness,.94*length,length,Material.BOLT);
++        mesh.cylinder(new Frame(pivot,stem,run),Math.max(1.35*neck,.55*width),-thickness,1.05*thickness,6,Material.BOLT);
+         if(!accessory)for(int face:new int[]{axis,axis^1}) {
+             var end=LineGeometry.end(key,face,od);
+             end=new LineGeometry.End(end.outside(),true,end.reducer(),end.reducer()+PipeSizes.flangeThickness(end.outside())+PipeSizes.hub(end.outside()),end.joined());
+             LineGeometry.arm(mesh,face,half,od,end,LineGeometry.ref(face),sides,true);
+         }
+-        // A handle can project past the pipe cell, like other vanilla decorative block models.
+-        // Collect all clipped pieces back into the owning model so large handles are never sliced off.
+-        var out=new ArrayList<Polygon>();
+-        for(int x=-1;x<=1;x++)for(int y=-1;y<=1;y++)for(int z=-1;z<=1;z++)for(var polygon:mesh.cell(x,y,z)) {
+-            var positions=polygon.positions().clone();
+-            for(int v=0;v<positions.length;v+=3){positions[v]+=x;positions[v+1]+=y;positions[v+2]+=z;}
+-            out.add(new Polygon(positions,polygon.uvs(),polygon.normals(),polygon.material()));
+-        }
+-        return List.copyOf(out);
++        return LineGeometry.overhanging(mesh);
+     }
+ 
+     private static void bar(Mesh mesh,double[] origin,double[] direction,double[] up,double width,double height,double from,double to,Material material) {
+diff --git a/src/main/java/com/wormzjl/icheme/world/item/PipelineCheckValveItem.java b/src/main/java/com/wormzjl/icheme/world/item/PipelineCheckValveItem.java
+index 1542e73c..20b8bf97 100644
+--- a/src/main/java/com/wormzjl/icheme/world/item/PipelineCheckValveItem.java
++++ b/src/main/java/com/wormzjl/icheme/world/item/PipelineCheckValveItem.java
+@@ -1,7 +1,5 @@
+ package com.wormzjl.icheme.world.item;
+ 
+-import com.wormzjl.icheme.runtime.fluid.PhysicalFluidTopology.Cutoff;
+-
+ public final class PipelineCheckValveItem extends PipelineValveItem {
+-    public PipelineCheckValveItem(Properties properties){super(properties,Cutoff.CHECK);}
++    public PipelineCheckValveItem(Properties properties){super(properties,Type.CHECK);}
+ }
+diff --git a/src/main/java/com/wormzjl/icheme/world/item/PipelinePressureValveItem.java b/src/main/java/com/wormzjl/icheme/world/item/PipelinePressureValveItem.java
+new file mode 100644
+index 00000000..0432d47e
+--- /dev/null
++++ b/src/main/java/com/wormzjl/icheme/world/item/PipelinePressureValveItem.java
+@@ -0,0 +1,5 @@
++package com.wormzjl.icheme.world.item;
++
++public final class PipelinePressureValveItem extends PipelineValveItem {
++    public PipelinePressureValveItem(Properties properties){super(properties,Type.PRESSURE);}
++}
+diff --git a/src/main/java/com/wormzjl/icheme/world/item/PipelineShutoffValveItem.java b/src/main/java/com/wormzjl/icheme/world/item/PipelineShutoffValveItem.java
+index 73e3e84e..1659a827 100644
+--- a/src/main/java/com/wormzjl/icheme/world/item/PipelineShutoffValveItem.java
++++ b/src/main/java/com/wormzjl/icheme/world/item/PipelineShutoffValveItem.java
+@@ -1,7 +1,5 @@
+ package com.wormzjl.icheme.world.item;
+ 
+-import com.wormzjl.icheme.runtime.fluid.PhysicalFluidTopology.Cutoff;
+-
+ public final class PipelineShutoffValveItem extends PipelineValveItem {
+-    public PipelineShutoffValveItem(Properties properties){super(properties,Cutoff.OPEN);}
++    public PipelineShutoffValveItem(Properties properties){super(properties,Type.SHUTOFF);}
+ }
+diff --git a/src/main/java/com/wormzjl/icheme/world/item/PipelineValveItem.java b/src/main/java/com/wormzjl/icheme/world/item/PipelineValveItem.java
+index ff09fbc8..366f3f0a 100644
+--- a/src/main/java/com/wormzjl/icheme/world/item/PipelineValveItem.java
++++ b/src/main/java/com/wormzjl/icheme/world/item/PipelineValveItem.java
+@@ -16,21 +16,25 @@ import net.minecraft.world.item.*;
+ import net.minecraft.world.item.context.UseOnContext;
+ import net.minecraft.world.level.block.Block;
+ 
+-/** Installs an axis-locked shutoff or directional valve without replacing the host pipe or its identity. */
++/** Installs an axis-locked valve without replacing the host pipe or its identity. */
+ public abstract class PipelineValveItem extends Item {
++    protected enum Type {SHUTOFF,CHECK,PRESSURE}
++    private final Type type;
+     private final PhysicalFluidTopology.Cutoff installed;
+     private final String translation;
+-    protected PipelineValveItem(Properties properties,PhysicalFluidTopology.Cutoff installed){
++    protected PipelineValveItem(Properties properties,Type type){
+         super(properties.stacksTo(64));
+-        if(installed!=PhysicalFluidTopology.Cutoff.OPEN&&installed!=PhysicalFluidTopology.Cutoff.CHECK)throw new IllegalArgumentException("Invalid valve accessory");
+-        this.installed=installed;translation="item.icheme.pipeline_"+(installed==PhysicalFluidTopology.Cutoff.CHECK?"check":"shutoff")+"_valve.";
++        this.type=java.util.Objects.requireNonNull(type);
++        installed=switch(type){case SHUTOFF->PhysicalFluidTopology.Cutoff.OPEN;case CHECK->PhysicalFluidTopology.Cutoff.CHECK;case PRESSURE->PhysicalFluidTopology.Cutoff.NONE;};
++        translation=type==Type.PRESSURE?"item.icheme.pressure_control_valve.":"item.icheme.pipeline_"+(type==Type.CHECK?"check":"shutoff")+"_valve.";
+     }
+ 
+     @Override public InteractionResult onItemUseFirst(ItemStack stack,UseOnContext context) {
+         var player=context.getPlayer();var level=context.getLevel();var pos=context.getClickedPos();var state=level.getBlockState(pos);
+         if(!(state.getBlock() instanceof FluidDeviceBlock block)||block.kind()!=TopologyCompiler.Kind.PIPE)return InteractionResult.PASS;
+         if(player==null||!player.mayBuild()||player.isSpectator()||!level.mayInteract(player,pos)||!player.mayUseItemAt(pos,context.getClickedFace(),stack))return InteractionResult.FAIL;
+-        if(FluidDeviceBlock.cutoff(state)==installed||installed==PhysicalFluidTopology.Cutoff.OPEN&&FluidDeviceBlock.hasShutoff(state))return InteractionResult.sidedSuccess(level.isClientSide());
++        boolean duplicate=switch(type){case PRESSURE->FluidDeviceBlock.hasPressureValve(state);case SHUTOFF->FluidDeviceBlock.hasShutoff(state);case CHECK->FluidDeviceBlock.cutoff(state)==installed;};
++        if(duplicate)return InteractionResult.sidedSuccess(level.isClientSide());
+         if(state.getValue(FluidDeviceBlock.SIGHT_GLASS)||FluidDeviceBlock.hasPipeValve(state)) {
+             if(!level.isClientSide())player.displayClientMessage(Component.translatable(translation+"one_accessory"),true);
+             return InteractionResult.FAIL;
+@@ -47,15 +51,18 @@ public abstract class PipelineValveItem extends Item {
+             var record=world.registrations().get(entity.fluidIdentity());
+             var at=new PhysicalFluidTopology.Position(level.dimension().location().toString(),pos.getX(),pos.getY(),pos.getZ());
+             if(record==null||record.device().kind()!=TopologyCompiler.Kind.PIPE||!record.device().position().equals(at))return InteractionResult.FAIL;
+-            if(record.device().cutoff()!=PhysicalFluidTopology.Cutoff.NONE)return InteractionResult.SUCCESS;
++            if(record.device().cutoff()!=PhysicalFluidTopology.Cutoff.NONE||!(record.device().control() instanceof com.wormzjl.icheme.science.fluid.network.FlowControl.Passive))return InteractionResult.SUCCESS;
+             var facing=mask==0?state.getValue(FluidDeviceBlock.FACING):Direction.values()[Integer.numberOfTrailingZeros(mask)];
+-            if(installed==PhysicalFluidTopology.Cutoff.CHECK) {
++            if(type!=Type.SHUTOFF) {
+                 var look=player.getLookAngle();double along=look.x*facing.getStepX()+look.y*facing.getStepY()+look.z*facing.getStepZ();
+                 if(along<0)facing=facing.getOpposite();
+             }
+-            var changed=FluidDeviceBlock.connectedState(state.setValue(FluidDeviceBlock.SHUTOFF,FluidDeviceBlock.Shutoff.of(installed)).setValue(FluidDeviceBlock.FACING,facing),level,pos);
++            var changed=state.setValue(FluidDeviceBlock.FACING,facing);
++            changed=type==Type.PRESSURE?changed.setValue(FluidDeviceBlock.PRESSURE_CONTROL,true):changed.setValue(FluidDeviceBlock.SHUTOFF,FluidDeviceBlock.Shutoff.of(installed));
++            changed=FluidDeviceBlock.connectedState(changed,level,pos);
+             if(!level.setBlock(pos,changed,Block.UPDATE_ALL))return InteractionResult.FAIL;
+-            if(!world.installPipeValve(entity.fluidIdentity(),PhysicalFluidTopology.Direction.valueOf(facing.name()),installed)) {
++            var axis=PhysicalFluidTopology.Direction.valueOf(facing.name());
++            if(!(type==Type.PRESSURE?world.installPipePressureValve(entity.fluidIdentity(),axis):world.installPipeValve(entity.fluidIdentity(),axis,installed))) {
+                 level.setBlock(pos,state,Block.UPDATE_ALL);return InteractionResult.FAIL;
+             }
+             entity.refreshGeometry(entity.bore(),true);
+diff --git a/src/main/java/com/wormzjl/icheme/world/level/block/FluidDeviceBlock.java b/src/main/java/com/wormzjl/icheme/world/level/block/FluidDeviceBlock.java
+index 16dd014d..3c4acfae 100644
+--- a/src/main/java/com/wormzjl/icheme/world/level/block/FluidDeviceBlock.java
++++ b/src/main/java/com/wormzjl/icheme/world/level/block/FluidDeviceBlock.java
+@@ -29,6 +29,7 @@ public sealed class FluidDeviceBlock extends BaseEntityBlock {
+     /** Static pipe accessory, with no hydraulic meaning. Changing it keeps this block and its entity. */
+     public static final BooleanProperty SIGHT_GLASS=BooleanProperty.create("sight_glass");
+     public static final EnumProperty<Direction.Axis> SIGHT_GLASS_AXIS=EnumProperty.create("sight_glass_axis",Direction.Axis.class);
++    public static final BooleanProperty PRESSURE_CONTROL=BooleanProperty.create("pressure_control");
+     /** Committed lever position; a newly installed accessory initially draws open. */
+     public enum Shutoff implements net.minecraft.util.StringRepresentable {
+         NONE(PhysicalFluidTopology.Cutoff.NONE),OPEN(PhysicalFluidTopology.Cutoff.OPEN),CLOSED(PhysicalFluidTopology.Cutoff.CLOSED),CHECK(PhysicalFluidTopology.Cutoff.CHECK);
+@@ -47,12 +48,12 @@ public sealed class FluidDeviceBlock extends BaseEntityBlock {
+     public static FluidDeviceBlock create(TopologyCompiler.Kind kind,BlockBehaviour.Properties properties){return kind==TopologyCompiler.Kind.PIPE?new Pipe(properties):new FluidDeviceBlock(kind,properties);}
+     private FluidDeviceBlock(TopologyCompiler.Kind kind,BlockBehaviour.Properties properties) {
+         super(properties);this.kind=kind;var state=stateDefinition.any().setValue(FACING,Direction.NORTH).setValue(SIGHT_GLASS,false).setValue(SIGHT_GLASS_AXIS,Direction.Axis.Z);
+-        if(kind==TopologyCompiler.Kind.PIPE)state=state.setValue(SHUTOFF,Shutoff.NONE);
++        if(kind==TopologyCompiler.Kind.PIPE)state=state.setValue(SHUTOFF,Shutoff.NONE).setValue(PRESSURE_CONTROL,false);
+         for(var property:CONNECTIONS.values())state=state.setValue(property,false);registerDefaultState(state);
+     }
+     private static final class Pipe extends FluidDeviceBlock {
+         private Pipe(BlockBehaviour.Properties properties){super(TopologyCompiler.Kind.PIPE,properties);}
+-        @Override protected void createBlockStateDefinition(StateDefinition.Builder<Block,BlockState> builder){super.createBlockStateDefinition(builder);builder.add(SHUTOFF);}
++        @Override protected void createBlockStateDefinition(StateDefinition.Builder<Block,BlockState> builder){super.createBlockStateDefinition(builder);builder.add(SHUTOFF,PRESSURE_CONTROL);}
+     }
+     public TopologyCompiler.Kind kind(){return kind;}
+     @Override public MapCodec<FluidDeviceBlock> codec(){return CODEC;}
+@@ -64,8 +65,9 @@ public sealed class FluidDeviceBlock extends BaseEntityBlock {
+         return com.wormzjl.icheme.science.equipment.SightGlassGeometry.supports(connectionMask(state));
+     }
+     public static boolean hasSightGlass(BlockState state){return supportsSightGlass(state)&&state.getValue(SIGHT_GLASS);}
+-    public static boolean hasShutoff(BlockState state){return hasPipeValve(state)&&state.getValue(SHUTOFF)!=Shutoff.CHECK;}
+-    public static boolean hasPipeValve(BlockState state){return state.getBlock() instanceof FluidDeviceBlock block&&block.kind==TopologyCompiler.Kind.PIPE&&state.getValue(SHUTOFF)!=Shutoff.NONE;}
++    public static boolean hasPressureValve(BlockState state){return state.getBlock() instanceof FluidDeviceBlock block&&block.kind==TopologyCompiler.Kind.PIPE&&state.getValue(PRESSURE_CONTROL);}
++    public static boolean hasShutoff(BlockState state){return hasPipeValve(state)&&(state.getValue(SHUTOFF)==Shutoff.OPEN||state.getValue(SHUTOFF)==Shutoff.CLOSED);}
++    public static boolean hasPipeValve(BlockState state){return state.getBlock() instanceof FluidDeviceBlock block&&block.kind==TopologyCompiler.Kind.PIPE&&(state.getValue(SHUTOFF)!=Shutoff.NONE||state.getValue(PRESSURE_CONTROL));}
+     public static PhysicalFluidTopology.Cutoff cutoff(BlockState state){return state.getBlock() instanceof FluidDeviceBlock block&&block.kind==TopologyCompiler.Kind.PIPE?state.getValue(SHUTOFF).cutoff():PhysicalFluidTopology.Cutoff.NONE;}
+     public static boolean hasFitting(BlockState state){return hasSightGlass(state)||hasPipeValve(state);}
+     /** Mechanical joints stay connected when a valve closes hydraulically. */
+@@ -144,9 +146,9 @@ public sealed class FluidDeviceBlock extends BaseEntityBlock {
+         FluidWorldAuthority.find(serverLevel.getServer()).ifPresent(world->{
+             var p=new PhysicalFluidTopology.Position(level.dimension().location().toString(),position.getX(),position.getY(),position.getZ());
+             if(previous.getBlock()!=this) {
+-                var record=world.place(p,kind,PhysicalFluidTopology.Direction.valueOf(state.getValue(FACING).name()),cutoff(state));
++                var record=world.place(p,kind,PhysicalFluidTopology.Direction.valueOf(state.getValue(FACING).name()),cutoff(state),hasPressureValve(state));
+                 if(level.getBlockEntity(position) instanceof FluidDeviceBlockEntity entity)entity.bindIdentity(record.device().id());
+-            } else if(!hasPipeValve(state)&&previous.getValue(FACING)!=state.getValue(FACING)) {
++            } else if(!hasPipeValve(state)&&!hasPipeValve(previous)&&previous.getValue(FACING)!=state.getValue(FACING)) {
+                 world.at(p).ifPresent(old->{var d=old.device();world.edit(d.id(),old.revision(),d.withFacing(PhysicalFluidTopology.Direction.valueOf(state.getValue(FACING).name())),old.spec());});
+             }
+         });
+@@ -158,6 +160,10 @@ public sealed class FluidDeviceBlock extends BaseEntityBlock {
+         super.onRemove(state,level,position,replacement,moved);
+     }
+     @Override protected InteractionResult useWithoutItem(BlockState state,Level level,BlockPos position,Player player,BlockHitResult hit) {
++        if(hasPressureValve(state)) {
++            if(player instanceof ServerPlayer serverPlayer&&level.getBlockEntity(position) instanceof FluidDeviceBlockEntity entity)entity.open(serverPlayer,false);
++            return InteractionResult.sidedSuccess(level.isClientSide());
++        }
+         if(hasPipeValve(state)&&player.getMainHandItem().isEmpty()&&player.getOffhandItem().isEmpty()) {
+             if(!player.mayBuild()||player.isSpectator()||!level.mayInteract(player,position)||!player.mayUseItemAt(position,hit.getDirection(),ItemStack.EMPTY))return InteractionResult.FAIL;
+             if(player instanceof ServerPlayer serverPlayer&&level.getBlockEntity(position) instanceof FluidDeviceBlockEntity entity)
+diff --git a/src/main/java/com/wormzjl/icheme/world/level/block/entity/FluidDeviceBlockEntity.java b/src/main/java/com/wormzjl/icheme/world/level/block/entity/FluidDeviceBlockEntity.java
+index ddb662c2..508e105a 100644
+--- a/src/main/java/com/wormzjl/icheme/world/level/block/entity/FluidDeviceBlockEntity.java
++++ b/src/main/java/com/wormzjl/icheme/world/level/block/entity/FluidDeviceBlockEntity.java
+@@ -110,6 +110,11 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements FluidVi
+         // No uninstall action exists: NONE may be the older committed record of an installation still queued.
+         // Keep its installed flag for persistence and breaking drops; subsequent lever states come from commits only.
+         var committed=FluidWorldAuthority.find(serverLevel.getServer()).flatMap(world->world.committedDevice(identity)).orElse(null);
++        if(committed!=null&&committed.kind()==TopologyCompiler.Kind.PIPE&&committed.control() instanceof com.wormzjl.icheme.science.fluid.network.FlowControl.PressureValve) {
++            var state=getBlockState();var updated=FluidDeviceBlock.connectedState(state.setValue(FluidDeviceBlock.PRESSURE_CONTROL,true)
++                    .setValue(FluidDeviceBlock.FACING,Direction.valueOf(committed.facing().name())),level,worldPosition);
++            if(updated!=state){level.setBlock(worldPosition,updated,net.minecraft.world.level.block.Block.UPDATE_ALL);neighbours=true;}
++        }
+         if(committed!=null&&committed.cutoff()!=PhysicalFluidTopology.Cutoff.NONE) {
+             var state=getBlockState();var updated=state.setValue(FluidDeviceBlock.SHUTOFF,FluidDeviceBlock.Shutoff.of(committed.cutoff()))
+                     .setValue(FluidDeviceBlock.FACING,Direction.valueOf(committed.facing().name()));
+@@ -167,7 +172,7 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements FluidVi
+     public void open(ServerPlayer player,boolean debug) {
+         if(identity==0){player.displayClientMessage(Component.literal("Fluid device is waiting for its world identity."),true);return;}
+         player.openMenu(new MenuProvider() {
+-            public Component getDisplayName(){return Component.translatable(getBlockState().getBlock().getDescriptionId());}
++            public Component getDisplayName(){return Component.translatable(FluidDeviceBlock.hasPressureValve(getBlockState())?"item.icheme.pressure_control_valve":getBlockState().getBlock().getDescriptionId());}
+             public AbstractContainerMenu createMenu(int containerId,Inventory inventory,Player player){return new FluidDeviceMenu(containerId,inventory,worldPosition,identity,debug,FluidDeviceMenu.REACH);}
+         },buffer->{buffer.writeBlockPos(worldPosition);buffer.writeLong(identity);buffer.writeBoolean(debug);buffer.writeDouble(FluidDeviceMenu.REACH);});
+         // Replay only after the opening packet and server menu exist, preserving packet order.
+diff --git a/src/main/resources/assets/icheme/blockstates/pressure_control_valve.json b/src/main/resources/assets/icheme/blockstates/pressure_control_valve.json
+deleted file mode 100644
+index b4fe6310..00000000
+--- a/src/main/resources/assets/icheme/blockstates/pressure_control_valve.json
++++ /dev/null
+@@ -1,7 +0,0 @@
+-{
+-  "variants": {
+-    "": {
+-      "model": "icheme:block/pressure_control_valve"
+-    }
+-  }
+-}
+diff --git a/src/main/resources/assets/icheme/lang/en_us.json b/src/main/resources/assets/icheme/lang/en_us.json
+index 00146de0..42b81d30 100644
+--- a/src/main/resources/assets/icheme/lang/en_us.json
++++ b/src/main/resources/assets/icheme/lang/en_us.json
+@@ -47,7 +47,12 @@
+   "block.icheme.fluid_pipe": "Process Fluid Pipe",
+   "block.icheme.fluid_pump": "Process Fluid Pump",
+   "block.icheme.fluid_compressor": "Process Gas Compressor",
+-  "block.icheme.pressure_control_valve": "Pressure Control Valve",
++  "item.icheme.pressure_control_valve": "Pressure Control Valve",
++  "item.icheme.pressure_control_valve.install": "Right-click a straight pipe to install. Aim along it to set flow direction.",
++  "item.icheme.pressure_control_valve.toggle": "Empty-hand right-click opens pressure controls.",
++  "item.icheme.pressure_control_valve.straight_only": "Fits straight pipe sections only.",
++  "item.icheme.pressure_control_valve.one_accessory": "Only one accessory fits a pipe section.",
++  "item.icheme.pressure_control_valve.recover": "Breaking the pipe returns this accessory.",
+   "block.icheme.fluid_generator": "Fluid Generator",
+   "block.icheme.fluid_void": "Fluid Void",
+   "item.icheme.fluid_debugger": "Fluid Network Probe",
+diff --git a/src/main/resources/assets/icheme/models/block/pressure_control_valve.json b/src/main/resources/assets/icheme/models/block/pressure_control_valve.json
+deleted file mode 100644
+index 5612d2a2..00000000
+--- a/src/main/resources/assets/icheme/models/block/pressure_control_valve.json
++++ /dev/null
+@@ -1,5 +0,0 @@
+-{
+-  "parent": "icheme:block/fluid_device",
+-  "loader": "icheme:fluid_device",
+-  "kind": "valve"
+-}
+diff --git a/src/main/resources/assets/icheme/models/item/pipeline_shutoff_valve.json b/src/main/resources/assets/icheme/models/item/pipeline_shutoff_valve.json
+index 9ad635d0..cb98d07a 100644
+--- a/src/main/resources/assets/icheme/models/item/pipeline_shutoff_valve.json
++++ b/src/main/resources/assets/icheme/models/item/pipeline_shutoff_valve.json
+@@ -5,9 +5,21 @@
+   "shutoff_valve_accessory": true,
+   "display": {
+     "gui": {
+-      "rotation": [30, 45, 0],
+-      "translation": [0, -1, 0],
+-      "scale": [2, 2, 2]
++      "rotation": [
++        30,
++        45,
++        0
++      ],
++      "translation": [
++        -1.3,
++        -0.9,
++        0
++      ],
++      "scale": [
++        1.85,
++        1.85,
++        1.85
++      ]
+     }
+   }
+ }
+diff --git a/src/main/resources/assets/icheme/models/item/pressure_control_valve.json b/src/main/resources/assets/icheme/models/item/pressure_control_valve.json
+index af0ab96c..0e943ada 100644
+--- a/src/main/resources/assets/icheme/models/item/pressure_control_valve.json
++++ b/src/main/resources/assets/icheme/models/item/pressure_control_valve.json
+@@ -1,3 +1,25 @@
+ {
+-  "parent": "icheme:block/pressure_control_valve"
++  "parent": "icheme:block/fluid_device",
++  "loader": "icheme:fluid_device",
++  "kind": "pipe",
++  "pressure_valve_accessory": true,
++  "display": {
++    "gui": {
++      "rotation": [
++        25,
++        45,
++        0
++      ],
++      "translation": [
++        0,
++        -3.5,
++        0
++      ],
++      "scale": [
++        0.95,
++        0.95,
++        0.95
++      ]
++    }
++  }
+ }
+diff --git a/src/main/resources/data/create/tags/block/non_movable.json b/src/main/resources/data/create/tags/block/non_movable.json
+index 0f177667..19a98d3a 100644
+--- a/src/main/resources/data/create/tags/block/non_movable.json
++++ b/src/main/resources/data/create/tags/block/non_movable.json
+@@ -5,7 +5,6 @@
+     "icheme:fluid_pipe",
+     "icheme:fluid_pump",
+     "icheme:fluid_compressor",
+-    "icheme:pressure_control_valve",
+     "icheme:fluid_generator",
+     "icheme:fluid_void",
+     "icheme:equipment_shell",
+diff --git a/src/main/resources/data/icheme/loot_table/blocks/fluid_pipe.json b/src/main/resources/data/icheme/loot_table/blocks/fluid_pipe.json
+index 546bd803..10427f5f 100644
+--- a/src/main/resources/data/icheme/loot_table/blocks/fluid_pipe.json
++++ b/src/main/resources/data/icheme/loot_table/blocks/fluid_pipe.json
+@@ -89,6 +89,27 @@
+           }
+         }
+       ]
++    },
++    {
++      "rolls": 1,
++      "entries": [
++        {
++          "type": "minecraft:item",
++          "name": "icheme:pressure_control_valve"
++        }
++      ],
++      "conditions": [
++        {
++          "condition": "minecraft:survives_explosion"
++        },
++        {
++          "condition": "minecraft:block_state_property",
++          "block": "icheme:fluid_pipe",
++          "properties": {
++            "pressure_control": "true"
++          }
++        }
++      ]
+     }
+   ]
+ }
+diff --git a/src/main/resources/data/icheme/loot_table/blocks/pressure_control_valve.json b/src/main/resources/data/icheme/loot_table/blocks/pressure_control_valve.json
+deleted file mode 100644
+index 910aff44..00000000
+--- a/src/main/resources/data/icheme/loot_table/blocks/pressure_control_valve.json
++++ /dev/null
+@@ -1,19 +0,0 @@
+-{
+-  "type": "minecraft:block",
+-  "pools": [
+-    {
+-      "rolls": 1,
+-      "entries": [
+-        {
+-          "type": "minecraft:item",
+-          "name": "icheme:pressure_control_valve"
+-        }
+-      ],
+-      "conditions": [
+-        {
+-          "condition": "minecraft:survives_explosion"
+-        }
+-      ]
+-    }
+-  ]
+-}
+diff --git a/src/main/resources/data/minecraft/tags/block/mineable/pickaxe.json b/src/main/resources/data/minecraft/tags/block/mineable/pickaxe.json
+index e144db55..809ae7ac 100644
+--- a/src/main/resources/data/minecraft/tags/block/mineable/pickaxe.json
++++ b/src/main/resources/data/minecraft/tags/block/mineable/pickaxe.json
+@@ -5,7 +5,6 @@
+     "icheme:fluid_pipe",
+     "icheme:fluid_pump",
+     "icheme:fluid_compressor",
+-    "icheme:pressure_control_valve",
+     "icheme:fluid_generator",
+     "icheme:fluid_void",
+     "icheme:inline_filter",
+diff --git a/src/test/java/com/wormzjl/icheme/runtime/fluid/PipelinePressureValveTest.java b/src/test/java/com/wormzjl/icheme/runtime/fluid/PipelinePressureValveTest.java
+new file mode 100644
+index 00000000..d92ca2d7
+--- /dev/null
++++ b/src/test/java/com/wormzjl/icheme/runtime/fluid/PipelinePressureValveTest.java
+@@ -0,0 +1,83 @@
++package com.wormzjl.icheme.runtime.fluid;
++
++import com.wormzjl.icheme.science.fluid.network.*;
++import com.wormzjl.icheme.science.fluid.topology.TopologyCompiler.Kind;
++import org.junit.jupiter.api.Test;
++import java.util.*;
++import static com.wormzjl.icheme.runtime.fluid.PhysicalFluidTopology.*;
++import static org.junit.jupiter.api.Assertions.*;
++
++/** Accessory adapter coverage; the pressure-valve constitutive model is unchanged. */
++class PipelinePressureValveTest {
++    private static final String DIM="minecraft:overworld";
++    private static final Runnable NOOP=()->{};
++    private final com.wormzjl.icheme.science.fluid.thermo.FluidThermodynamics model=com.wormzjl.icheme.fluid.support.FluidTestSupport.networkModel();
++
++    @Test void allSixDirectionsUseExistingPressureControlAndPreservePipeAndReservoirs() {
++        for(var axis:Direction.values()) {
++            var world=line(axis);var before=stock(world);var original=world.registry.registrations().get(3L);
++            assertFalse(world.registry.installPipePressureValve(3,axis.y!=0?Direction.EAST:Direction.UP));
++            assertTrue(world.registry.installPipePressureValve(3,axis));assertFalse(world.registry.installPipePressureValve(3,axis));
++            var installed=world.registry.registrations().get(3L);var d=installed.device();
++            assertEquals(original.device().id(),d.id());assertEquals(original.device().position(),d.position());
++            assertEquals(original.device().geometry(),d.geometry());assertEquals(original.spec(),installed.spec());
++            assertEquals(Kind.PIPE,d.kind());assertEquals(Kind.VALVE,d.hydraulicKind());
++            assertFalse(d.mechanicallyConnects(axis.y!=0?Direction.EAST:Direction.UP));
++            world.registry.applyPending();assertEquals(before,stock(world));
++            assertTrue(graph(world).pipes().stream().anyMatch(p->p.control().equals(new FlowControl.PressureValve(200000))));
++            assertFalse(world.registry.installPipeCutoff(3,axis));assertTrue(world.commands.isEmpty());
++        }
++    }
++
++    @Test void directBoundaryConnectionsAreOrientedAndPressureSetpointClosesFlow() {
++        for(var axis:List.of(Direction.UP,Direction.SOUTH,Direction.WEST))for(double upstream:new double[]{150000,350000}) {
++            var devices=new ArrayList<Device>();var stock=new HashMap<Long,PassiveNetwork.Reservoir>();
++            for(int i=0;i<3;i++) {
++                long id=i+1;var position=new Position(DIM,i*axis.x,64+i*axis.y,i*axis.z);
++                devices.add(new Device(id,position,i==1?Kind.PIPE:Kind.RESERVOIR,axis,new PipeResistance.Geometry(1,.05,.000045,0),i==1?new FlowControl.PressureValve(200000):new FlowControl.Passive()));
++                if(i!=1)stock.put(id,new PassiveNetwork.Reservoir(id,position.y(),model.initialNitrogenCharge(1,298.15,i==0?upstream:100000,NOOP)));
++            }
++            var compiled=PhysicalFluidTopology.compile(devices,stock);assertEquals(1,compiled.islands().size());
++            var graph=compiled.islands().getFirst().graph();assertTrue(graph.pipes().stream().anyMatch(p->p.control() instanceof FlowControl.PressureValve));
++            var result=new PassiveStepSolver(model).solve(graph,.01,NOOP);
++            for(double q:result.massFlows())if(upstream<200000)assertEquals(0,q,1e-8);else assertTrue(q>0,"forward flow follows the installed arrow");
++        }
++    }
++
++    @Test void pendingInstallResizeAndPressureEditsRoundTripWithoutAnotherFormatField() {
++        var world=line(Direction.EAST);var before=stock(world);assertTrue(world.registry.installPipePressureValve(3,Direction.EAST));
++        var record=world.registry.registrations().get(3L);var d=record.device();
++        var edited=new Device(d.id(),d.position(),d.kind(),d.facing(),new PipeResistance.Geometry(1,.25,d.geometry().roughness(),0),new FlowControl.PressureValve(275000));
++        world.registry.submit(List.of(new WorldTopologyLedger.Edit(3,new WorldTopologyLedger.Registration(edited,record.spec(),record.revision()+1))),world.ledger.nextIdentity(),null);
++        var snapshots=world.coordinator.snapshots();var checkpoint=new FluidCheckpointCodec.Checkpoint(snapshots.stream().map(s->new FluidCheckpointCodec.IslandEntry(DIM,"icheme:tjl20_methane_nitrogen",s)).toList());
++        var store=FluidCheckpointStore.memory();store.commit(store.prepare(checkpoint,Optional.of(world.ledger.snapshot()),world.ledger.onlineTick(),key->model));
++        var image=store.image();var loaded=FluidCheckpointStore.memory(image).load(image.core(),key->model);
++        assertArrayEquals(FluidCheckpointCodec.encodeTopology(world.ledger.snapshot()),FluidCheckpointCodec.encodeTopology(loaded.world().orElseThrow()));
++        var restored=new EventPathWorld(0,loaded.world().orElseThrow(),loaded.checkpoint().islands().stream().map(FluidCheckpointCodec.IslandEntry::snapshot).toList());
++        restored.registry.applyPending();assertEquals(before,stock(restored));assertEquals(edited,restored.ledger.active().get(3L).device());
++        var active=FluidCheckpointCodec.decodeTopology(FluidCheckpointCodec.encodeTopology(restored.ledger.snapshot()),restored.ledger.onlineTick(),key->model);
++        assertEquals(edited,active.active().get(3L).device());
++        assertThrows(IllegalArgumentException.class,()->edited.withCutoff(Direction.EAST,Cutoff.OPEN));
++    }
++
++    private EventPathWorld line(Direction axis) {
++        var records=new LinkedHashMap<Long,WorldTopologyLedger.Registration>();var stock=new HashMap<Long,PassiveNetwork.Reservoir>();
++        for(int i=0;i<5;i++) {
++            long id=i+1;var kind=i==0||i==4?Kind.RESERVOIR:Kind.PIPE;var p=new Position(DIM,axis.x*i,64+axis.y*i,axis.z*i);
++            var d=new Device(id,p,kind,axis,new PipeResistance.Geometry(1,.05,.000045,0),new FlowControl.Passive());
++            var spec=FluidDeviceSpec.nitrogen(EventPathWorld.CATALOG);records.put(id,new WorldTopologyLedger.Registration(d,spec,0));
++            if(kind==Kind.RESERVOIR)stock.put(id,new PassiveNetwork.Reservoir(id,p.y(),model.initialNitrogenCharge(1,298.15,i==0?350000:100000,NOOP)));
++        }
++        var compiled=PhysicalFluidTopology.compile(records.values().stream().map(WorldTopologyLedger.Registration::device).toList(),stock);
++        var snapshot=new IslandCoordinator.Snapshot(10,0,compiled.islands().getFirst().graph(),new IslandClock.Snapshot(0,0,100,100),Optional.empty(),"READY");
++        var empty=WorldTopologyLedger.Snapshot.empty(EventPathWorld.CATALOG);
++        var total=WorldTopologyLedger.MaterialTotal.empty(model.components().size()).plus(stock.values(),model.components(),model.molecularWeights());
++        return new EventPathWorld(0,new WorldTopologyLedger.Snapshot(0,11,records,List.of(),total,empty.destroyed(),empty.basis()),List.of(snapshot));
++    }
++    private static PassiveNetwork graph(EventPathWorld world){return world.coordinator.snapshots().getFirst().graph();}
++    private static Map<Long,PassiveNetwork.Inventory> stock(EventPathWorld world) {
++        var out=new TreeMap<Long,PassiveNetwork.Inventory>();
++        for(var island:world.coordinator.snapshots())for(var n:island.graph().reservoirs())if(n.kind()==PassiveNetwork.NodeKind.RESERVOIR)out.put(n.id(),n.inventory());
++        return out;
++    }
++}
+diff --git a/src/test/java/com/wormzjl/icheme/science/equipment/LineGeometryTest.java b/src/test/java/com/wormzjl/icheme/science/equipment/LineGeometryTest.java
+index 26251fd1..844c678a 100644
+--- a/src/test/java/com/wormzjl/icheme/science/equipment/LineGeometryTest.java
++++ b/src/test/java/com/wormzjl/icheme/science/equipment/LineGeometryTest.java
+@@ -55,13 +55,21 @@ class LineGeometryTest {
+     }
+ 
+     @Test
+-    void everyPieceStaysInItsCellAndFacesOutwards() {
++    void everyPieceFitsItsDrawingEnvelopeAndFacesOutwards() {
+         for (var key : keys()) {
+             var polygons = LineGeometry.polygons(key);
+             assertFalse(polygons.isEmpty(), key.toString());
+             for (var polygon : polygons) {
+                 assertTrue(polygon.size() >= 3);
+-                for (double v : polygon.positions()) assertTrue(v >= 0 && v <= 1, key + " position " + v);
++                for(int i=0;i<polygon.positions().length;i++) {
++                    double v=polygon.positions()[i],lo=0,hi=1;
++                    // Only the pressure actuator's stem direction may overhang its host cell.
++                    if(key.kind()==Kind.VALVE) {
++                        if(key.facing()<2&&i%3==2)lo=-1.1;
++                        else if(key.facing()>=2&&i%3==1)hi=2.1;
++                    }
++                    assertTrue(v>=lo&&v<=hi,key+" position "+v);
++                }
+                 for (double v : polygon.uvs()) assertTrue(v >= 0 && v <= 1, key + " uv " + v);
+                 double[] face = newell(polygon), smooth = new double[3];
+                 for (int i = 0; i < polygon.size(); i++)

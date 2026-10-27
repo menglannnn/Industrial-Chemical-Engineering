@@ -90,7 +90,6 @@ public final class V3NeuralRegistry implements V3NeuralInitializer {
             try {
                 double[] feed=axis.project(original,input.feedComponentMolarFlowsMolPerSecond());
                 var view=catalog.inferenceView(input.packageId(),axis.ids(),model.referencePackage(),entry.allowMissingZeroComponents());
-                if(!view.physicsFingerprint(input.packageId(),axis.ids()).equals(model.physicsFingerprint()))continue;
                 var projected=source.components().equals(axis.ids())?input:project(input,axis.ids(),feed);
                 if(!MaterialRuntime.with(view,input.packageId(),()->model.supported(projected)))continue;
                 return new Bound(entry,catalog,view,input,projected);
@@ -134,7 +133,7 @@ public final class V3NeuralRegistry implements V3NeuralInitializer {
         private static final Set<String> PAYLOAD = Set.of("schemaVersion", "featureRevision", "modelType",
                 "anchorLayout", "baselineRevision", "components", "normalization", "weights");
         private static final Set<String> SIDECAR = Set.of("schemaVersion", "payloadSha256", "modelId", "packageId",
-                "propertyRevision", "physicsFingerprint", "formulationRevisions",
+                "propertyRevision", "formulationRevisions",
                 "allowExtraZeroComponents", "allowMissingZeroComponents",
                 "branchesSeen", "presenceThreshold", "traceFloorFraction", "globalMin", "globalMax",
                 "designConstraints", "compositionEdges", "decoder", "candidateRule", "correctionRule");

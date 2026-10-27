@@ -58,6 +58,21 @@ public final class PhysicalRegistry {
     private final Map<ChunkKey,Set<Long>> chunkMembers=new HashMap<>();
     private int unapplied;
 
+    private final Set<Long> flowmeters=new HashSet<>();
+    /** The installed flowmeters a load compiles taps for: set before {@link #load()}. */
+    public void flowmeters(Collection<Long> hosts){flowmeters.clear();flowmeters.addAll(hosts);}
+    /**
+     * A flowmeter installed on or removed from {@code host}. Its island compiles another tap, but no fact of the device
+     * changes: the host's registration is queued again at its next revision, so the island recompiles on the engine's
+     * schedule like any edit.
+     */
+    public void flowmeter(long host,boolean installed) {
+        if(!(installed?flowmeters.add(host):flowmeters.remove(host)))return;
+        var record=registrations().get(host);
+        if(record!=null)submit(List.of(new WorldTopologyLedger.Edit(host,new WorldTopologyLedger.Registration(record.device(),record.spec(),Math.addExact(record.revision(),1)))),topology.nextIdentity(),null);
+    }
+    /** A flowmeter whose host is going: forgotten without a recompile, as the host's own removal recompiles its island. */
+    public void forgetFlowmeter(long host){flowmeters.remove(host);}
     /** {@code emptyFilter} is a new filter's cake: the configured capacity and resistance, nothing captured. */
     public PhysicalRegistry(WorldTopologyLedger topology,FluidThermodynamics model,InlineFilter emptyFilter,Host host) {
         this.topology=Objects.requireNonNull(topology);this.model=Objects.requireNonNull(model);weights=model.molecularWeights();
@@ -81,7 +96,7 @@ public final class PhysicalRegistry {
         for(var entry:stock.entrySet()){var r=active.get(entry.getKey());if(r!=null&&r.device().fixed())fixedStates.put(entry.getKey(),entry.getValue());}
         // A disconnected filter's ports stand at the ambient (NetworkReduction.ambient), as an empty vessel does.
         var compiled=PhysicalFluidTopology.compile(active.values().stream().map(WorldTopologyLedger.Registration::device).toList(),stock,cakes,
-                com.wormzjl.icheme.science.fluid.network.NetworkReduction.ambient(model));
+                com.wormzjl.icheme.science.fluid.network.NetworkReduction.ambient(model),flowmeters);
         diagnostics.putAll(compiled.diagnostics());pipeViews.putAll(compiled.pipeViews());tankFaces.putAll(compiled.tankFaces());
         for(var island:compiled.islands()) {
             var graph=island.graph();
@@ -92,6 +107,10 @@ public final class PhysicalRegistry {
             if(ids.size()!=1)throw new IllegalStateException("Saved topology and hydraulic ownership disagree");
             long saved=ids.getFirst();if(members.containsKey(saved))throw new IllegalStateException("Saved topology and hydraulic ownership disagree");
             var devices=island.physicalIds().stream().sorted().toList();members.put(saved,devices);for(long id:devices)bind(id,saved);
+            // A checkpoint does not carry the flowmeter taps: the restored island takes the ones compiled here.
+            var taps=new HashMap<Long,List<PassiveNetwork.Pipe.ObservationPoint>>();
+            for(var pipe:graph.pipes())if(!pipe.observationPoints().isEmpty())taps.put(pipe.id(),pipe.observationPoints());
+            if(!taps.isEmpty())host.coordinator().attachObservationPoints(saved,taps);
         }
         // Every island the checkpoint restored holds a device: one that compiles to none would be saved again with nothing
         // to name it by (D32, the island of one a join left behind).
@@ -119,7 +138,7 @@ public final class PhysicalRegistry {
     /** Uses the existing pressure-valve control on the same host pipe and projected revision. */
     public boolean installPipePressureValve(long id,PhysicalFluidTopology.Direction axis) {
         var record=registrations().get(id);if(!canInstallFitting(record,axis))return false;
-        var d=record.device();var device=new PhysicalFluidTopology.Device(d.id(),d.position(),d.kind(),axis,d.geometry(),new FlowControl.PressureValve(200000),d.ports(),d.generatorEnabled(),d.cutoff());
+        var d=record.device();var device=new PhysicalFluidTopology.Device(d.id(),d.position(),d.kind(),axis,d.geometry(),FlowControl.ControlValve.unconfigured(),d.ports(),d.generatorEnabled(),d.cutoff(),false,d.joints());
         submit(List.of(new WorldTopologyLedger.Edit(id,new WorldTopologyLedger.Registration(device,record.spec(),Math.addExact(record.revision(),1)))),topology.nextIdentity(),null);
         return true;
     }
@@ -127,7 +146,7 @@ public final class PhysicalRegistry {
     public boolean installPipeMover(long id,PhysicalFluidTopology.Direction axis,TopologyCompiler.Kind kind){
         var control=PhysicalFluidTopology.defaultMover(kind);var record=registrations().get(id);
         if(axis==null||axis.y!=0||!canInstallFitting(record,axis))return false;
-        var d=record.device();var replacement=new PhysicalFluidTopology.Device(d.id(),d.position(),d.kind(),axis,d.geometry(),control,d.ports(),d.generatorEnabled(),d.cutoff(),d.inlineFilter());
+        var d=record.device();var replacement=new PhysicalFluidTopology.Device(d.id(),d.position(),d.kind(),axis,d.geometry(),control,d.ports(),d.generatorEnabled(),d.cutoff(),d.inlineFilter(),d.joints());
         submit(List.of(new WorldTopologyLedger.Edit(id,new WorldTopologyLedger.Registration(replacement,record.spec(),Math.addExact(record.revision(),1)))),topology.nextIdentity(),null);return true;
     }
     public boolean installPipeFilter(long id,PhysicalFluidTopology.Direction axis) {
@@ -135,11 +154,39 @@ public final class PhysicalRegistry {
         var d=r.device().withInlineFilter(axis,true);
         submit(List.of(new WorldTopologyLedger.Edit(id,new WorldTopologyLedger.Registration(d,r.spec(),Math.addExact(r.revision(),1)))),topology.nextIdentity(),null);return true;
     }
+    /** {@link #resizeLine}: a rack lane on the line is too narrow for the new bore; nothing is queued. */
+    public static final int LANE_TOO_NARROW=-2;
+    /** {@link #resizeLine}: a nozzle on the line takes no pipe that large; nothing is queued. */
+    public static final int NOZZLE_TOO_SMALL=-3;
+    /**
+     * Resizes the pipe line through pipe {@code id} ({@link PhysicalFluidTopology#line}) to bore {@code diameter} as one
+     * event, each pipe keeping its length, roughness, fittings and spec. Returns the line's length in pipes (those already
+     * at that bore included), 0 when {@code id} is not a pipe, and, with nothing queued, -1 when it is longer than
+     * {@code limit} or {@link #LANE_TOO_NARROW} when a rack lane on it is narrower than the bore's pipe (a lane's width
+     * follows the drawn outside diameter it was laid for, {@code RackGeometry.width}), or {@link #NOZZLE_TOO_SMALL} when
+     * {@code largest} (the largest bore the world lets a pipe take: the nozzles beside it, {@code NozzleBore}) is under it.
+     */
+    public int resizeLine(long id,double diameter,int limit,java.util.function.ToDoubleFunction<PhysicalFluidTopology.Device> largest) {
+        var start=registrations().get(id);if(start==null||start.device().kind()!=TopologyCompiler.Kind.PIPE)return 0;
+        var line=PhysicalFluidTopology.line(p->{var r=topology.latestAt(p);return r==null?null:r.device();},start.device(),limit);
+        if(line==null)return -1;
+        int width=com.wormzjl.icheme.science.equipment.RackGeometry.width(com.wormzjl.icheme.science.equipment.PipeSizes.drawn(diameter));
+        for(var pipe:line)if(pipe.slots()>0&&pipe.slots()<width)return LANE_TOO_NARROW;
+        for(var pipe:line)if(diameter>largest.applyAsDouble(pipe)+1e-9)return NOZZLE_TOO_SMALL;
+        var edits=new ArrayList<WorldTopologyLedger.Edit>();
+        for(var pipe:line) {
+            var g=pipe.geometry();if(g.diameter()==diameter)continue;
+            var r=registrations().get(pipe.id());var resized=pipe.withGeometry(new PipeResistance.Geometry(g.length(),diameter,g.roughness(),g.minorLoss()));
+            edits.add(new WorldTopologyLedger.Edit(pipe.id(),new WorldTopologyLedger.Registration(resized,r.spec(),Math.addExact(r.revision(),1))));
+        }
+        if(!edits.isEmpty())submit(edits,topology.nextIdentity(),null);
+        return line.size();
+    }
     /** Removal composes with the latest projected geometry, controls and spec. */
     public boolean removePipeAccessory(long id) {
         var r=registrations().get(id);if(r==null||r.device().kind()!=TopologyCompiler.Kind.PIPE)return false;
         var d=r.device();if(!d.inlineFilter()&&d.cutoff()==PhysicalFluidTopology.Cutoff.NONE&&d.control() instanceof FlowControl.Passive)return true;
-        var device=new PhysicalFluidTopology.Device(d.id(),d.position(),d.kind(),d.facing(),d.geometry(),new FlowControl.Passive(),d.ports(),d.generatorEnabled(),PhysicalFluidTopology.Cutoff.NONE);
+        var device=new PhysicalFluidTopology.Device(d.id(),d.position(),d.kind(),d.facing(),d.geometry(),new FlowControl.Passive(),d.ports(),d.generatorEnabled(),PhysicalFluidTopology.Cutoff.NONE,false,d.joints());
         submit(List.of(new WorldTopologyLedger.Edit(id,new WorldTopologyLedger.Registration(device,r.spec(),Math.addExact(r.revision(),1)))),topology.nextIdentity(),d.inlineFilter()?new WorldTopologyLedger.Recovery(id,null):null);return true;
     }
     private boolean canInstallFitting(WorldTopologyLedger.Registration record,PhysicalFluidTopology.Direction axis) {
@@ -148,7 +195,7 @@ public final class PhysicalRegistry {
         // Check projected physical neighbours too: chunk loading or an unapplied branch must not hide a junction.
         for(var direction:PhysicalFluidTopology.Direction.values()) {
             var next=record.device().position().offset(direction);var neighbour=topology.latestAt(next);
-            if(neighbour!=null&&neighbour.device().mechanicallyMeets(next,PhysicalFluidTopology.opposite(direction))
+            if(neighbour!=null&&record.device().jointAt(direction)&&neighbour.device().mechanicallyMeets(next,PhysicalFluidTopology.opposite(direction))
                     &&direction.x*axis.x+direction.y*axis.y+direction.z*axis.z==0)return false;
         }
         return true;
@@ -226,16 +273,16 @@ public final class PhysicalRegistry {
         // is met through its contacts: its faces, or a vessel's ports in other cells.
         for(var start:starts) {
             var before=topology.latestAt(start);
-            if(before!=null)for(var contact:before.device().contacts()){var next=contact.cell().offset(contact.direction());if(joined(before,topology.latestAt(next),contact))queue.add(next);}
+            if(before!=null)for(var contact:before.device().contacts()){var next=PhysicalFluidTopology.across(topology::latestAt,WorldTopologyLedger.Registration::device,before.device(),contact.cell(),contact.direction());if(joined(before,next,contact))queue.add(next.device().position());}
             var after=at.apply(start);
-            if(after!=null)for(var contact:after.device().contacts()){var next=contact.cell().offset(contact.direction());if(joined(after,at.apply(next),contact))queue.add(next);}
+            if(after!=null)for(var contact:after.device().contacts()){var next=PhysicalFluidTopology.across(at,WorldTopologyLedger.Registration::device,after.device(),contact.cell(),contact.direction());if(joined(after,next,contact))queue.add(next.device().position());}
         }
         while(!queue.isEmpty()) {
             var position=queue.removeFirst();var record=at.apply(position);if(record==null)continue;long id=record.device().id();if(!seen.add(id))continue;touched.add(id);
             // A fixed boundary the event does not edit is never walked through: what lies beyond it is another island.
             if(!starts.contains(record.device().position())&&(record.device().fixed()||standsForItsComponent(id)||topology.pending(id)))continue;
             for(var contact:record.device().contacts()) {
-                var neighbor=at.apply(contact.cell().offset(contact.direction()));if(neighbor!=null&&record.device().joins(neighbor.device(),contact.cell(),contact.direction()))queue.add(neighbor.device().position());
+                var neighbor=PhysicalFluidTopology.across(at,WorldTopologyLedger.Registration::device,record.device(),contact.cell(),contact.direction());if(neighbor!=null&&record.device().joins(neighbor.device(),contact.cell(),contact.direction()))queue.add(neighbor.device().position());
             }
         }
         var edited=new HashSet<Long>();for(var edit:edits)edited.add(edit.id());
@@ -325,7 +372,7 @@ public final class PhysicalRegistry {
                     var node=stock.get(edit.id());if(node==null)throw new IllegalStateException("Topology event reached vessel "+edit.id()+" outside the islands it fenced");
                     if(moved||respecified) {
                         var spec=replacement.spec();var held=node.inventory();
-                        var inventory=respecified?new PassiveNetwork.Inventory(spec.volume(),held.moles(),held.internalEnergy(),held.solids(),spec.levelHeight(),spec.open()):held;
+                        var inventory=respecified?new PassiveNetwork.Inventory(spec.volume(),held.moles(),held.internalEnergy(),held.solids(),spec.levelHeight(),spec.open(),spec.geometry()):held;
                         var rebuilt=new PassiveNetwork.Reservoir(node.id(),replacement.device().position().y(),node.state(),node.kind(),inventory);
                         stock.put(edit.id(),rebuilt);if(additions.containsKey(edit.id()))additions.put(edit.id(),rebuilt);
                     }
@@ -350,7 +397,7 @@ public final class PhysicalRegistry {
         while(!queue.isEmpty()) {
             var record=queue.removeFirst();if(record.device().fixed()&&!editedIds.contains(record.device().id()))continue;
             for(var contact:record.device().contacts()) {
-                var neighbor=at.apply(contact.cell().offset(contact.direction()));
+                var neighbor=PhysicalFluidTopology.across(at,WorldTopologyLedger.Registration::device,record.device(),contact.cell(),contact.direction());
                 if(neighbor!=null&&record.device().joins(neighbor.device(),contact.cell(),contact.direction())&&component.putIfAbsent(neighbor.device().id(),neighbor)==null)queue.add(neighbor);
             }
         }
@@ -374,7 +421,7 @@ public final class PhysicalRegistry {
             }
         }
         var compiled=PhysicalFluidTopology.compile(component.values().stream().map(WorldTopologyLedger.Registration::device).toList(),componentStock,componentCakes,
-                com.wormzjl.icheme.science.fluid.network.NetworkReduction.ambient(model));
+                com.wormzjl.icheme.science.fluid.network.NetworkReduction.ambient(model),flowmeters);
         FluidRuntimeDiagnostics.count(FluidRuntimeDiagnostics.topologyBatches);FluidRuntimeDiagnostics.count(FluidRuntimeDiagnostics.topologyEvents,events.size());
         FluidRuntimeDiagnostics.count(FluidRuntimeDiagnostics.compiledDevices,component.size());
         var replacements=new ArrayList<IslandCoordinator.Replacement>();var replacementMembers=new LinkedHashMap<Long,List<Long>>();long nextId=topology.nextIdentity();
@@ -432,7 +479,7 @@ public final class PhysicalRegistry {
             var record=queue.removeFirst();long id=record.device().id();
             found.addAll(standsFor(id,edited));if(record.device().fixed()||standsForItsComponent(id))continue;
             for(var contact:record.device().contacts()) {
-                var neighbor=topology.activeAt(contact.cell().offset(contact.direction()));
+                var neighbor=PhysicalFluidTopology.across(topology::activeAt,WorldTopologyLedger.Registration::device,record.device(),contact.cell(),contact.direction());
                 if(neighbor!=null&&record.device().joins(neighbor.device(),contact.cell(),contact.direction())&&seen.add(neighbor.device().id()))queue.add(neighbor);
             }
         }

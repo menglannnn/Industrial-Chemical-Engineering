@@ -1,0 +1,1 @@
+setblock 300 -60 60 createcheme:equipment_constructor[facing=south]

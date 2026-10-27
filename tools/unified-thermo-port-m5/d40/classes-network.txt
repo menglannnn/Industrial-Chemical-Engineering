@@ -1,0 +1,4 @@
+com.wormzjl.icheme.network.ColumnV3NetworkCodecTest
+com.wormzjl.icheme.network.MaterialNamesCodecTest
+com.wormzjl.icheme.network.V3EditorCatalogCodecTest
+com.wormzjl.icheme.network.V3InspectionCodecTest

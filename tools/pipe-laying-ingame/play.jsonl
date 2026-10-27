@@ -1,0 +1,4 @@
+{"cmd":"enter_control_mode","delay_ms":3000}
+{"cmd":"click_button_index","index":0,"delay_ms":3000}
+{"cmd":"click","x":440,"y":130,"delay_ms":1200}
+{"cmd":"click","x":267,"y":395,"delay_ms":15000}

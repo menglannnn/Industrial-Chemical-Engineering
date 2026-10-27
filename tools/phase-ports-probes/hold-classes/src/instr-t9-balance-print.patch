@@ -1,0 +1,12 @@
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/network/NetworkReduction.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/NetworkReduction.java
+index 804cdf6f..c2ef5cad 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/NetworkReduction.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/NetworkReduction.java
+@@ -414,6 +414,7 @@ public final class NetworkReduction {
+                 var fluid=Fluid.of(model,held,scratch);double p=pressure(supplies,outlets,fluid);
+                 double[] q=new double[arrivals.size()];boolean[] open=new boolean[q.length];boolean any=false;
+                 for(int i=0;i<q.length;i++){q[i]=supplies.get(i).flow(p);open[i]=q[i]>0;any|=open[i];}
++                if(String.valueOf(System.getProperty("instr")).contains("mprime")){var sb=new StringBuilder("M9_BAL node="+junction+" id="+graph.reservoirs().get(junction).id()+" round="+round+" P="+p+" held="+fluid.state().pressure()+"/"+fluid.state().temperature());for(int i=0;i<q.length;i++)sb.append(String.format(Locale.ROOT," [src=%d port=%s S=%.3f lifted=%b q=%.6g]",arrivals.get(i).sourceId(),arrivals.get(i).port(),supplies.get(i).standing(),supplies.get(i).lifted(),q[i]));for(var o:outlets)sb.append(String.format(Locale.ROOT," {B=%.3f head=%.3f mover=%b n=%d q=%.6g}",o.bound(),o.head(),o.mover()!=null,o.path().size(),o.flow(p,fluid)));System.out.println(sb);} // INSTR
+                 if(!any)return strongest.stream();
+                 mixed=mixture(model,arrivals,q,p);if(mixed==null)return strongest.stream();
+                 if(before!=null&&Arrays.equals(open,before)&&Math.abs(p-previous)<=1e-9*Math.abs(previous))return mixed;

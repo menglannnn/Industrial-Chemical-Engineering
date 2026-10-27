@@ -1,0 +1,21 @@
+designs 126, refused at Save design 29, with a nozzle moved past two trays or more 97, with a nozzle on the wrong side of its stage 97
+moved past two trays or more, by role: {DRAW=8, PUMPAROUND_DRAW=7, REFLUX=97, RETURN=17, STEAM=20, VAPOUR_RETURN=10}
+wrong side, by role: {REFLUX=97, RETURN=16, STEAM=25, VAPOUR_RETURN=20}
+d 1.0 n 15 kettle: REFLUX 12.5->5.5(12 trays) VAPOUR_RETURN 3.5->9.5(10 trays)
+d 1.0 n 20 kettle: REFLUX 15.5->6.5(15 trays) VAPOUR_RETURN 3.5->10.5(11 trays)
+d 1.0 n 20 steam+draw: REFLUX 15.5->6.5(15 trays) STEAM 3.5->12.5(15 trays)
+d 1.0 n 30 kettle: REFLUX 21.5->19.5(4 trays) VAPOUR_RETURN 3.5->13.5(16 trays)
+designs 126, refused at Save design 19, with a nozzle moved past two trays or more 41, with a nozzle on the wrong side of its stage 41
+moved past two trays or more, by role: {DRAW=4, PUMPAROUND_DRAW=2, REFLUX=20, RETURN=14, STEAM=25, VAPOUR_RETURN=12}
+wrong side, by role: {REFLUX=20, RETURN=14, STEAM=25, VAPOUR_RETURN=12}
+d 1.0 n 10 kettle: REFLUX 9.5->4.5(9 trays) VAPOUR_RETURN 3.5->7.5(6 trays)
+d 1.0 n 15 kettle: REFLUX 12.5->6.5(10 trays) VAPOUR_RETURN 3.5->9.5(10 trays)
+d 1.0 n 15 steam+draw: REFLUX 12.5->6.5(10 trays) STEAM 3.5->11.5(13 trays)
+d 1.0 n 20 kettle: REFLUX 15.5->7.5(14 trays) VAPOUR_RETURN 3.5->10.5(11 trays)
+designs 126, refused at Save design 5, with a nozzle moved past two trays or more 39, with a nozzle on the wrong side of its stage 39
+moved past two trays or more, by role: {PUMPAROUND_DRAW=2, REFLUX=10, RETURN=16, STEAM=25}
+wrong side, by role: {REFLUX=10, RETURN=16, STEAM=25}
+d 1.0 n 5 kettle: REFLUX 6.5->5.5(2 trays)
+d 1.0 n 5 steam+draw: REFLUX 6.5->5.5(2 trays)
+d 1.0 n 10 kettle+steam+draw+PA: RETURN 9.5->5.5(6 trays) STEAM 3.5->5.5(3 trays)
+d 1.0 n 15 kettle+steam+draw+PA: RETURN 10.5->7.5(6 trays) STEAM 3.5->5.5(3 trays)

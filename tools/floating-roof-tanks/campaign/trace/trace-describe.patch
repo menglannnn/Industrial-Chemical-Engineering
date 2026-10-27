@@ -1,0 +1,2 @@
+228a229
+>             try{coordinator.observe(island);}catch(IllegalArgumentException e){var all=new StringBuilder("island "+island+" gone; current islands:\n");for(var o:coordinator.observe())all.append(describe(o.id()));return all.toString();}

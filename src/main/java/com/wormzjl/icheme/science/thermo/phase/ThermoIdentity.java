@@ -9,65 +9,66 @@ import java.util.Objects;
  *
  * <p>Parts:</p>
  * <ul>
- *   <li>{@code packageFingerprint}: the package's data (components, PR constants, interactions, the volume references
- *   the translation is calibrated from, the declared domains); {@link #of} takes
- *   {@link MaterialCatalog#fluidThermoFingerprint(String)}.</li>
+ *   <li>{@code packageRevision}: the package's data identity, the declared revision of every record its fluid models
+ *   read; {@link #of} takes {@link MaterialCatalog#fluidRevision(String)}.</li>
  *   <li>{@code evaluatorFamily}: the residual formulation, {@link CubicPhaseEvaluator#family()}.</li>
- *   <li>{@code spineFingerprint}: the ideal-gas and formation data (the data spine, decision D6). The P2 data work adds
- *   it to the package; until a package carries one the caller passes {@link #NO_SPINE}.</li>
+ *   <li>{@code spineRevision}: the ideal-gas and formation data (the data spine, decision D6),
+ *   {@link MaterialCatalog#spineRevision(String)}, the spine and crystal records' declared revisions; {@link #NO_SPINE} for a package without either.</li>
  *   <li>{@code waterModelRevision}: the water model and how it participates ({@link WaterParticipation}).</li>
  * </ul>
  *
+ * <p>Nothing is hashed (owner decision 2026-10-26): every part is a declared revision, so a change to a package's data
+ * changes the identity only through the bump of the revision that covers it.</p>
+ *
  * <p>Cache rule: anything that stores a number computed from a phase state, or a decision derived from one, keys on
- * {@link #revision()} and is discarded, never migrated, when it changes (the owner's no-compatibility rule): the fluid
- * network's thermodynamic revision ({@code FluidThermodynamics.thermodynamicRevision}, which saved islands are checked
- * against), regression fixtures and pins, and any approximation state (warm starts, factorizations) built on the phase
- * engine. The column's neural models and their eligibility check key instead on
- * {@link MaterialCatalog#physicsFingerprint(String, java.util.List)}, the package's science on the model's axis without the
- * water's revision and ice, which the column never reaches; the revision hashes the same data through {@code packageFingerprint}.</p>
+ * {@link #revision()} and drops it, never migrates it, when it changes: the fluid network's thermodynamic revision
+ * ({@code FluidThermodynamics.thermodynamicRevision}; saved contents keep their amounts and temperature and restate),
+ * regression fixtures and pins, and any approximation state (warm starts, factorizations) built on the phase engine. The
+ * column's neural models key instead on {@link MaterialCatalog.Package#scientificRevision()} and compare package content
+ * directly ({@link MaterialCatalog#samePhysics(String, String, java.util.List)}).</p>
  *
  * <p>The revision encodes every part length-prefixed, so no two different identities share a revision whatever
  * characters the parts contain.</p>
  */
 public final class ThermoIdentity {
-    /** The spine fingerprint of a package that does not declare one yet. */
+    /** The spine revision of a package without a spine. */
     public static final String NO_SPINE = "spine:none";
     /** The water model revision of a package without water. */
     public static final String NO_WATER = "water:none";
     /** The formulation label of the separate free-water approximation; bumped when its equations change (v2: ice Ih below
      * the melting line, WP4 of batch 2026-09-24-coolprop-low-temperature). */
     public static final String SEPARATE_FREE_WATER_FORMULATION = "separate-free-water-v2";
-    private static final String FORMAT = "thermo-identity-v1";
+    private static final String FORMAT = "thermo-identity-v2";
 
-    private final String packageFingerprint;
+    private final String packageRevision;
     private final String evaluatorFamily;
-    private final String spineFingerprint;
+    private final String spineRevision;
     private final String waterModelRevision;
     private final String revision;
 
-    public ThermoIdentity(String packageFingerprint, String evaluatorFamily, String spineFingerprint,
+    public ThermoIdentity(String packageRevision, String evaluatorFamily, String spineRevision,
                           String waterModelRevision) {
-        this.packageFingerprint = requirePart(packageFingerprint, "packageFingerprint");
+        this.packageRevision = requirePart(packageRevision, "packageRevision");
         this.evaluatorFamily = requirePart(evaluatorFamily, "evaluatorFamily");
-        this.spineFingerprint = requirePart(spineFingerprint, "spineFingerprint");
+        this.spineRevision = requirePart(spineRevision, "spineRevision");
         this.waterModelRevision = requirePart(waterModelRevision, "waterModelRevision");
-        this.revision = FORMAT + part(this.packageFingerprint) + part(this.evaluatorFamily) + part(this.spineFingerprint)
+        this.revision = FORMAT + part(this.packageRevision) + part(this.evaluatorFamily) + part(this.spineRevision)
                 + part(this.waterModelRevision);
     }
 
     /** The identity of a catalog package evaluated by {@code evaluatorFamily} with {@code water} participation. */
     public static ThermoIdentity of(MaterialCatalog catalog, String packageId, String evaluatorFamily,
-                                    String spineFingerprint, WaterParticipation water) {
+                                    String spineRevision, WaterParticipation water) {
         Objects.requireNonNull(water, "water");
         MaterialCatalog.Package propertyPackage = catalog.requirePackage(packageId);
         String waterRevision = water == WaterParticipation.NONE ? NO_WATER
                 : SEPARATE_FREE_WATER_FORMULATION + ":" + propertyPackage.water().revision();
-        return new ThermoIdentity(catalog.fluidThermoFingerprint(packageId), evaluatorFamily, spineFingerprint, waterRevision);
+        return new ThermoIdentity(catalog.fluidRevision(packageId), evaluatorFamily, spineRevision, waterRevision);
     }
 
-    public String packageFingerprint() { return packageFingerprint; }
+    public String packageRevision() { return packageRevision; }
     public String evaluatorFamily() { return evaluatorFamily; }
-    public String spineFingerprint() { return spineFingerprint; }
+    public String spineRevision() { return spineRevision; }
     public String waterModelRevision() { return waterModelRevision; }
     /** The cache key; see the class comment. */
     public String revision() { return revision; }

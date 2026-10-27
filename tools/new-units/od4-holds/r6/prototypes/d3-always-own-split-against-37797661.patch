@@ -1,0 +1,17 @@
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+@@ -1117,12 +1117,12 @@
+                 FluidThermodynamics.State engine;
+                 try{var split=model.equilibriumPH(weighted/mass,seed.pressure(),enthalpy,n,false,checkpoint);engine=split!=null?split:model.flashTP(weighted/mass,seed.pressure(),n,checkpoint);}
+                 catch(com.wormzjl.createcheme.science.fluid.thermo.ThermoHold outside){continue;}
+-                if(laidOutFor(phaseCode(model.folded(engine,true)),phaseCode(seed)))continue;
++                // D3 probe: always the own split
+                 // The engine's answer is the start of the junction's own split, not its verdict (D26): its rows decide the phase.
+                 var own=model.junctionSplit(n,enthalpy,molarMass(n),seed.pressure(),engine,checkpoint);
+                 if(own==null)continue;
+                 var mixture=model.folded(own,true);
+-                if(laidOutFor(phaseCode(mixture),phaseCode(seed)))continue;
++                // D3 probe
+                 if(result==null)result=new ArrayList<>(seeds);
+                 result.set(j,mixture.withSolidState(seed.solids(),seed.solidMoments()));changed=true;
+             }

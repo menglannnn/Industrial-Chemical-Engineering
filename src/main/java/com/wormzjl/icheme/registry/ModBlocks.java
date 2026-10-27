@@ -22,6 +22,9 @@ public final class ModBlocks {
     public static final DeferredBlock<com.wormzjl.icheme.world.level.block.FluidDeviceBlock> FLUID_GENERATOR=fluid("fluid_generator",com.wormzjl.icheme.science.fluid.topology.TopologyCompiler.Kind.GENERATOR);
     public static final DeferredBlock<com.wormzjl.icheme.world.level.block.FluidDeviceBlock> FLUID_VOID=fluid("fluid_void",com.wormzjl.icheme.science.fluid.topology.TopologyCompiler.Kind.VOID);
     public static final DeferredBlock<com.wormzjl.icheme.world.level.block.FluidDeviceBlock> INLINE_FILTER=fluid("inline_filter",com.wormzjl.icheme.science.fluid.topology.TopologyCompiler.Kind.FILTER);
+    // A pipe rack (batch 2026-10-26-pipe-laying-system): a thin frame, so light and the faces behind it show through; its shape follows its lanes.
+    public static final DeferredBlock<com.wormzjl.icheme.world.level.block.PipeRackBlock> PIPE_RACK=BLOCKS.registerBlock("pipe_rack",com.wormzjl.icheme.world.level.block.PipeRackBlock::new,
+            BlockBehaviour.Properties.of().mapColor(MapColor.METAL).strength(3.5F).sound(SoundType.METAL).pushReaction(net.minecraft.world.level.material.PushReaction.BLOCK).noOcclusion().dynamicShape());
     private static DeferredBlock<com.wormzjl.icheme.world.level.block.FluidDeviceBlock> fluid(String name,com.wormzjl.icheme.science.fluid.topology.TopologyCompiler.Kind kind) {
         var properties=BlockBehaviour.Properties.of().mapColor(MapColor.METAL).strength(3.5F).sound(SoundType.METAL).pushReaction(net.minecraft.world.level.material.PushReaction.BLOCK);
         // Every device model (the inline filter too, a Y-strainer since 2026-10-16) leaves part of its block space open:

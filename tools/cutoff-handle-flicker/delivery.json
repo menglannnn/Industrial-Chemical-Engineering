@@ -1,0 +1,17 @@
+{
+  "implementation": "6f2f91e9",
+  "delivery": "e518862d",
+  "branch": "codex/cutoff-handle-flicker",
+  "base": "4ad6dc97",
+  "build": "compileJava jar PASS",
+  "sweep": {
+    "cases": 1464,
+    "baseline_conflicts": 1464,
+    "fixed_conflicts": 0,
+    "unchanged_bounds": 1464,
+    "worst_tip_area_relative_error": 3.27963790803e-15
+  },
+  "integration": "pending",
+  "client_changed": false,
+  "tests": "none; dev client running"
+}

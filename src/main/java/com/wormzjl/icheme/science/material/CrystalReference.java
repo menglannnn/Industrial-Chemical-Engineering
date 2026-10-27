@@ -65,13 +65,12 @@ public final class CrystalReference {
     private final JaegerSpanGibbsFunction gibbsFunction;
     private final List<Transition> transitions;
     private final Anchor anchor;
-    private final Object science;
 
     private CrystalReference(JsonObject o) {
         id = JsonFields.text(o, "id");
         component = JsonFields.text(o, "component");
         crystal = JsonFields.text(o, "crystal");
-        revision = ReferenceSpine.revision(o, "revision");
+        revision = JsonFields.revision(o, "revision");
         source = JsonFields.text(o, "source");
         coverage = MaterialCoverage.read(o);
         var gaps = new ArrayList<String>();
@@ -104,12 +103,6 @@ public final class CrystalReference {
         missing = List.copyOf(gaps);
         if (!missing.isEmpty() && (coverage.grade() == MaterialCoverage.Grade.QUALIFIED || coverage.grade() == MaterialCoverage.Grade.ESTIMATED_DECLARED_ERROR))
             throw new IllegalArgumentException("coverage.grade: an incomplete crystal record must be research_only or unavailable; missing " + missing);
-
-        // The P2 rule for a segment record is unchanged: [component, crystal, Cp segments, volume, transitions, anchor].
-        var items = new ArrayList<Object>(List.of(component, crystal));
-        items.addAll(model.science());
-        items.add(List.of(anchor.temperature(), anchor.pressure(), anchor.fusionEnthalpy()));
-        science = List.copyOf(items);
     }
 
     static CrystalReference read(JsonObject o) { return new CrystalReference(o); }
@@ -134,8 +127,6 @@ public final class CrystalReference {
     public double minimumPressure() { return model.minimumPressure(); }
     /** Highest pressure of the declared range, Pa ({@code NaN} when a segment record does not declare it). */
     public double maximumPressure() { return model.maximumPressure(); }
-    /** Numeric content for the package spine fingerprint. */
-    Object science() { return science; }
 
     /** A usable record at a positive finite state; its data range is not a bound (the models continue past it). */
     private void check(double t, double p) {
@@ -250,8 +241,6 @@ public final class CrystalReference {
         double maximumPressure();
         /** Adds what the model lacks to reach the anchor. */
         void anchorGaps(Anchor anchor, List<String> gaps);
-        /** The model's items of the crystal's numeric content, spliced between the identity and the anchor. */
-        List<Object> science();
     }
 
     /** The {@code gibbs_function} kind: enthalpy and entropy differences do not depend on g0 and g1. */
@@ -274,7 +263,6 @@ public final class CrystalReference {
             if (!function.covers(anchor.temperature(), anchor.pressure()))
                 gaps.add("gibbs function range does not reach the triple-point anchor at " + anchor.temperature() + " K, " + anchor.pressure() + " Pa");
         }
-        @Override public List<Object> science() { return List.of(function.science()); }
     }
 
     /** The P2 segment model: heat-capacity segments, a linear molar volume and transitions. */
@@ -364,8 +352,6 @@ public final class CrystalReference {
             return positive ? JsonFields.positive(o, key) : JsonFields.number(o, key);
         }
 
-        private static Object present(double value) { return Double.isNaN(value) ? "absent" : value; }
-
         @Override public void anchorGaps(Anchor anchor, List<String> gaps) {
             if (!(anchor.temperature() >= cpMinimum && anchor.temperature() <= cpMaximum))
                 gaps.add("heat capacity " + cpMinimum + ".." + cpMaximum + " K does not reach the triple-point anchor at " + anchor.temperature() + " K");
@@ -375,17 +361,6 @@ public final class CrystalReference {
                 gaps.add("molar volume pressure range does not reach the anchor pressure " + anchor.pressure() + " Pa");
             if (!Double.isNaN(volumeMinimumTemperature) && !Double.isNaN(volumeMaximumTemperature) && !(maximumTemperature > minimumTemperature))
                 gaps.add("heat-capacity and molar-volume ranges do not overlap");
-        }
-
-        @Override public List<Object> science() {
-            var cpScience = new ArrayList<Object>();
-            for (CpSegment segment : cp) cpScience.add(segment.science());
-            var transitionScience = new ArrayList<Object>();
-            for (Transition t : transitions) transitionScience.add(List.of(t.temperature(), t.enthalpy(), t.volumeChange(), t.toCrystal()));
-            return List.of(cpScience,
-                    List.of(volumeTemperature, volumePressure, volume, present(expansion), present(compressibility), present(volumeMinimumTemperature),
-                            present(volumeMaximumTemperature), present(minimumPressure), present(maximumPressure)),
-                    transitionScience);
         }
 
         @Override public double minimumTemperature() { return minimumTemperature; }
@@ -487,7 +462,6 @@ public final class CrystalReference {
         abstract double enthalpyIntegral(double t);
         /** Integral of Cp/T from the segment minimum to t. */
         abstract double entropyIntegral(double t);
-        abstract Object science();
     }
 
     /** Cp = sum c_k T^k, k = 0.. (J/(mol K), T in K). */
@@ -515,12 +489,6 @@ public final class CrystalReference {
             double sum = c[0] * DeterministicMath.log(t / minimum);
             for (int k = 1; k < c.length; k++) sum += c[k] * (DeterministicMath.pow(t, k) - DeterministicMath.pow(minimum, k)) / k;
             return sum;
-        }
-
-        @Override Object science() {
-            var list = new ArrayList<Double>();
-            for (double v : c) list.add(v);
-            return List.of("polynomial", minimum, maximum, list);
         }
     }
 
@@ -568,12 +536,5 @@ public final class CrystalReference {
         @Override double enthalpyIntegral(double x) { int i = interval(x); return enthalpyAtNode[i] + piece(i, x, false); }
 
         @Override double entropyIntegral(double x) { int i = interval(x); return entropyAtNode[i] + piece(i, x, true); }
-
-        @Override Object science() {
-            var temperatures = new ArrayList<Double>();
-            var values = new ArrayList<Double>();
-            for (int i = 0; i < t.length; i++) { temperatures.add(t[i]); values.add(value[i]); }
-            return List.of("table", minimum, maximum, temperatures, values);
-        }
     }
 }

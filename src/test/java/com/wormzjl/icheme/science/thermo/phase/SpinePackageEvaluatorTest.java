@@ -132,9 +132,9 @@ class SpinePackageEvaluatorTest {
         var catalog = MaterialCatalog.bundled();
         var pilot = catalog.requirePackage(PILOT);
         var contract = PhaseContract.forNetworkPackage(catalog, PILOT);
-        assertEquals(pilot.spineFingerprint(), contract.identity().spineFingerprint());
+        assertEquals(catalog.spineRevision(PILOT), contract.identity().spineRevision());
         assertEquals(CubicPhaseEvaluator.FAMILY, contract.identity().evaluatorFamily());
-        assertEquals(catalog.fluidThermoFingerprint(PILOT), contract.identity().packageFingerprint());
+        assertEquals(catalog.fluidRevision(PILOT), contract.identity().packageRevision());
         assertEquals(WaterParticipation.SEPARATE_FREE_WATER, contract.water());
         assertEquals(ThermoIdentity.SEPARATE_FREE_WATER_FORMULATION + ":" + pilot.water().revision(), contract.identity().waterModelRevision());
         assertEquals(Set.of(PhaseCompetition.FLUID_ONLY), contract.qualifiedCompetitions(),
@@ -142,12 +142,12 @@ class SpinePackageEvaluatorTest {
         assertEquals(java.util.List.of("Nitrogen", "Methane", "Ethane", "CarbonDioxide", "Water"), contract.components());
         // The network's own identity is the same package on another family (the sensible datum): a different revision.
         var network = FluidTestSupport.model(catalog, PILOT).hydrocarbon;
-        var networkIdentity = ThermoIdentity.of(catalog, PILOT, HydrocarbonModel.NETWORK_FAMILY, pilot.spineFingerprint(),
+        var networkIdentity = ThermoIdentity.of(catalog, PILOT, HydrocarbonModel.NETWORK_FAMILY, catalog.spineRevision(PILOT),
                 WaterParticipation.SEPARATE_FREE_WATER);
         assertEquals(networkIdentity.revision(), network.revision(), "the network's revision is its identity's");
         assertEquals(HydrocarbonModel.NETWORK_FAMILY, networkIdentity.evaluatorFamily());
-        assertEquals(contract.identity().packageFingerprint(), networkIdentity.packageFingerprint());
-        assertEquals(contract.identity().spineFingerprint(), networkIdentity.spineFingerprint());
+        assertEquals(contract.identity().packageRevision(), networkIdentity.packageRevision());
+        assertEquals(contract.identity().spineRevision(), networkIdentity.spineRevision());
         assertEquals(contract.identity().waterModelRevision(), networkIdentity.waterModelRevision());
         assertNotEquals(contract.identity().revision(), networkIdentity.revision());
         // A package without a spine: the overload is the P2 form with NO_SPINE.
@@ -156,7 +156,7 @@ class SpinePackageEvaluatorTest {
         assertEquals(explicit.identity().revision(), bundled.identity().revision());
         assertEquals(explicit.components(), bundled.components());
         assertEquals(explicit.qualifiedCompetitions(), bundled.qualifiedCompetitions());
-        assertEquals(ThermoIdentity.NO_SPINE, bundled.identity().spineFingerprint());
+        assertEquals(ThermoIdentity.NO_SPINE, bundled.identity().spineRevision());
     }
 
     private static double sum(double[] values) {

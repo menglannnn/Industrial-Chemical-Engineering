@@ -1,0 +1,2 @@
+gamemode survival
+tp @s 230.909 -60 26.091 -135 -10

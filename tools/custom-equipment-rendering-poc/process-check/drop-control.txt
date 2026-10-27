@@ -1,0 +1,5 @@
+difficulty easy
+gamerule naturalRegeneration false
+gamemode survival
+effect give @s minecraft:instant_health 1 5
+tp @s 238.5 -50 31.5 -135 0

@@ -1,0 +1,104 @@
+3.0 m 12 trays, nozzles 5, misfit -
+   REFLUX 1 home 3 side 3 y 13.5
+   FEED 1 home 0 side 0 y 9.5
+   VAPOUR_RETURN 1 home 1 side 1 y 5.5
+   platform 4 28-118 ring false manway true
+   platform 9 62-152 ring false manway true
+   platform 12 152-168 ring true manway false
+   platform 12 192-478 ring true manway true
+   ladder 135 0.00-5.20
+   ladder 45 4.13-10.20
+   ladder 135 9.13-13.20
+6.0 m 40 trays, nozzles 12, misfit -
+   REFLUX 1 home 3 side 3 y 31.5
+   FEED 1 home 0 side 0 y 20.5
+   PUMPAROUND_DRAW 1 home 3 side 3 y 24.5
+   RETURN 1 home 3 side 3 y 26.5
+   PUMPAROUND_DRAW 2 home 3 side 3 y 13.5
+   RETURN 2 home 3 side 3 y 15.5
+   VAPOUR_RETURN 1 home 1 side 1 y 7.5
+   DRAW 1 home 1 side 1 y 25.5
+   DRAW 2 home 1 side 1 y 16.5
+   STEAM 1 home 1 side 0 y 7.5
+   platform 6 35-125 ring false manway true
+   platform 13 55-145 ring false manway true
+   platform 19 35-125 ring false manway true
+   platform 25 55-145 ring false manway true
+   platform 31 145-171 ring true manway false
+   platform 31 189-485 ring true manway true
+   ladder 135 0.00-7.20
+   ladder 45 6.13-14.20
+   ladder 135 13.13-20.20
+   ladder 45 19.13-26.20
+   ladder 135 25.13-32.20
+1.0 m 20 trays, nozzles 5, misfit -
+   REFLUX 1 home 3 side 0 y 16.5
+   FEED 1 home 0 side 0 y 11.5
+   VAPOUR_RETURN 1 home 1 side 0 y 4.5
+   platform 3 9-99 ring false manway true
+   platform 10 81-171 ring false manway true
+   platform 16 171-250 ring true manway false
+   platform 16 290-459 ring true manway true
+   ladder 135 0.00-4.20
+   ladder 45 3.13-11.20
+   ladder 135 10.13-17.20
+15.0 m 30 trays, nozzles 5, misfit -
+   REFLUX 1 home 3 side 3 y 41.5
+   FEED 1 home 0 side 0 y 32.5
+   VAPOUR_RETURN 1 home 1 side 1 y 21.5
+   platform 7 41-131 ring false manway false
+   platform 15 49-139 ring false manway false
+   platform 22 41-131 ring false manway true
+   platform 27 49-139 ring false manway true
+   platform 32 41-131 ring false manway true
+   platform 40 49-176 ring true manway true
+   platform 40 184-401 ring true manway false
+   ladder 135 0.00-8.20
+   ladder 45 7.13-16.20
+   ladder 135 15.13-23.20
+   ladder 45 22.13-28.20
+   ladder 135 27.13-33.20
+   ladder 45 32.13-41.20
+4.0 m 30 trays, nozzles 14, misfit -
+   REFLUX 1 home 3 side 3 y 23.5
+   FEED 1 home 0 side 0 y 15.5
+   PUMPAROUND_DRAW 1 home 3 side 3 y 17.5
+   RETURN 1 home 3 side 0 y 18.5
+   PUMPAROUND_DRAW 2 home 3 side 3 y 9.5
+   RETURN 2 home 3 side 3 y 11.5
+   VAPOUR_RETURN 1 home 1 side 1 y 5.5
+   DRAW 1 home 1 side 1 y 18.5
+   DRAW 2 home 1 side 2 y 18.5
+   DRAW 3 home 1 side 1 y 11.5
+   DRAW 4 home 1 side 0 y 11.5
+   STEAM 1 home 1 side 0 y 5.5
+   platform 4 31-121 ring false manway true
+   platform 9 59-149 ring false manway true
+   platform 14 31-121 ring false manway true
+   platform 23 59-168 ring true manway true
+   platform 23 192-391 ring true manway false
+   ladder 135 0.00-5.20
+   ladder 45 4.13-10.20
+   ladder 135 9.13-15.20
+   ladder 45 14.13-24.20
+2.0 m 4 trays, nozzles 8, misfit side draw 3 has no free row by its tray on any side of a 6-tray column
+   REFLUX 1 home 3 side 3 y 7.5
+   FEED 1 home 0 side 0 y 6.5
+   VAPOUR_RETURN 1 home 1 side 1 y 4.5
+   DRAW 1 home 1 side 1 y 6.5
+   DRAW 2 home 1 side 3 y 5.5
+   DRAW 3 home 1 side 1 UNPLACED
+   DRAW 4 home 1 side 0 y 4.5
+   STEAM 1 home 1 side 1 UNPLACED
+   STEAM 2 home 1 side 1 UNPLACED
+   platform 3 26-111 ring false manway true
+   platform 6 74-160 ring true manway true
+   ladder 135 0.00-4.20
+   ladder 50 3.13-7.20
+reflux turned to 0: side 0 turned true placed true misfit -
+reflux turned to 1: side 1 turned true placed true misfit -
+reflux turned to 2: side 2 turned true placed false misfit the reflux nozzle has no free row by its tray on the back side it is turned to of a 14-tray column
+reflux turned to 3: side 3 turned true placed true misfit -
+kettle null: [VAPOUR_OUTLET@9.52892458723416/11, REFLUX@7.5/0-1, FEED@6.5/2-1, VAPOUR_RETURN@3.5/01, STEAM@3.5/2-1, BOTTOMS@0.5/2-1] unplaced []
+kettle true: [VAPOUR_OUTLET@9.52892458723416/11, REFLUX@7.5/0-1, FEED@6.5/2-1, VAPOUR_RETURN@3.5/01, STEAM@3.5/2-1, BOTTOMS@0.5/2-1] unplaced []
+kettle false: [VAPOUR_OUTLET@9.52892458723416/11, REFLUX@7.5/0-1, FEED@6.5/2-1, STEAM@3.5/01, BOTTOMS@0.5/2-1] unplaced []

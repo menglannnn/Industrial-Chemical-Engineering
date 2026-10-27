@@ -1,6 +1,8 @@
 package com.wormzjl.icheme.runtime.fluid;
 
 import com.wormzjl.icheme.fluid.support.FluidTestSupport;
+import com.wormzjl.icheme.science.equipment.PipeSizes;
+import com.wormzjl.icheme.science.equipment.RackGeometry;
 import com.wormzjl.icheme.science.fluid.network.*;
 import com.wormzjl.icheme.science.fluid.thermo.FluidMaterialCatalog;
 import com.wormzjl.icheme.science.fluid.thermo.FluidThermodynamics;
@@ -37,12 +39,28 @@ class FluidFactsCompatTest {
         long first=world.place(4,64,0,Kind.RESERVOIR,Direction.EAST);
         for(int x=5;x<=6;x++)world.place(x,64,0,Kind.PIPE,Direction.EAST,.05);
         world.place(7,64,0,Kind.RESERVOIR,Direction.EAST);
+        // Facts schema 2: a pipe laid beside the line with its joints along the line, so it does not join it.
+        world.placeLaid(2,64,1,Direction.EAST,.05,1<<Direction.WEST.ordinal()|1<<Direction.EAST.ordinal());
+        // And a rack lane on positions 2 and 3 of a rack facing east beside the second vessel's line: the lane field of a
+        // position, the width and the points it meets its neighbours at.
+        int along=1<<Direction.WEST.ordinal()|1<<Direction.EAST.ordinal();
+        long points=RackGeometry.points(new RackGeometry.Rack(5,RackGeometry.STRAIGHT),new RackGeometry.Lane(2,2,along,along,PipeSizes.code(PipeSizes.outside(.1))));
+        world.placeLane(5,64,1,3,2,points,Direction.EAST,.1,along);
         world.runTo(20);assertTrue(world.registry.installPipeFilter(generator+2,Direction.EAST));world.runTo(400);
         world.registry.submit(List.of(new WorldTopologyLedger.Edit(generator,null)),world.ledger.nextIdentity(),null);world.runTo(600);
         world.assertKeptUp("the saved line");
         var stock=contents(new FluidCheckpointCodec.Checkpoint(world.coordinator.snapshots().stream().map(s->new FluidCheckpointCodec.IslandEntry(EventPathWorld.DIM,PACKAGE,s)).toList()));
         assertTrue(Arrays.stream(((PassiveNetwork.Inventory)stock.get(first)).moles()).sum()>10,"the generator charged the vessels: "+stock.get(first));
         return world;
+    }
+    private EventPathWorld corpusWorld(){
+        var world=world();var g=VesselGeometry.round(VesselGeometry.Form.HORIZONTAL_DRUM,2,6,2.0/3,.7);
+        world.place(20,64,0,Kind.RESERVOIR,Direction.EAST,new FluidDeviceSpec(g.capacity(),298.15,101325,FluidDeviceSpec.nitrogen(CATALOG).composition(),SlurryFeed.NONE,g.height(),false,g),.05);
+        long valve=world.place(22,64,0,Kind.VALVE,Direction.EAST);
+        var r=world.registry.registrations().get(valve);var d=r.device();
+        var control=new FlowControl.ControlValve(FlowControl.ValveSource.VOLUME_FLOW,200000,1,.02,new UUID(1,2),1);
+        world.registry.submit(List.of(new WorldTopologyLedger.Edit(valve,new WorldTopologyLedger.Registration(d.withControl(control),r.spec(),r.revision()+1))),world.ledger.nextIdentity(),null);
+        world.runTo(700);return world;
     }
     private FluidCheckpointCodec.Image image(EventPathWorld world) {
         var checkpoint=new FluidCheckpointCodec.Checkpoint(world.coordinator.snapshots().stream().map(s->new FluidCheckpointCodec.IslandEntry(EventPathWorld.DIM,PACKAGE,s)).toList());
@@ -191,7 +209,7 @@ class FluidFactsCompatTest {
     @Test void everyCorpusImageRebuildsFromItsFactsToItsRecordedTotals() throws IOException {
         var current=CORPUS.resolve("schema-"+FluidFacts.SCHEMA);
         if(!Files.isDirectory(current)) {
-            var written=Path.of("build/compat/fluid/schema-"+FluidFacts.SCHEMA);write(image(world()),written);
+            var written=Path.of("build/compat/fluid/schema-"+FluidFacts.SCHEMA);write(image(corpusWorld()),written);
             fail("No corpus image of facts schema "+FluidFacts.SCHEMA+": copy "+written.toAbsolutePath()+" to "+current);
         }
         try(var images=Files.list(CORPUS)) {
@@ -201,6 +219,12 @@ class FluidFactsCompatTest {
                 assertEquals(FluidCheckpointStore.Route.FACTS,rebuilt.route(),folder.toString());
                 var ledger=rebuilt.world().orElseThrow();
                 assertEquals(Integer.parseInt(expected.getProperty("registrations")),ledger.active().size(),folder+": registrations");
+                // Schema 2 wrote joints; an image of schema 1 reads every registration with all six faces, as pipes were then.
+                assertEquals(Long.parseLong(expected.getProperty("laid","0")),ledger.active().values().stream().filter(r->r.device().joints()!=PhysicalFluidTopology.ALL_FACES).count(),folder+": laid pipes");
+                assertEquals(Long.parseLong(expected.getProperty("lanes","0")),ledger.active().values().stream().filter(r->r.device().position().lane()!=0).count(),folder+": rack lanes");
+                // Schema 3 wrote a spec's vessel geometry and the control valve; an older image reads prisms and no control valve.
+                assertEquals(Long.parseLong(expected.getProperty("shaped","0")),shaped(ledger),folder+": shaped vessels");
+                assertEquals(Long.parseLong(expected.getProperty("controlValves","0")),controlValves(ledger),folder+": control valves");
                 long vessels=rebuilt.checkpoint().islands().stream().flatMap(e->e.snapshot().graph().reservoirs().stream()).filter(n->n.kind()==PassiveNetwork.NodeKind.RESERVOIR).count();
                 assertEquals(Long.parseLong(expected.getProperty("vessels")),vessels,folder+": vessels");
                 double total=Arrays.stream(moles(rebuilt.checkpoint(),model.componentCount())).sum();
@@ -208,15 +232,43 @@ class FluidFactsCompatTest {
             }
         }
     }
+    /**
+     * A world written before 2026-10-26 identifies its property basis by a hash of the package data (facts schema 1):
+     * loaded as it is, it restates once onto the declared revisions, every amount kept, the same data giving the same
+     * energy, and saves as an exact checkpoint again.
+     */
+    @Test void aSchemaOneWorldRestatesOnceOntoTheDeclaredRevisions() throws IOException {
+        var folder=CORPUS.resolve("schema-1");var image=read(folder);
+        var expected=new Properties();try(var in=Files.newBufferedReader(folder.resolve("expected.properties"))){expected.load(in);}
+        var restated=load(image,key->model,CATALOG);
+        assertEquals(FluidCheckpointStore.Route.FACTS,restated.route());
+        assertTrue(restated.reason().contains("property data of package "+PACKAGE+" changed"),restated.reason());
+        var ledger=restated.world().orElseThrow();
+        assertEquals(WorldTopologyLedger.FluidBasis.capture(CATALOG),ledger.basis());
+        double total=Arrays.stream(moles(restated.checkpoint(),model.componentCount())).sum();
+        assertEquals(Double.parseDouble(expected.getProperty("moles")),total,1e-12*total,"every amount kept");
+        assertTrue(ledger.restated().removedMoles().isEmpty()&&ledger.restated().removedSolids().isEmpty());
+        double energy=0;for(var e:restated.checkpoint().islands())for(var n:e.snapshot().graph().reservoirs())
+            if(n.kind()==PassiveNetwork.NodeKind.RESERVOIR)energy+=Math.abs(n.inventory().internalEnergy());
+        assertEquals(0,ledger.restated().energy(),1e-9*energy,"the same data gives the same energy");
+        var reloaded=new EventPathWorld(1,ledger,restated.checkpoint().islands().stream().map(FluidCheckpointCodec.IslandEntry::snapshot).toList());
+        assertEquals(FluidCheckpointStore.Route.EXACT,load(image(reloaded),key->model,CATALOG).route(),"restated once");
+    }
     private void write(FluidCheckpointCodec.Image image,Path folder) throws IOException {
         Files.createDirectories(folder);NbtIo.writeCompressed(image.core(),folder.resolve("core.dat"));
         for(var pack:image.packs().entrySet())Files.write(folder.resolve("pack-"+pack.getKey()+".bin"),pack.getValue());
         var loaded=load(image,key->model,CATALOG);var props=new Properties();
         props.setProperty("registrations",Integer.toString(loaded.world().orElseThrow().active().size()));
+        props.setProperty("laid",Long.toString(loaded.world().orElseThrow().active().values().stream().filter(r->r.device().joints()!=PhysicalFluidTopology.ALL_FACES).count()));
+        props.setProperty("lanes",Long.toString(loaded.world().orElseThrow().active().values().stream().filter(r->r.device().position().lane()!=0).count()));
+        props.setProperty("shaped",Long.toString(shaped(loaded.world().orElseThrow())));
+        props.setProperty("controlValves",Long.toString(controlValves(loaded.world().orElseThrow())));
         props.setProperty("vessels",Long.toString(contents(loaded.checkpoint()).values().stream().filter(v->v instanceof PassiveNetwork.Inventory).count()));
         props.setProperty("moles",Double.toString(Arrays.stream(moles(loaded.checkpoint(),model.componentCount())).sum()));
         try(var out=Files.newBufferedWriter(folder.resolve("expected.properties"))){props.store(out,"Facts schema "+FluidFacts.SCHEMA+" corpus image, state format "+FluidCheckpointCodec.VERSION);}
     }
+    private static long shaped(WorldTopologyLedger.Snapshot world){return world.active().values().stream().filter(r->r.spec().geometry().form()!=VesselGeometry.Form.PRISM).count();}
+    private static long controlValves(WorldTopologyLedger.Snapshot world){return world.active().values().stream().filter(r->r.device().control() instanceof FlowControl.ControlValve).count();}
     private static FluidCheckpointCodec.Image read(Path folder) throws IOException {
         var core=NbtIo.readCompressed(folder.resolve("core.dat"),NbtAccounter.unlimitedHeap());var packs=new HashMap<Long,byte[]>();
         try(var files=Files.list(folder)){for(var file:files.toList()){var name=file.getFileName().toString();

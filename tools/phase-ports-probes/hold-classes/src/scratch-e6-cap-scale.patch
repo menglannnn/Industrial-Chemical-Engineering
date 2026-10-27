@@ -1,0 +1,38 @@
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+index aacd69dd..89b15fc6 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+@@ -72,6 +72,7 @@ public final class PassiveStepSolver {
+      * capacity as having met it.
+      */
+     private static final double FILTER_CAPACITY_MARGIN=1e-12;
++    static final boolean SCRATCH_CAPSCALE=Boolean.getBoolean("capscale"),SCRATCH_CAPSCALE2=Boolean.getBoolean("capscale2");
+     /**
+      * The owned holdup of a junction, in seconds of its largest connection's velocity-cap flow: a junction owns
+      * {@code m_J = HOLDUP_TAU * max over its connections of rho_seed * minimumArea * velocityLimit(seed)} of fluid, minted
+@@ -2142,7 +2143,7 @@ public final class PassiveStepSolver {
+          * from the converged flow ({@link #segmentsMoved}).
+          */
+         final PhaseDraw.Segment[][] segments;
+-        final Transport[][] capSources;final double[][] capMassFlows,capPressureDrops;
++        final Transport[][] capSources;final double[][] capMassFlows,capPressureDrops;int[] scaleDirections;
+         final FluidThermodynamics.Prepared[] cachedPrepared;
+         /**
+          * Whether a device in this island prescribes its own mass flow this pass. A saturated
+@@ -3019,7 +3020,15 @@ public final class PassiveStepSolver {
+                 // (+-limit - q)/limit, on a scale 80x apart from the hydraulic row's on a 50 mm line, and a Newton crossing
+                 // the cap exit stalled on the mismatch; rescaling only the capped branch left the same mismatch at the
+                 // cap's edge (review 7.1, 7.5). The floor keeps a filter with no room left from a zero scale.
+-                double capScale=Math.max(Math.min(pressureScale,2*limitDrop),1e-12);
++                double scaleDrop=limitDrop;
++                if(SCRATCH_CAPSCALE2&&byDriving){
++                    if(scaleDirections==null){scaleDirections=new int[graph.pipes().size()];Arrays.fill(scaleDirections,-1);}
++                    if(scaleDirections[edge]<0)scaleDirections[edge]=direction;
++                    int o=scaleDirections[edge];
++                    if(o!=direction){var os=tr[o==0?a:b];if(capSources[edge][o]!=os){double l2=capLimit(edge,o,os);var t2=drawn(edge,o,os,l2);capMassFlows[edge][o]=l2;capPressureDrops[edge][o]=pipe.pressureDrop(l2,t2.density,t2.viscosity);capSources[edge][o]=os;}scaleDrop=capPressureDrops[edge][o];}
++                }
++                if(SCRATCH_CAPSCALE&&byDriving){int o=1-direction;var os=tr[o==0?a:b];if(capSources[edge][o]!=os){double l2=capLimit(edge,o,os);var t2=drawn(edge,o,os,l2);capMassFlows[edge][o]=l2;capPressureDrops[edge][o]=pipe.pressureDrop(l2,t2.density,t2.viscosity);capSources[edge][o]=os;}scaleDrop=Math.min(limitDrop,capPressureDrops[edge][o]);}
++                double capScale=Math.max(Math.min(pressureScale,2*scaleDrop),1e-12);
+                 f[edgeOffset+edge]=(driving-loss)/capScale;
+                 if(Math.abs(driving)>limitDrop)f[edgeOffset+edge]=(Math.copySign(limitDrop,driving)-loss)/capScale;
+             }

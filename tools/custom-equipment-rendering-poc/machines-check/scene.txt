@@ -1,0 +1,15 @@
+gamemode creative
+tp @s 620 -55 -14
+createcheme equipment unit 600 -60 0 pump 0.05 1 0 north
+createcheme equipment unit 604 -60 0 pump 0.2 1 0 north
+createcheme equipment unit 609 -60 0 pump 0.4 1 0 north
+createcheme equipment unit 620 -60 0 compressor 0.15 2 1 north
+createcheme equipment unit 630 -60 0 compressor 0.45 4 2 north
+createcheme equipment unit 645 -60 0 compressor 0.8 6 3 north
+createcheme equipment unit 665 -60 0 vertical_heater 2.5 4 3 north
+createcheme equipment unit 675 -60 0 vertical_heater 4 8 3 north
+createcheme equipment unit 690 -60 0 vertical_heater 8 18 3 north
+createcheme equipment unit 715 -60 0 cabin_heater 6 12 3 north
+createcheme equipment unit 735 -60 0 cabin_heater 10 30 3 north
+setblock 600 -60 -20 createcheme:equipment_constructor[facing=south]
+gamemode spectator

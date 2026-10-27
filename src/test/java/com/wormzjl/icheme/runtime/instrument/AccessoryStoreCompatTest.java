@@ -37,6 +37,11 @@ class AccessoryStoreCompatTest {
                 new GaugeSettings(Kind.TEMPERATURE,273.15,373.15,Unit.CELSIUS,false),"minecraft:overworld",new BlockPos(4,70,-9).asLong(),3,false)));
         var gauge=s.get(new Instrument.Key(11,"pipe_north"));
         assertTrue(s.queue(new InstrumentService.Store.Pending(new UUID(0xa11,2),player,gauge.key(),gauge.instance(),s.revision(11),false,Instrument.Type.PRESSURE,null,"minecraft:the_nether",new BlockPos(-30,40,12).asLong(),0,true)));
+        s.installSensor(new Instrument.Key(61,"pipe_north"),new UUID(0x5e,1),Sensor.Kind.PRESSURE,0);
+        s.installSensor(new Instrument.Key(62,"pipe_east"),new UUID(0x5e,2),Sensor.Kind.FLOW,0);
+        s.installSensor(new Instrument.Key(63,"level_body"),new UUID(0x5e,3),Sensor.Kind.LEVEL,0);
+        s.installSensor(new Instrument.Key(63,"level_boot"),new UUID(0x5e,4),Sensor.Kind.LEVEL,s.revision(63));
+        s.installLegacy(64,Instrument.Type.PRESSURE_VALVE);s.installSensor(new Instrument.Key(64,"valve_sensor"),new UUID(0x5e,5),Sensor.Kind.PRESSURE,s.revision(64));
         s.nextDue(123456);
         return s;
     }
@@ -55,6 +60,8 @@ class AccessoryStoreCompatTest {
         for(var p:s.pending()){out.append("pending ").append(p.request()).append(' ').append(p.player()).append(' ').append(p.key().host()).append('/').append(p.key().mount()).append(' ').append(p.instance())
                 .append(" r").append(p.expectedRevision()).append(p.install()?" install ":" remove ").append(p.type()).append(' ').append(p.settings()==null?"-":p.settings().kind()+" "+p.settings().minimum()+".."+p.settings().maximum()+" "+p.settings().unit()+(p.settings().relative()?" relative":""))
                 .append(' ').append(p.dimension()).append(' ').append(p.position()).append(" slot ").append(p.slot()).append(p.offhand()?" offhand":"").append("; ");}
+        for(long host:hosts)for(var sensor:s.sensors(host))out.append("sensor ").append(sensor.key().host()).append('/').append(sensor.key().mount()).append(' ').append(sensor.instance()).append(" r").append(sensor.revision()).append(' ').append(sensor.kind()).append("; ");
+        for(long host:new TreeSet<>(s.modular()))out.append("modular ").append(host).append("; ");
         return out.append("next_due ").append(s.nextDue()).toString();
     }
     static String describe(InstrumentService.Store s){return describe(new TreeSet<>(s.revisions().keySet()).stream().toList(),s);}

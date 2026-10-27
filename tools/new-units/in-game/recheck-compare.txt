@@ -1,0 +1,10 @@
+gamerule sendCommandFeedback true
+tp @s 0 -40 205
+execute if blocks -6 -60 179 6 -36 193 -6 -60 219 all
+execute if blocks -6 -60 179 6 -36 193 -6 -60 220 all
+execute if blocks -6 -60 179 6 -36 193 -6 -60 219 masked
+tp @s 110 -40 20
+execute if blocks 106 -60 63 114 -45 73 106 -60 -34 all
+execute if blocks 106 -60 63 114 -45 73 106 -60 -35 all
+execute if blocks 106 -60 63 114 -45 73 106 -60 -35 masked
+gamerule sendCommandFeedback false

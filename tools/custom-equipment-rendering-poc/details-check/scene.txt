@@ -1,0 +1,10 @@
+gamemode creative
+tp @s 430 -55 -12
+createcheme equipment place 400 -60 0 3 4 vertical 2 north
+createcheme equipment place 408 -60 0 1 3 vertical 2 north
+createcheme equipment place 416 -60 0 3 9 horizontal 4 north boot
+createcheme equipment place 426 -60 0 2 6 horizontal 1 north
+createcheme equipment unit 440 -60 0 air_cooler 3 6 4 north
+createcheme equipment unit 456 -60 0 air_cooler 3 6 3 north
+setblock 400 -60 -20 createcheme:equipment_constructor[facing=south]
+gamemode spectator

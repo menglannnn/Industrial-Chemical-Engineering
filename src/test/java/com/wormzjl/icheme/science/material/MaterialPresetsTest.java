@@ -32,16 +32,21 @@ class MaterialPresetsTest {
     @Test void exampleWholeRecordOverridePreservesAllExistingTransportData() throws Exception {
         var original=MaterialCatalog.bundled();var resources=new HashMap<>(original.resources());String path=ROOT+"properties/tjl20_methane.json";
         String example=java.nio.file.Files.readString(java.nio.file.Path.of("examples/material-override/"+path));
-        // The example is the bundled record with its density and source edited, nothing else, so it never drifts into an
-        // older copy (t44d found one whose fluid_domain ended at 2 MPa where the bundled record ends at 10 MPa).
+        // The example is the bundled record with its density, source and revision edited, nothing else, so it never drifts
+        // into an older copy (t44d found one whose fluid_domain ended at 2 MPa where the bundled record ends at 10 MPa).
         var edited=JsonParser.parseString(example).getAsJsonObject();var bundled=JsonParser.parseString(resources.get(path)).getAsJsonObject();
-        for(var field:new String[]{"standard_liquid_density_kg_per_m3","source"}){edited.remove(field);bundled.remove(field);}
-        assertEquals(bundled,edited,"the example differs from the bundled record only in its density and source");
+        for(var field:new String[]{"standard_liquid_density_kg_per_m3","source","revision"}){edited.remove(field);bundled.remove(field);}
+        assertEquals(bundled,edited,"the example differs from the bundled record only in its density, source and revision");
         resources.put(path,example);
         var replaced=MaterialCatalog.parse(resources);String id="icheme:tjl20_methane";
         assertEquals(357,replaced.requirePackage(id).properties().getFirst().density());
-        assertEquals(original.viscosityFingerprint(id),replaced.viscosityFingerprint(id));
-        assertNotEquals(original.physicsFingerprint(id,original.requirePackage(id).components()),replaced.physicsFingerprint(id,replaced.requirePackage(id).components()));
+        var component=replaced.requirePackage(id).properties().getFirst().component();
+        for(var phase:ViscosityCorrelation.Phase.values())assertEquals(original.viscosity(id,component,phase),replaced.viscosity(id,component,phase),phase.name());
+        assertEquals(original.liquidMixture(id),replaced.liquidMixture(id));
+        assertNotEquals(original.physicsContent(id,original.requirePackage(id).components()),replaced.physicsContent(id,replaced.requirePackage(id).components()));
+        // The edit declares itself with its record's revision bump (owner decisions 2026-10-26), which moves the identities.
+        assertNotEquals(original.requirePackage(id).scientificRevision(),replaced.requirePackage(id).scientificRevision());
+        assertNotEquals(original.fluidRevision(id),replaced.fluidRevision(id));
     }
     @Test void customPresetIsServerDefinedAndInvalidOverridesFailBeforePublication() {
         var original=MaterialCatalog.bundled();var resources=new HashMap<>(original.resources());String path=ROOT+"presets/column_custom.json";
@@ -51,7 +56,7 @@ class MaterialPresetsTest {
         var changed=MaterialCatalog.parse(resources);var choice=ColumnInputPreset.fromId(changed,"custom_crude");
         assertEquals(650,choice.input(changed).feedTemperatureKelvin());assertTrue(changed.presets().visibleColumns().contains(choice.descriptor(changed)));
         assertThrows(IllegalArgumentException.class,()->ColumnInputPreset.fromId(original,"custom_crude"));
-        assertEquals(original.physicsFingerprint("icheme:dalia_tjl20",original.requirePackage("icheme:dalia_tjl20").components()),changed.physicsFingerprint("icheme:dalia_tjl20",changed.requirePackage("icheme:dalia_tjl20").components()));
+        assertEquals(original.physicsContent("icheme:dalia_tjl20",original.requirePackage("icheme:dalia_tjl20").components()),changed.physicsContent("icheme:dalia_tjl20",changed.requirePackage("icheme:dalia_tjl20").components()));
         preset.getAsJsonObject("operating").addProperty("stageCount",2);resources.put(path,preset.toString());
         var failure=assertThrows(IllegalArgumentException.class,()->MaterialCatalog.parse(resources));assertTrue(failure.getMessage().contains(path));
         preset.addProperty("assay","missing:assay");resources.put(path,preset.toString());

@@ -1,0 +1,51 @@
+{
+  "archive": "D:\\Minecraft\\Modding\\1.21\\CreateChemE\\tools\\fluid-world-inspector\\logs\\deferred-hold-logs-2026-10-23-151051.tar.gz",
+  "captured_utc": "2026-10-23T15:10:51.115260+00:00",
+  "checkpoint_mtime_local": "2026-10-23T23:09:40.410091",
+  "epoch": 27212,
+  "islands": {
+    "Id": [
+      44,
+      45,
+      48,
+      61,
+      94
+    ],
+    "Committed": [
+      27212,
+      27212,
+      27212,
+      27186,
+      21577
+    ],
+    "Online": [
+      27212,
+      27212,
+      27212,
+      27212,
+      27212
+    ]
+  },
+  "held_log_lines": [
+    "[2310\u67082026 23:02:02.048] [Server thread/WARN] [com.wormzjl.icheme.IChemE/]: fluid_island=90 committed_tick=18045 status=HELD: Substep refinement exhausted: Newton line search stalled at residual 3.0661905288966587; active-set pass=0; reasons={Newton line search stalled at residual #; active-set pass=#=20}",
+    "[2310\u67082026 23:02:05.242] [Server thread/WARN] [com.wormzjl.icheme.IChemE/]: fluid_island=90 committed_tick=18045 status=HELD: Substep refinement exhausted: Newton line search stalled at residual 3.0661905288966587; active-set pass=0; reasons={Newton line search stalled at residual #; active-set pass=#=20}",
+    "[2310\u67082026 23:02:11.642] [Server thread/WARN] [com.wormzjl.icheme.IChemE/]: fluid_island=90 committed_tick=18045 status=HELD: Substep refinement exhausted: Newton line search stalled at residual 3.0661905288966587; active-set pass=0; reasons={Newton line search stalled at residual #; active-set pass=#=20}",
+    "[2310\u67082026 23:02:24.442] [Server thread/WARN] [com.wormzjl.icheme.IChemE/]: fluid_island=90 committed_tick=18045 status=HELD: Substep refinement exhausted: Newton line search stalled at residual 3.0661905288966587; active-set pass=0; reasons={Newton line search stalled at residual #; active-set pass=#=20}",
+    "[2310\u67082026 23:02:34.942] [Server thread/WARN] [com.wormzjl.icheme.IChemE/]: fluid_island=90 committed_tick=18045 status=HELD: Substep refinement exhausted: Newton line search stalled at residual 3.0661905288966587; active-set pass=0; reasons={Newton line search stalled at residual #; active-set pass=#=20}",
+    "[2310\u67082026 23:02:35.030] [Server thread/WARN] [com.wormzjl.icheme.IChemE/]: fluid_island=91 committed_tick=18704 status=HELD: Substep refinement exhausted: Newton line search stalled at residual 0.13092152937243595; active-set pass=0; reasons={Newton line search stalled at residual #; active-set pass=#=20}",
+    "[2310\u67082026 23:02:38.254] [Server thread/WARN] [com.wormzjl.icheme.IChemE/]: fluid_island=91 committed_tick=18704 status=HELD: Substep refinement exhausted: Newton line search stalled at residual 0.13092152937243595; active-set pass=0; reasons={Newton line search stalled at residual #; active-set pass=#=20}",
+    "[2310\u67082026 23:02:44.704] [Server thread/WARN] [com.wormzjl.icheme.IChemE/]: fluid_island=91 committed_tick=18704 status=HELD: Substep refinement exhausted: Newton line search stalled at residual 0.13092152937243595; active-set pass=0; reasons={Newton line search stalled at residual #; active-set pass=#=20}",
+    "[2310\u67082026 23:02:57.553] [Server thread/WARN] [com.wormzjl.icheme.IChemE/]: fluid_island=91 committed_tick=18704 status=HELD: Substep refinement exhausted: Newton line search stalled at residual 0.13092152937243595; active-set pass=0; reasons={Newton line search stalled at residual #; active-set pass=#=20}",
+    "[2310\u67082026 23:03:23.222] [Server thread/WARN] [com.wormzjl.icheme.IChemE/]: fluid_island=91 committed_tick=18704 status=HELD: Substep refinement exhausted: Newton line search stalled at residual 0.13092152937243595; active-set pass=0; reasons={Newton line search stalled at residual #; active-set pass=#=20}",
+    "[2310\u67082026 23:04:14.455] [Server thread/WARN] [com.wormzjl.icheme.IChemE/]: fluid_island=91 committed_tick=18704 status=HELD: Substep refinement exhausted: Newton line search stalled at residual 0.13092152937243595; active-set pass=0; reasons={Newton line search stalled at residual #; active-set pass=#=20}",
+    "[2310\u67082026 23:04:40.405] [Server thread/WARN] [com.wormzjl.icheme.IChemE/]: fluid_island=91 committed_tick=18704 status=HELD: Substep refinement exhausted: Newton line search stalled at residual 0.13092152937243595; active-set pass=0; reasons={Newton line search stalled at residual #; active-set pass=#=20}",
+    "[2310\u67082026 23:04:58.655] [Server thread/WARN] [com.wormzjl.icheme.IChemE/]: fluid_island=94 committed_tick=21577 status=HELD: Substep refinement exhausted: Newton line search stalled at residual 0.12181887846794752; active-set pass=0; reasons={Newton line search stalled at residual #; active-set pass=#=20}",
+    "[2310\u67082026 23:05:01.903] [Server thread/WARN] [com.wormzjl.icheme.IChemE/]: fluid_island=94 committed_tick=21577 status=HELD: Substep refinement exhausted: Newton line search stalled at residual 0.12181887846794752; active-set pass=0; reasons={Newton line search stalled at residual #; active-set pass=#=20}",
+    "[2310\u67082026 23:05:08.354] [Server thread/WARN] [com.wormzjl.icheme.IChemE/]: fluid_island=94 committed_tick=21577 status=HELD: Substep refinement exhausted: Newton line search stalled at residual 0.12181887846794752; active-set pass=0; reasons={Newton line search stalled at residual #; active-set pass=#=20}",
+    "[2310\u67082026 23:05:21.204] [Server thread/WARN] [com.wormzjl.icheme.IChemE/]: fluid_island=94 committed_tick=21577 status=HELD: Substep refinement exhausted: Newton line search stalled at residual 0.12181887846794752; active-set pass=0; reasons={Newton line search stalled at residual #; active-set pass=#=20}",
+    "[2310\u67082026 23:05:46.854] [Server thread/WARN] [com.wormzjl.icheme.IChemE/]: fluid_island=94 committed_tick=21577 status=HELD: Substep refinement exhausted: Newton line search stalled at residual 0.12181887846794752; active-set pass=0; reasons={Newton line search stalled at residual #; active-set pass=#=20}",
+    "[2310\u67082026 23:06:38.055] [Server thread/WARN] [com.wormzjl.icheme.IChemE/]: fluid_island=94 committed_tick=21577 status=HELD: Substep refinement exhausted: Newton line search stalled at residual 0.12181887846794752; active-set pass=0; reasons={Newton line search stalled at residual #; active-set pass=#=20}",
+    "[2310\u67082026 23:08:20.508] [Server thread/WARN] [com.wormzjl.icheme.IChemE/]: fluid_island=94 committed_tick=21577 status=HELD: Substep refinement exhausted: Newton line search stalled at residual 0.12181887846794752; active-set pass=0; reasons={Newton line search stalled at residual #; active-set pass=#=20}"
+  ],
+  "unit_sha_validation": "PASS"
+}

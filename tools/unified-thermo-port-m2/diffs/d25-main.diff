@@ -1,0 +1,247 @@
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/network/InventoryEquilibrium.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/InventoryEquilibrium.java
+index 7e92df3ec..706d69be5 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/InventoryEquilibrium.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/InventoryEquilibrium.java
+@@ -27,8 +27,8 @@ public final class InventoryEquilibrium {
+         var old=PhaseLayout.totalAmounts(previous);boolean changedBasis=false;
+         if(n.length!=old.length||n.length!=model.hydrocarbon.componentCount()+1)throw new IllegalArgumentException("Inventory equilibrium basis mismatch");
+         for(int c=0;c<n.length;c++)changedBasis|=(n[c]==0)!=(old[c]==0)||Math.abs(n[c]-old[c])>1e-12+1e-10*Math.max(n[c],old[c]);
+-        // Decision D34: the phase set each pass below is laid out for is the flash's, trace phases folded; a candidate that
+-        // ends with a phase its flash folds is restated from that flash (the regime test) and its last split is folded by
++        // Decision D34: the phase set each pass below is laid out for has its trace phases folded; a candidate that ends
++        // with a phase below the trace share is restated folded (the regime test) and its last split is folded by
+         // repartition, so this energy-volume flash returns no trace phase either.
+         var state=(changedBasis?model.flashTP(previous.temperature(),previous.pressure(),n,checkpoint):model.folded(previous)).withSolids(inventory.solids());
+         // Owner decision D59 (2): a vessel that holds nothing at the bag's resolution holds a residue, booked exactly in its
+@@ -36,19 +36,26 @@ public final class InventoryEquilibrium {
+         // seed 707 booked 1e-42 mol of crude and 1e-84 mol of water vapour into an empty 1 m3 tank; the closure's Newton,
+         // differencing that water with a step 1e19 times the vessel's contents, found no finite trial at any step size.
+         if(PassiveStepSolver.holdsNothing(inventory,state))return state;
+-        var seen=new HashSet<String>();
++        // Owner decision D25: the regime test is the outer phase check (FluidThermodynamics.phaseCheck). A phase leaves only
++        // when the closure empties it (the trace fold of its point, also of a failed closure's last iterate), the phases
++        // the TP answer finds missing are added, and no populated phase set is swapped for another on a TP verdict: a
++        // vessel of pure water at its saturation line keeps its liquid and gains its steam, and its volume and energy set
++        // the split. A phase the fold removed is not added again within this solve (A85), so the regimes only grow.
++        var seen=new HashSet<String>();int excluded=0;
+         for(int pass=0;pass<16;pass++) {
+             checkpoint.run();if(!seen.add(regime(state)))throw new SparseNewton.Nonconvergence("Inventory equilibrium phase cycle");
+             FluidThermodynamics.State candidate;
+             try{candidate=close(model,state,inventory,null,workFrom,checkpoint);}
+             catch(SparseNewton.Nonconvergence failure) {
+                 if(failure.lastVariables()==null)throw failure;
+-                var trial=layout(model,state,null).decode(failure.lastVariables(),0);var phase=model.flashTP(trial.temperature(),trial.pressure(),n,checkpoint).withSolids(inventory.solids());
+-                if(regime(phase).equals(regime(state)))throw failure;state=phase;continue;
++                var trial=layout(model,state,null).decode(failure.lastVariables(),0);
++                var checked=model.phaseCheck(trial,false,excluded,null,checkpoint);
++                if(regime(checked).equals(regime(state)))throw failure;
++                excluded|=FluidThermodynamics.phaseBits(trial)&~FluidThermodynamics.phaseBits(checked);state=checked.withSolids(inventory.solids());continue;
+             }
+             if(candidate==state)return state;
+-            var stable=model.flashTP(candidate.temperature(),candidate.pressure(),n,checkpoint).withSolids(inventory.solids());
+-            if(!regime(stable).equals(regime(candidate))){state=stable;continue;}
++            var checked=model.phaseCheck(candidate,false,excluded,null,checkpoint);
++            if(checked!=candidate){excluded|=FluidThermodynamics.phaseBits(candidate)&~FluidThermodynamics.phaseBits(checked);state=checked;continue;}
+             return candidate;
+         }
+         throw new SparseNewton.Nonconvergence("Inventory equilibrium phase limit");
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+index dc6236c9a..0b3b38b7b 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+@@ -578,7 +578,7 @@ public final class PassiveStepSolver {
+                 // at a stalled point are -1.14e-6 kg/s on a line whose generator drives it
+                 // forwards, and reading them as backflow let the tank's nitrogen into both of the
+                 // filter's zero-holdup junctions; see documentation/JUNCTION_PHANTOM_TRACE.md.
+-                var changedSeeds=phaseCorrection(graph,equations.states(failure.lastVariables()),checkpoint,false,null,foldedPhases);
++                var changedSeeds=phaseCorrection(graph,equations.states(failure.lastVariables()),checkpoint,null,foldedPhases);
+                 // Decision D11: a phase a vessel's ports draw at their full capacity leaves the vessel within the step; a
+                 // pass whose seed still holds it may have no root (see drainedSeeds).
+                 if(changedSeeds==null)changedSeeds=equations.drainedSeeds(checkpoint);
+@@ -683,7 +683,7 @@ public final class PassiveStepSolver {
+             // so the pass is solved again from the folded states: the Newton, the reconstruction and the equation gate then
+             // read the same phases.
+             if(recordFolds(graph,states,projection.states(),foldedPhases)){SolverDiagnostics.count(SolverDiagnostics.traceFoldPasses);seeds=projection.states();continue;}
+-            var changedSeeds=phaseCorrection(graph,projection.states(),checkpoint,true,equations.cachedPrepared,foldedPhases);if(changedSeeds!=null){seeds=changedSeeds;continue;}
++            var changedSeeds=phaseCorrection(graph,projection.states(),checkpoint,equations.cachedPrepared,foldedPhases);if(changedSeeds!=null){seeds=changedSeeds;continue;}
+             var reconstructed=x.clone();
+             for(int node=0;node<projection.states().size();node++)if(equations.layout[node]!=null){var encoded=equations.layout[node].encode(projection.states().get(node));System.arraycopy(encoded,0,reconstructed,equations.offsets[node],encoded.length);}
+             SolverDiagnostics.count(SolverDiagnostics.verificationResiduals);
+@@ -820,7 +820,7 @@ public final class PassiveStepSolver {
+         var draws=equations.draws(flows,states);
+         var projection=ConservativeTransport.reconstruct(graph,states,flows,heads,dt,model,checkpoint,transport,rateOnly,draws,equations.supports,emptyings);
+         if(phaseAppeared(graph,states,projection.states())||phaseFolded(graph,states,projection.states())
+-                ||phaseCorrection(graph,projection.states(),checkpoint,true,equations.cachedPrepared,foldedPhases.clone())!=null)return null;
++                ||phaseCorrection(graph,projection.states(),checkpoint,equations.cachedPrepared,foldedPhases.clone())!=null)return null;
+         var reconstructed=variables.clone();
+         for(int node=0;node<projection.states().size();node++)if(equations.layout[node]!=null){var encoded=equations.layout[node].encode(projection.states().get(node));System.arraycopy(encoded,0,reconstructed,equations.offsets[node],encoded.length);}
+         SolverDiagnostics.count(SolverDiagnostics.verificationResiduals);
+@@ -1006,7 +1006,7 @@ public final class PassiveStepSolver {
+     private void checkApproximation(Equations equations,double[] point,List<FluidThermodynamics.State> candidate,double[] flows,SparseNewton.Workspace workspace,Runnable checkpoint,double tolerance) {
+         var estimate=SparseNewton.estimateCorrection(equations,point,checkpoint,workspace);var probe=estimate.probe();var corrected=equations.states(probe);
+         double inflation=estimate.initialResidual()>1e-12?1/(1-Math.min(.5,estimate.probeResidual()/estimate.initialResidual())):1;
+-        if(phaseCorrection(equations.graph,corrected,checkpoint,true)!=null)throw new ApproximationAnchor.Rejected("Error probe changes a phase regime");
++        if(phaseCorrection(equations.graph,corrected,checkpoint)!=null)throw new ApproximationAnchor.Rejected("Error probe changes a phase regime");
+         for(int i=0;i<candidate.size();i++) {
+             var a=candidate.get(i);var b=corrected.get(i);
+             if(inflation*Math.abs(a.pressure()-b.pressure())>.001*b.pressure()+.1
+@@ -2042,33 +2042,35 @@ public final class PassiveStepSolver {
+     private static boolean capMode(FlowControl.Mode mode) {
+         return mode==FlowControl.Mode.VELOCITY_LIMITED||mode==FlowControl.Mode.PUMP_VELOCITY_LIMIT||mode==FlowControl.Mode.VALVE_VELOCITY_LIMIT;
+     }
+-    /** Outer active-set stability check; never runs inside a Newton residual or Jacobian evaluation. */
+-    private List<FluidThermodynamics.State> phaseCorrection(PassiveNetwork graph,List<FluidThermodynamics.State> states,Runnable checkpoint,boolean converged) {
+-        return phaseCorrection(graph,states,checkpoint,converged,null,null);
++    /** {@link #phaseCorrection(PassiveNetwork, List, Runnable, FluidThermodynamics.Prepared[], int[])} with no prepared
++     * temperatures and no record of folded phases. */
++    private List<FluidThermodynamics.State> phaseCorrection(PassiveNetwork graph,List<FluidThermodynamics.State> states,Runnable checkpoint) {
++        return phaseCorrection(graph,states,checkpoint,null,null);
+     }
+-    /** {@code prepared}, when given, is the pass's per-node prepared temperature state: a node's flash at exactly that
++    /**
++     * The outer phase check of a pass's point, node by node ({@link FluidThermodynamics#phaseCheck}, owner decision D25):
++     * a phase leaves a node only when the solve empties it (the trace fold of the point, at a converged point whose
++     * reconstruction already folded it as at an unsuccessful pass's last iterate), a phase the node's TP answer holds and
++     * the node does not is added, and no populated phase set is swapped for another on a TP verdict. Never inside a Newton
++     * residual or Jacobian evaluation. One node is corrected per call, as one active-set change per pass; null when none
++     * changes.
++     *
++     * <p>{@code prepared}, when given, is the pass's per-node prepared temperature state: a node's flash at exactly that
+      * temperature reuses its Peng-Robinson workspace instead of preparing a new one (the arithmetic is the same).
+-     * {@code foldedPhases}, when given, holds per node the phases the trace rule removed in this solve (A85): a
+-     * difference in those phases alone is not a correction, and a correction that removes a phase of the state because
+-     * its flash folds it (the equilibrium has it, below the trace share) adds that phase to the record. */
+-    private List<FluidThermodynamics.State> phaseCorrection(PassiveNetwork graph,List<FluidThermodynamics.State> states,Runnable checkpoint,boolean converged,FluidThermodynamics.Prepared[] prepared,int[] foldedPhases) {
++     * {@code foldedPhases}, when given, holds per node the phases ({@link #phaseCode} bits) the trace rule removed in this
++     * solve (A85): the check does not add them back, and a phase its fold removes joins them, so the sequence of passes
++     * stays finite.
++     */
++    private List<FluidThermodynamics.State> phaseCorrection(PassiveNetwork graph,List<FluidThermodynamics.State> states,Runnable checkpoint,FluidThermodynamics.Prepared[] prepared,int[] foldedPhases) {
+         var corrected=new ArrayList<FluidThermodynamics.State>();boolean changed=false;
+         for(int i=0;i<states.size();i++) {
+-            var state=states.get(i);if(graph.reservoirs().get(i).fixed()){corrected.add(state);continue;}
+-            // When all allowed phases are populated, the simultaneous fugacity/saturation rows
+-            // already enforce their equilibrium. An additional TP flash repeats the same work.
+-            // Missing-phase stability and unsuccessful Newton passes still require the outer check.
+-            boolean hydroComplete=state.liquidProperties()!=null&&state.vaporProperties()!=null||state.liquidProperties()==null&&state.vaporProperties()==null;
+-            boolean waterComplete=state.waterLiquid()>0&&state.waterVapor()>0||state.waterLiquid()+state.waterVapor()==0;
+-            if(converged&&hydroComplete&&waterComplete&&(state.vaporProperties()==null||state.vaporProperties().vaporLike())){corrected.add(state);continue;}
+-            FluidThermodynamics.State split,equilibrium;
+-            try{split=model.equilibriumTP(state.temperature(),state.pressure(),PhaseLayout.totalAmounts(state),checkpoint,prepared==null?null:prepared[i]).withSolidState(state.solids(),state.solidMoments());
+-                equilibrium=model.folded(split,graph.reservoirs().get(i).junction());}
+-            catch(com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation violation){throw violation.at(graph.reservoirs().get(i).id());}
+-            int ignored=foldedPhases==null?0:foldedPhases[i];
+-            if((phaseCode(state)&~ignored)!=(phaseCode(equilibrium)&~ignored)&&!changed) {
+-                changed=true;corrected.add(equilibrium);
+-                if(foldedPhases!=null)foldedPhases[i]|=phaseCode(state)&phaseCode(split)&~phaseCode(equilibrium)&15;
++            var state=states.get(i);var node=graph.reservoirs().get(i);if(node.fixed()){corrected.add(state);continue;}
++            FluidThermodynamics.State checked;
++            try{checked=model.phaseCheck(state,node.junction(),foldedPhases==null?0:foldedPhases[i],prepared==null?null:prepared[i],checkpoint);}
++            catch(com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation violation){throw violation.at(node.id());}
++            if(checked!=state&&!changed) {
++                changed=true;corrected.add(checked);
++                if(foldedPhases!=null)foldedPhases[i]|=phaseCode(state)&~phaseCode(checked)&15;
+             }else corrected.add(state);
+         }
+         return changed?corrected:null;
+@@ -2126,11 +2128,10 @@ public final class PassiveStepSolver {
+         }
+         return false;
+     }
+-    /** Which phases this state carries, as four flags: hydrocarbon liquid, hydrocarbon vapor, free
+-     * water and steam. Only ever compared for equality, so it needs no rendering. */
++    /** Which phases this state carries: the four fluid flags of {@link FluidThermodynamics#phaseBits} (hydrocarbon liquid 1,
++     * hydrocarbon vapour 2, free water 4, steam 8) and 16 for solids. */
+     private static int phaseCode(FluidThermodynamics.State state) {
+-        return (state.solidMoments().mass()>0?16:0)|(state.liquidVolume()>0?1:0)|(state.vaporProperties()!=null?2:0)
+-                |(state.waterLiquid()>0?4:0)|(state.waterVapor()>0?8:0);
++        return (state.solidMoments().mass()>0?16:0)|FluidThermodynamics.phaseBits(state);
+     }
+     /**
+      * Closes, before the first pass, every passive connection whose own starting point leaves it no
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/FluidThermodynamics.java b/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/FluidThermodynamics.java
+index 22aed934e..50695146a 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/FluidThermodynamics.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/FluidThermodynamics.java
+@@ -617,6 +617,81 @@ public final class FluidThermodynamics {
+                 foldedHydrocarbonPressure(state.pressure(),state.hydrocarbonPartialPressure(),v,water[1]),terms,null);
+     }
+ 
++    /** A state's fluid phases as bits: hydrocarbon liquid 1, hydrocarbon vapour 2, free water 4, water vapour 8. */
++    public static int phaseBits(State state) {
++        return (state.liquidVolume()>0?1:0)|(state.vaporProperties()!=null?2:0)|(state.waterLiquid()>0?4:0)|(state.waterVapor()>0?8:0);
++    }
++    /**
++     * Owner decision D25: the share of a node's fluid amount the phases {@link #phaseCheck} adds enter with, together (a
++     * nucleus; the TP answer's whole amount of them when that is less). Three orders above the trace share
++     * ({@link #PHASE_TRACE_FRACTION}), so the node's rows resolve it and grow it to the node's own equilibrium or empty it;
++     * small enough that the seed keeps the populated phases' volume and energy (a vapour nucleus beside a liquid at the
++     * ambient pressure adds about 0.2 % of its volume).
++     */
++    public static final double PHASE_NUCLEUS_FRACTION=1e-6;
++    /**
++     * The outer phase check of one node of the fluid network (owner decision D25), never inside a residual. A node at
++     * fixed amounts, energy and volume has one equilibrium (a pipe junction: at its mixing rows' enthalpy and the network's
++     * pressure); the node's own rows find it once its layout holds every phase that equilibrium needs, while a TP answer
++     * at the node's temperature and pressure tells which phases are missing but not how much of each the node holds. So
++     * the check never swaps one populated phase set for another on a TP verdict:
++     * <ul>
++     * <li>a phase leaves only when the solve empties it: the trace fold ({@link #folded}, D34) removes a phase {@code state}
++     * holds below the trace share, also where {@code state} is an unsuccessful solve's last iterate;</li>
++     * <li>a phase the TP answer ({@link #flashTP}: {@link #equilibriumTP} with its fold) holds and the node does not is
++     * added, unless it is among {@code excluded} ({@link #phaseBits}: the phases the trace rule removed from the node in
++     * this solve, A85): it enters at the TP answer's composition as a nucleus of {@link #PHASE_NUCLEUS_FRACTION} of the
++     * node's amount (the TP answer's whole amount when less), taken per component from the populated phases in
++     * proportion, so the populated phases stay with their compositions and the totals are the node's to rounding;</li>
++     * <li>a node holding every phase its material can form (both hydrocarbon phases or none, both water phases or none)
++     * has none to add, and no TP answer is formed.</li>
++     * </ul>
++     * The rule decides which phases a node is laid out with; how much of each it holds is its rows' answer. It holds for
++     * any material: a pure water node at its saturation pressure, whose TP answer is all liquid on one side and all steam
++     * on the other, keeps its liquid and gains the steam, and a rigid vessel cooled past its bubble point gains a vapour
++     * nucleus instead of the TP split, whose vapour the vessel cannot hold.
++     *
++     * <p>{@code junction}: whether the node is a pipe junction (the carried gas of D41 in the fold); {@code prepared}, when
++     * given, is the node's prepared temperature state (used only at exactly that temperature).
++     *
++     * @return {@code state} itself when it keeps its phases and gains none; otherwise the node's new seed
++     */
++    public State phaseCheck(State state,boolean junction,int excluded,Prepared prepared,Runnable checkpoint) {
++        var kept=folded(state,junction);
++        boolean hydrocarbonComplete=(kept.liquidProperties()==null)==(kept.vaporProperties()==null);
++        boolean waterComplete=kept.waterLiquid()>0&&kept.waterVapor()>0||kept.waterLiquid()+kept.waterVapor()==0;
++        if(hydrocarbonComplete&&waterComplete)return kept;
++        if(prepared!=null&&prepared.temperature()!=kept.temperature())prepared=null;
++        int n=hydrocarbon.componentCount();double[] totals=new double[n+1];
++        for(int i=0;i<n;i++)totals[i]=kept.liquidView()[i]+kept.vaporView()[i];
++        totals[n]=kept.waterLiquid()+kept.waterVapor();
++        var equilibrium=folded(equilibriumTP(kept.temperature(),kept.pressure(),totals,checkpoint,prepared).withSolidState(kept.solids(),kept.solidMoments()),junction);
++        int added=phaseBits(equilibrium)&~phaseBits(kept)&~excluded;
++        return added==0?kept:nucleated(kept,equilibrium,added,prepared);
++    }
++    /** {@code state} with the phases {@code added} ({@link #phaseBits}) of {@code equilibrium} entering as a nucleus; see
++     * {@link #phaseCheck}. A hydrocarbon vapour the node did not hold is at the equilibrium's partial pressure. */
++    private State nucleated(State state,State equilibrium,int added,Prepared prepared) {
++        boolean liquid=(added&1)!=0,vapour=(added&2)!=0,water=(added&4)!=0,steam=(added&8)!=0;
++        double[] l=state.liquid(),v=state.vapor(),el=equilibrium.liquidView(),ev=equilibrium.vaporView();
++        double entering=(liquid?sum(el):0)+(vapour?sum(ev):0)+(water?equilibrium.waterLiquid():0)+(steam?equilibrium.waterVapor():0);
++        double total=sum(l)+sum(v)+state.waterLiquid()+state.waterVapor();
++        double scale=Math.min(1,PHASE_NUCLEUS_FRACTION*total/entering);
++        for(int c=0;c<l.length;c++) {
++            double enter=(liquid?scale*el[c]:0)+(vapour?scale*ev[c]:0);
++            if(!(enter>0))continue;
++            double keep=Math.max(0,1-enter/(l[c]+v[c]));
++            l[c]=liquid?scale*el[c]:l[c]*keep;v[c]=vapour?scale*ev[c]:v[c]*keep;
++        }
++        double wl=state.waterLiquid(),wv=state.waterVapor(),enter=(water?scale*equilibrium.waterLiquid():0)+(steam?scale*equilibrium.waterVapor():0);
++        if(enter>0) {
++            double keep=Math.max(0,1-enter/(wl+wv));
++            wl=water?scale*equilibrium.waterLiquid():wl*keep;wv=steam?scale*equilibrium.waterVapor():wv*keep;
++        }
++        double pc=vapour?equilibrium.hydrocarbonPartialPressure():state.hydrocarbonPartialPressure();
++        return adoptingState(state.temperature(),state.pressure(),l,v,wl,wv,pc,prepared).withSolidState(state.solids(),state.solidMoments());
++    }
++
+     /**
+      * Initializer, boundary and outer-check flash; the time-step solver never calls it in a residual evaluation: the
+      * equilibrium of {@link #equilibriumTP} with its trace phases folded ({@link #folded}).

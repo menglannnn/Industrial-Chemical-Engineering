@@ -285,6 +285,17 @@ public final class ShapeRasterizer {
         return false;
     }
 
+    /**
+     * Whether a frame point lies where it hides nozzle {@code k}'s neck: in the solid without its nozzles, in that nozzle's
+     * own root at size {@code code} (0: its design size), or in another nozzle at its design size.
+     */
+    static boolean hides(EquipmentShape shape, int k, int code, double[] p) {
+        var g = geometry(shape);
+        if (g.solid(p)) return true;
+        for (int j = 0; j < g.nozzles.size(); j++) if (g.inNozzle(p, j, j == k ? code : 0)) return true;
+        return false;
+    }
+
     /** Whether a box-local point lies where one of a column's or a heater's ladders is climbed. */
     public static boolean climbable(EquipmentShape shape, double x, double y, double z) {
         var p = geometry(shape).transform.local(new double[]{x, y, z});
@@ -360,6 +371,18 @@ public final class ShapeRasterizer {
      */
     public static @Nullable Cell fluidCell(EquipmentShape shape) {
         return geometry(shape).fluidCell;
+    }
+
+    /**
+     * Whether the vessel's interior cells let skylight through (owner request 2026-10-27: "Remove the shadow in
+     * drum/vessel skirt"): its skirt shows its inside through its port, slots or bays, a drum's or a column's hollow skirt
+     * and a unit's open one. Opaque, they leave the skirt's floor lit only from its ring, a light level less a block
+     * inwards: a stepped shadow, down to level 9 under a 10 m drum. Through them, the floor takes the skylight of the open
+     * ground beside the vessel, and roofs, caves and night still darken it. Any other vessel keeps its interior opaque and
+     * its shadow on the ground under it.
+     */
+    public static boolean skylight(EquipmentShape shape) {
+        return geometry(shape).skylight;
     }
 
     /** Surface polygons of the cell at its actual position, without key normalization; {@code codes} as {@link #cellCodes}. */
@@ -468,6 +491,8 @@ public final class ShapeRasterizer {
          */
         private final boolean hollow;
         private final double slotLow, slotHigh, innerRadius;
+        /** Its interior cells let skylight through: a hollow skirt or a unit's open one ({@link ShapeRasterizer#skylight}). */
+        private final boolean skylight;
         /** A drum's manway and a lying drum's boot, or null. */
         private final @Nullable Manway manway;
         private final EquipmentShape.@Nullable Boot boot;
@@ -560,6 +585,7 @@ public final class ShapeRasterizer {
                 if (manway != null) manway.draw(mesh);
                 for (double c : saddles) saddle(c);
             }
+            skylight = unit != null ? unit.openSkirt : hollow;
             if (column != null) {
                 var ladders = new Mesh();
                 ladders.transform(transform);
@@ -1362,7 +1388,7 @@ public final class ShapeRasterizer {
         /** Whether a box point lies in the solid, the nozzles reaching its cell drawn at {@code codes} ({@link #cellCodes}). */
         boolean inside(double x, double y, double z, long codes) {
             var p = transform.local(new double[]{x, y, z});
-            if (inVessel(p) || column != null && column.inside(p) || unit != null && unit.inside(p) || manway != null && manway.inside(p)) return true;
+            if (solid(p)) return true;
             var reaching = reaching(new Cell(floor(x), floor(y), floor(z)));
             for (int k = 0, j = 0; k < nozzles.size(); k++) {
                 boolean keyed = j < reaching.length && reaching[j] == k;
@@ -1370,6 +1396,11 @@ public final class ShapeRasterizer {
                 if (keyed) j++;
             }
             return false;
+        }
+
+        /** Inside the solid without its nozzles, at a frame point: the vessel, a column's access structure, a unit's parts, a manway. */
+        private boolean solid(double[] p) {
+            return inVessel(p) || column != null && column.inside(p) || unit != null && unit.inside(p) || manway != null && manway.inside(p);
         }
 
         /** Inside the vessel and its supports, at a frame point: what the interior cells fill. A unit has no vessel. */

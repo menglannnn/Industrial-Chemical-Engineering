@@ -1,0 +1,10 @@
+# gate-test | rule name | main file (under src/main/java/com/wormzjl/createcheme/science/fluid) | spec file
+theSizeOfFormingCrystalGrowsWithItsComponentsShareOfTheLiquids|size-law|network/VesselCrystals.java|size.json
+aRefreshLeavesOneSizePerSolidInEveryStock|merge|../fluid/state/SolidInventory.java|merge.json
+theOutletReadsEachSolidAtItsMeanSize|outlet-mean|transport/SolidMobility.java|outlet.json
+aSlurryStopsAtHalfSolids|slush|transport/SolidMobility.java|slush.json
+aLetDownThatWouldFreezePassesAndTheReceivingTankPrecipitatesAtItsRefresh|vessel-crystal-test|network/VesselCrystals.java|letdown.json
+aStockOfOneSizePerSolidAndNoCrystalIsLeftAsItIs|single-population-kept|../fluid/state/SolidInventory.java|unchanged.json
+aSupersaturatedClosedTankPrecipitatesBeforeItRests|refresh-before-rest|network/PassiveIntervalSolver.java|before-rest.json
+anIslandOfUnchangedSolidsRests|solids-rest|network/NetworkReduction.java|solids-rest.json
+theTraceFlushKeepsCrystalMass|flush-keeps-crystals|network/PassiveIntervalSolver.java|flush.json

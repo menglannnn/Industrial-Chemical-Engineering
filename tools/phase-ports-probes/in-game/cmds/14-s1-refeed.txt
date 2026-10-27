@@ -1,0 +1,3 @@
+/setblock 0 -58 -2 minecraft:stone
+/setblock 0 -59 3 minecraft:stone
+/setblock -1 -57 0 createcheme:fluid_pipe

@@ -1,0 +1,1 @@
+[{"from":"        if (!merge) return this;","to":"        if (true) return this;"}]

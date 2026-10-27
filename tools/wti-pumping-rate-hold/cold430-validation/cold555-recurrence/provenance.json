@@ -1,0 +1,6 @@
+{
+  "candidateSha256": "d7dbc2d72c78450c196090973a26727180e962530fc79df174416b988de33f56",
+  "instrumentedSha256": "ce94d6c19cbdd819ebe6fad4b45fc643f3501a06f57f18be66635eba7695829b",
+  "productSourceUnchanged": true,
+  "scope": "Copied solver only; existing cold-555 placement sequence stops at its first hold."
+}

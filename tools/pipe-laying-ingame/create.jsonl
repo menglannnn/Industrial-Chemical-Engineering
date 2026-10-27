@@ -1,0 +1,6 @@
+{"cmd":"click_button_index","index":5,"delay_ms":600}
+{"cmd":"click_button_index","index":5,"delay_ms":600}
+{"cmd":"switch_tab","index":1,"delay_ms":1200}
+{"cmd":"click_button_index","index":3,"delay_ms":800}
+{"cmd":"click_button_index","index":8,"delay_ms":800}
+{"cmd":"switch_tab","index":0,"delay_ms":1200}

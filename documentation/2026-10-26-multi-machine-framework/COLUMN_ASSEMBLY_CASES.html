@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Column assembly: every case and the column GUI (batch 2026-10-26-multi-machine-framework)</title>
+<style>
+:root{--text-primary:#1f1e1d;--text-secondary:#5f5e5a;--text-muted:#888780;--border:rgba(0,0,0,.12);--border-strong:rgba(0,0,0,.25);--surface-1:#f5f4ef;--surface-2:#ffffff;--radius:8px}
+@media (prefers-color-scheme:dark){:root{--text-primary:#f1efe8;--text-secondary:#b4b2a9;--text-muted:#888780;--border:rgba(255,255,255,.12);--border-strong:rgba(255,255,255,.25);--surface-1:#2c2c2a;--surface-2:#1f1e1d}body{background:#262624}}
+body{max-width:680px;margin:24px auto;padding:0 12px;font-family:system-ui,"Segoe UI",sans-serif;color:var(--text-primary)}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.t,.th{font-size:14px;fill:var(--text-primary)}.th{font-weight:500}.ts{font-size:12px;fill:var(--text-secondary)}
+.c-teal>rect,.c-teal>circle,rect.c-teal,circle.c-teal{fill:#E1F5EE;stroke:#0F6E56}.c-teal>text{fill:#085041}
+.c-red>rect,.c-red>circle,rect.c-red,circle.c-red{fill:#FCEBEB;stroke:#A32D2D}.c-red>text{fill:#791F1F}
+.c-amber>rect,.c-amber>circle,rect.c-amber,circle.c-amber{fill:#FAEEDA;stroke:#854F0B}.c-amber>text{fill:#633806}
+@media (prefers-color-scheme:dark){.c-teal>rect,.c-teal>circle,rect.c-teal,circle.c-teal{fill:#085041;stroke:#5DCAA5}.c-teal>text{fill:#E1F5EE}
+.c-red>rect,.c-red>circle,rect.c-red,circle.c-red{fill:#791F1F;stroke:#F09595}.c-red>text{fill:#FCEBEB}
+.c-amber>rect,.c-amber>circle,rect.c-amber,circle.c-amber{fill:#633806;stroke:#EF9F27}.c-amber>text{fill:#FAEEDA}}
+select,button{font:inherit;font-size:13px;padding:5px 8px;border-radius:8px;border:0.5px solid var(--border-strong);background:var(--surface-2);color:var(--text-primary)}
+button{cursor:pointer}
+</style>
+</head>
+<body>
+<!--FRAGMENT-START-->
+<style>
+.ck{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px 12px;margin:0 0 12px}
+.ck label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--text-secondary)}
+.ck select{width:100%}
+.pr{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 14px}
+.gb{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:13px;color:var(--text-secondary);margin:0 0 8px}
+.lg{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12px;color:var(--text-secondary);margin:6px 0 10px}
+.lg span{display:inline-flex;align-items:center;gap:6px}
+.ls{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px 18px;font-size:13px;margin-top:8px}
+.ls h3{font-size:13px;font-weight:500;margin:0 0 4px}
+.ls .r{display:flex;justify-content:space-between;gap:10px;padding:3px 0;border-bottom:0.5px solid var(--border)}
+.ls .d{color:var(--text-secondary);text-align:right}
+.ls .r span:first-child{white-space:nowrap}
+</style>
+<h2 class="sr-only">Process drawing of the assembled distillation column for any design, and a preview of the column GUI before validation, after validation and when complete</h2>
+<div class="pr"><span style="font-size:13px;color:var(--text-secondary)">Cases</span><button data-p="min">Minimum</button><button data-p="crude">Crude, steam-stripped</button><button data-p="vac">Vacuum</button><button data-p="all">Everything</button></div>
+<div class="ck">
+<label>View<select id="view"><option value="plant">Plant</option><option value="before">GUI, not validated</option><option value="after">GUI, after check</option><option value="done">GUI, complete</option></select></label>
+<label>Condenser<select id="cond"><option value="ac">Air cooler</option><option value="hx">Exchanger, shell</option></select></label>
+<label>Top pressure<select id="vac"><option value="no">Atmospheric</option><option value="yes">Vacuum, ejector</option></select></label>
+<label>Column bottom<select id="bottom"><option value="kettle">Kettle reboiler</option><option value="steam">Sump steam</option><option value="both">Kettle, sump steam</option></select></label>
+<label>Reflux pump<select id="rp"><option value="std">Standard pump</option><option value="inline">Inline pump</option></select></label>
+<label>Side draws<select id="draws"><option>0</option><option>1</option><option>2</option><option>3</option><option>4</option></select></label>
+<label>Tray steam stages<select id="tsteam"><option>0</option></select></label>
+<label>Pumparounds<select id="paN"><option>0</option><option>1</option><option>2</option><option>3</option><option>4</option></select></label>
+<label>Top product set by<select id="top"><option value="ratio">Reflux ratio (now)</option><option value="dist">Distillate valve</option></select></label>
+</div>
+<div class="ck" id="pa"></div>
+<div class="gb" id="gb"></div>
+<div id="fig"></div>
+<div class="lg" id="lg"></div>
+<div class="ls" id="ls"></div>
+<script>
+const $=i=>document.getElementById(i);
+const P={min:{cond:'ac',vac:'no',bottom:'kettle',rp:'inline',draws:0,tsteam:0,paN:0,pa:['std','std','std','std']},
+crude:{cond:'hx',vac:'no',bottom:'steam',rp:'std',draws:3,tsteam:0,paN:2,pa:['std','inline','std','std']},
+vac:{cond:'hx',vac:'yes',bottom:'steam',rp:'std',draws:2,tsteam:0,paN:2,pa:['std','std','std','std']},
+all:{cond:'hx',vac:'yes',bottom:'both',rp:'std',draws:4,tsteam:1,paN:4,pa:['std','inline','std','inline']}};
+const S={top:'ratio',view:'plant'};
+const L='var(--text-secondary)',M='var(--text-muted)',TE='#1D9E75';
+const UC={plant:'c-teal',ok:'c-teal',miss:'c-red',bad:'c-amber'},VF={plant:'#D85A30',ok:'#1D9E75',miss:'#E24B4A',bad:'#EF9F27'},VT={plant:'#D85A30',ok:'#1D9E75',miss:'#E24B4A',bad:'#BA7517'},TC={plant:TE,ok:TE,miss:'#E24B4A',bad:'#BA7517'};
+const PC={V:'#F0F0F0',B:'#55DDFF',L:'#3377FF'};
+const EXOK=new Set(['ej','cond','drum','pcv','fv','v_d1','pa1p']);
+const EXBAD={rp:'installed backwards: its discharge faces the drum. Turn it round.',pa1h:'the pumparound is on the tube side. Use the shell inlet and outlet.'};
+let N={};
+function st(id){if(S.view==='plant')return 'plant';if(id==='col'||S.view==='done')return 'ok';if(S.view==='before')return 'miss';return EXBAD[id]?'bad':EXOK.has(id)?'ok':'miss'}
+function tip(id){const c=N[id];if(!c)return '';const s=st(id);return `<title>${s==='plant'?c.n+'. '+c.w:s==='ok'?c.n+': connected':s==='bad'?c.n+': '+EXBAD[id]:'Missing: '+c.n+'. '+c.w}</title>`}
+function comps(){
+const ket=S.bottom!=='steam',ss=S.bottom!=='kettle',vac=S.vac==='yes',a=[];
+const add=(id,n,d,w,g,tag)=>a.push({id,n,d,w,g,tag});
+if(vac)add('ej','Steam ejector','Top pressure below atmospheric','Suction from the column overhead, discharge to the condenser.','unit');
+add('cond','Condenser',S.cond==='ac'?'Air cooler':'Exchanger, shell side',vac?'Inlet from the ejector discharge, outlet to the drum.':'Inlet from the column overhead, outlet to the drum.','unit');
+add('drum','Receiver drum','Lying, with a boot','Condensate into a side inlet.','unit');
+add('rp','Reflux pump',S.rp==='std'?'Standard pump':'In-line pump','On the line from the drum oil outlet.','unit');
+if(ket)add('ket','Kettle reboiler','Reboiler duty above zero','Column bottoms to its feed, its vapour outlet to the vapour return.','unit');
+for(let i=0;i<S.paN;i++){add(`pa${i+1}p`,`PA ${i+1} pump`,S.pa[i]==='std'?'Standard pump':'In-line pump',`From the PA ${i+1} draw nozzle to the exchanger.`,'unit');add(`pa${i+1}h`,`PA ${i+1} exchanger`,'Exchanger, shell side',`Shell inlet from the pump, shell outlet to the PA ${i+1} return.`,'unit')}
+add('pcv','Off-gas valve','PC, drum pressure','On the drum vapour outlet line, arrow away from the drum.','valve','PC');
+add('rv','Reflux valve',S.top==='ratio'?'FFC, reflux ratio':'LC, drum level','On the reflux branch after the tee, arrow towards the column. Required at every reflux ratio; shut at zero.','valve',S.top==='ratio'?'FFC':'LC');
+add('dv','Distillate valve',S.top==='dist'?'FC, distillate rate':'LC, drum level','On the distillate branch after the tee.','valve',S.top==='dist'?'FC':'LC');
+add('wv','Sour water valve','LC, boot level','On the boot drain line, arrow outwards.','valve','LC');
+add('fv','Feed valve','FC','On the feed line, arrow into the column.','valve','FC');
+for(let k=0;k<S.tsteam;k++)add(`v_t${k+1}`,S.tsteam>1?`Tray steam ${k+1} valve`:'Tray steam valve','FC','On the steam line, arrow into the column.','valve','FC');
+if(ss)add('v_ss','Sump steam valve','FC','On the steam line, arrow into the column.','valve','FC');
+for(let j=0;j<S.draws;j++)add(`v_d${j+1}`,`Draw ${j+1} valve`,'FC','On the draw line, arrow away from the column.','valve','FC');
+add('bv','Bottoms valve',ket?'LC, kettle outlet':'LC, column bottoms',ket?'On the kettle liquid outlet line, arrow outwards.':'On the column bottoms line, arrow outwards.','valve','LC');
+N={};for(const c of a)N[c.id]=c;return a}
+const T=(x,y,s,a,c,st)=>`<text class="${c||'ts'}" x="${x}" y="${y}" text-anchor="${a||'middle'}" dominant-baseline="central"${st?` style="${st}"`:''}>${s}</text>`;
+const W=(p,ar,d)=>`<polyline points="${p.map(q=>q.join(',')).join(' ')}" fill="none" stroke="${d?M:L}" stroke-width="${d?1:1.3}"${d?' stroke-dasharray="4 3"':''}${ar?' marker-end="url(#ah)"':''}/>`;
+const V=(x,y,id)=>{const s=st(id),f=VF[s];return `<g>${tip(id)}<polygon points="${x-8},${y-6} ${x-8},${y+6} ${x+8},${y-6} ${x+8},${y+6}" fill="${f}" stroke="${f}" stroke-width="1" stroke-linejoin="round"/><line x1="${x}" y1="${y}" x2="${x}" y2="${y-11}" stroke="${f}" stroke-width="1.2"/><path d="M${x-6} ${y-11} A6 6 0 0 1 ${x+6} ${y-11} Z" fill="${f}"/></g>`+T(x+10,y-15,N[id].tag,'start','ts','fill:'+VT[s])};
+const U=(x,y,w,h,s,rx,s2,id)=>`<g class="${UC[st(id)]}">${tip(id)}<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx||4}" stroke-width="0.8"/>`+(s2?T(x+w/2,y+h/2-9,s,'middle','th')+T(x+w/2,y+h/2+9,s2):T(x+w/2,y+h/2,s))+'</g>';
+const PU=(x,y,k,dir,id)=>{const r=k==='std'?10:7,c=TC[st(id)];let s=`<g class="${UC[st(id)]}">${tip(id)}<circle cx="${x}" cy="${y}" r="${r}" stroke-width="0.8"/></g>`;
+s+=dir==='d'?`<polygon points="${x-4},${y-3} ${x+4},${y-3} ${x},${y+4}" fill="${c}"/>`:`<polygon points="${x-3},${y-4} ${x-3},${y+4} ${x+4},${y}" fill="${c}"/>`;
+if(k==='std')s+=dir==='d'?`<rect x="${x+10}" y="${y-4}" width="8" height="8" fill="${c}"/>`:`<rect x="${x-4}" y="${y+10}" width="8" height="8" fill="${c}"/>`;return s};
+const PL=(x,y,w,s)=>`<rect x="${x}" y="${y-11}" width="${w}" height="22" rx="11" fill="var(--surface-1)" stroke="var(--border-strong)" stroke-width="0.8"/>`+T(x+w/2,y,s);
+const PT=(x,y,c,a,b)=>{if(S.view==='plant')return '';const on=st(a)==='ok'&&st(b)==='ok';return `<rect x="${x-4}" y="${y-4}" width="8" height="8" fill="${on?'#808080':PC[c]}" stroke="#444441" stroke-width="0.8"/>`};
+function draw(){
+const ket=S.bottom!=='steam',ss=S.bottom!=='kettle',vac=S.vac==='yes';
+const o=[`<svg width="100%" viewBox="0 0 680 724" role="img"><title>Assembled distillation column, selected case</title><desc>The column with its ejector, condenser, receiver drum with boot, reflux pump, pumparound loops, kettle reboiler and control valves; every stream that crosses the assembly boundary passes a control valve.</desc><defs><marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>`];
+o.push(`<rect x="232" y="120" width="56" height="500" rx="26" fill="var(--surface-2)" stroke="${L}" stroke-width="1.2"/>`);
+for(let k=0,y=146;y<594;k++,y+=18){if(y>312&&y<348)continue;const a=k%2?[236,276]:[244,284];o.push(`<line x1="${a[0]}" y1="${y}" x2="${a[1]}" y2="${y}" stroke="var(--border-strong)" stroke-width="0.8"/>`)}
+o.push(T(260,330,'Column'));
+if(vac)o.push(W([[260,120],[260,40],[339,40]],1),U(340,30,56,20,'Ejector',4,'','ej'),W([[397,40],[459,40]],1),W([[368,29],[368,12]],0,1),T(374,14,'MS','start'));
+else o.push(W([[260,120],[260,40],[459,40]],1));
+if(S.cond==='ac')o.push(U(460,24,120,32,'Air cooler',4,'','cond'),`<line x1="520" y1="56" x2="520" y2="61" stroke="${TE}"/><circle cx="520" cy="68" r="7" fill="none" stroke="${TE}"/><line x1="514" y1="68" x2="526" y2="68" stroke="${TE}"/><line x1="520" y1="62" x2="520" y2="74" stroke="${TE}"/>`);
+else o.push(U(460,24,120,32,'Exchanger',16,'','cond'),W([[530,23],[530,8]],0,1),W([[546,23],[546,8]],0,1),T(554,13,'CW, tubes','start'));
+o.push(W([[580,40],[605,40],[605,109]],1));
+o.push(`<g class="${UC[st('drum')]}"><rect x="500" y="136" width="22" height="38" rx="9" stroke-width="0.8"/></g>`,U(440,110,190,38,'Receiver drum',19,'','drum'),T(527,163,'boot','start'));
+o.push(W([[465,110],[465,84],[351,84]],1),V(420,84,'pcv'),PL(290,84,60,'Off-gas'));
+const rr=S.rp==='std'?10:7;
+o.push(W([[470,148],[470,191-rr]],1),PU(470,192,S.rp,'d','rp'),T(454,192,S.rp==='std'?'Reflux pump':'Inline reflux pump','end'));
+o.push(W([[470,192+rr],[470,232]]),`<circle cx="470" cy="232" r="2.5" fill="${L}"/>`,W([[470,232],[320,232],[320,150],[289,150]],1),V(400,232,'rv'),T(356,246,'Reflux'),W([[470,232],[470,262],[599,262]],1));
+o.push(V(540,262,'dv'),PL(600,262,74,'Distillate'));
+o.push(W([[511,174],[511,196],[599,196]],1),V(555,196,'wv'),PL(600,196,74,'Sour water'));
+for(let i=0;i<S.paN;i++){const bt=300+58*i,yr=bt+12,yd=bt+40,k=S.pa[i],r=k==='std'?10:7;
+o.push(W([[289,yd],[345-r,yd]]),PU(345,yd,k,'r',`pa${i+1}p`),W([[345+r,yd],[419,yd]],1),U(420,bt,80,52,`PA ${i+1} HX`,4,'shell side',`pa${i+1}h`),W([[420,yr],[289,yr]],1),T(362,bt+24,k==='std'?'standard':'inline','start'));
+o.push(W([[500,yr+4],[522,yr+4]],0,1),W([[500,yd-4],[522,yd-4]],0,1),T(526,bt+26,'CW, tubes','start'))}
+const left=[];
+for(let j=0;j<S.draws;j++)left.push([160+34*j,0,`Draw ${j+1}`,`v_d${j+1}`]);
+left.push([360,1,'Feed','fv']);
+for(let k=0;k<S.tsteam;k++)left.push([420+50*k,1,S.tsteam>1?`Tray steam ${k+1}`:'Tray steam',`v_t${k+1}`]);
+if(ss)left.push([545,1,'Sump steam','v_ss']);
+for(const [y,inn,s,id] of left)o.push(PL(36,y,80,s),inn?W([[117,y],[231,y]],1):W([[231,y],[117,y]],1),V(174,y,id));
+if(ket)o.push(U(90,640,120,34,'Kettle reboiler',17,'','ket'),W([[260,620],[260,657],[211,657]],1),W([[150,640],[150,580],[231,580]],1),W([[110,639],[110,622]],0,1),W([[124,639],[124,622]],0,1),T(117,612,'HM'),W([[90,657],[66,657],[66,700],[359,700]],1),V(300,700,'bv'));
+else o.push(W([[260,620],[260,700],[359,700]],1),V(310,700,'bv'));
+o.push(PL(360,700,72,'Bottoms'));
+if(S.view!=='plant'){
+o.push(PT(260,120,'V','col',vac?'ej':'cond'));
+if(vac)o.push(PT(340,40,'B','ej','col'),PT(396,40,'B','ej','cond'));
+o.push(PT(460,40,'B','cond',vac?'ej':'col'),PT(580,40,'B','cond','drum'),PT(605,110,'B','drum','cond'),PT(465,110,'V','drum','pcv'),PT(511,174,'L','drum','wv'),PT(470,148,'L','drum','rp'));
+if(S.rp==='std')o.push(PT(470,182,'B','rp','drum'),PT(470,202,'B','rp','rv'));
+o.push(PT(288,150,'B','col','rv'));
+for(const [y,,,id] of left)o.push(PT(232,y,'B','col',id));
+for(let i=0;i<S.paN;i++){const bt=300+58*i,yr=bt+12,yd=bt+40,pp=`pa${i+1}p`,ph=`pa${i+1}h`;o.push(PT(288,yd,'B','col',pp),PT(288,yr,'B','col',ph),PT(420,yd,'B',ph,pp),PT(420,yr,'B',ph,'col'));if(S.pa[i]==='std')o.push(PT(335,yd,'B',pp,'col'),PT(355,yd,'B',pp,ph))}
+if(ket)o.push(PT(260,620,'L','col','ket'),PT(210,657,'B','ket','col'),PT(150,640,'V','ket','col'),PT(232,580,'B','col','ket'),PT(90,657,'L','ket','bv'));
+else o.push(PT(260,620,'L','col','bv'))}
+o.push('</svg>');
+$('fig').innerHTML=o.join('');
+}
+function bar(){
+if(S.view==='plant'){$('gb').innerHTML='';return}
+const a=Object.keys(N),ok=a.filter(i=>st(i)==='ok').length,bad=a.filter(i=>st(i)==='bad').length,miss=a.length-ok-bad;
+const txt=S.view==='before'?`Not validated: ${a.length} parts to confirm.`:S.view==='after'?`Checked: ${ok} connected, ${bad} misplaced, ${miss} missing.`:'Structure complete: the column GUI opens here (next stage).';
+$('gb').innerHTML=`<span>${txt}</span>`+(S.view!=='done'?'<button id="gv1">Validate structure</button>':'')+(S.view!=='before'?'<button id="gv2">Break a pipe</button>':'');
+if($('gv1'))$('gv1').onclick=()=>{S.view=S.view==='before'?'after':'done';$('view').value=S.view;render()};
+if($('gv2'))$('gv2').onclick=()=>{S.view='before';$('view').value=S.view;render()};
+}
+function legend(){
+const sw=c=>`<svg width="22" height="14" viewBox="0 0 22 14" aria-hidden="true"><rect class="${c}" x="1" y="1" width="20" height="12" rx="3" stroke-width="0.8"/></svg>`,sq=f=>`<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="2" width="8" height="8" fill="${f}" stroke="#444441" stroke-width="0.8"/></svg>`;
+$('lg').innerHTML=S.view!=='plant'?`<span>${sw('c-teal')}Connected</span><span>${sw('c-red')}Missing</span><span>${sw('c-amber')}Misplaced</span><span>${sq('#F0F0F0')}Vapour port</span><span>${sq('#55DDFF')}Bulk port</span><span>${sq('#3377FF')}Liquid port</span><span>${sq('#808080')}Connected port</span><span>Ports in the pipeline tool's colours. Hover a part for its message.</span>`
+:`<span><svg width="22" height="18" viewBox="0 0 22 18" aria-hidden="true"><polygon points="3,9 3,17 19,9 19,17" fill="#D85A30"/><line x1="11" y1="13" x2="11" y2="6" stroke="#D85A30" stroke-width="1.2"/><path d="M6 6 A5 5 0 0 1 16 6 Z" fill="#D85A30"/></svg>Control valve (pressure valve fitting for now)</span><span>${sw('c-teal')}Member unit</span><span><svg width="26" height="20" viewBox="0 0 26 20" aria-hidden="true"><circle class="c-teal" cx="10" cy="10" r="8" stroke-width="0.8"/><rect x="18" y="6" width="7" height="8" fill="#1D9E75"/></svg>Standard pump</span><span><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle class="c-teal" cx="8" cy="8" r="6" stroke-width="0.8"/></svg>Inline pump</span><span><svg width="28" height="14" viewBox="0 0 28 14" aria-hidden="true"><rect x="1" y="1" width="26" height="12" rx="6" fill="var(--surface-1)" stroke="var(--border-strong)" stroke-width="0.8"/></svg>Outside the assembly</span><span><svg width="24" height="8" viewBox="0 0 24 8" aria-hidden="true"><line x1="1" y1="4" x2="23" y2="4" stroke="var(--text-muted)" stroke-dasharray="4 3"/></svg>Utility (advice)</span><span>Valve tags: PC pressure, FC flow, FFC flow ratio, LC level. CW cooling water, HM heating medium, MS motive steam.</span>`;
+}
+function list(){
+const g=S.view!=='plant',ket=S.bottom!=='steam',ss=S.bottom!=='kettle';
+const SW={ok:['Connected','#1D9E75'],miss:['Missing','#E24B4A'],bad:['Misplaced','#BA7517']};
+const row=c=>{const s=st(c.id);return `<div class="r"><span>${c.n}</span>`+(g?`<span class="d" style="color:${SW[s][1]}">${SW[s][0]}</span>`:`<span class="d">${c.d}</span>`)+'</div>'};
+const units=Object.values(N).filter(c=>c.g==='unit'),valves=Object.values(N).filter(c=>c.g==='valve');
+const X=[];if(S.cond==='hx')X.push(['Condenser','Cooling water, tubes']);for(let i=0;i<S.paN;i++)X.push([`PA ${i+1} exchanger`,'Coolant, tubes']);if(ket)X.push(['Kettle','Heating medium, bundle']);if(S.vac==='yes')X.push(['Ejector','Motive steam']);
+const grp=(h,r)=>r?`<div><h3>${h}</h3>${r}</div>`:'',pl=a=>a.map(([x,y])=>`<div class="r"><span>${x}</span><span class="d">${y}</span></div>`).join('');
+$('ls').innerHTML=`<div style="grid-column:1/-1;color:var(--text-secondary)">${units.length} units and pumps, ${valves.length} control valves. ${5+S.tsteam+(ss?1:0)+S.draws} streams cross the boundary, each through a valve.</div>`+grp('Components',units.map(row).join(''))+grp('Control valves',valves.map(row).join(''))+grp('Utilities (advice)',pl(X));
+}
+function tsOpts(){const mx=S.bottom==='kettle'?2:1;if(S.tsteam>mx)S.tsteam=mx;let h='';for(let v=0;v<=mx;v++)h+=`<option value="${v}"${v===S.tsteam?' selected':''}>${v}</option>`;$('tsteam').innerHTML=h}
+function paSel(){let h='';for(let i=0;i<S.paN;i++)h+=`<label>PA ${i+1} pump<select data-i="${i}"><option value="std">Standard pump</option><option value="inline">Inline pump</option></select></label>`;$('pa').innerHTML=h;
+$('pa').querySelectorAll('select').forEach(s=>{const i=+s.dataset.i;s.value=S.pa[i];s.onchange=()=>{S.pa[i]=s.value;render()}})}
+function render(){comps();draw();bar();legend();list()}
+function sync(){for(const k of ['view','cond','vac','bottom','rp','top'])$(k).value=S[k];$('draws').value=String(S.draws);$('paN').value=String(S.paN);tsOpts();paSel();render()}
+function load(p){const c=P[p];for(const k in c)S[k]=Array.isArray(c[k])?c[k].slice():c[k];sync()}
+for(const k of ['view','cond','vac','bottom','rp','top'])$(k).onchange=e=>{S[k]=e.target.value;if(k==='bottom')tsOpts();render()};
+for(const k of ['draws','paN','tsteam'])$(k).onchange=e=>{S[k]=+e.target.value;if(k==='paN')paSel();render()};
+document.querySelectorAll('[data-p]').forEach(b=>b.onclick=()=>load(b.dataset.p));
+const q=new URLSearchParams(location.hash.slice(1)),c0=P[q.get('p')]?q.get('p'):'all';
+for(const k in P[c0])S[k]=Array.isArray(P[c0][k])?P[c0][k].slice():P[c0][k];
+for(const [k,v] of q)if(k!=='p')S[k]=k==='pa'?v.split(','):(/^\d+$/.test(v)?+v:v);
+sync();
+</script>
+<!--FRAGMENT-END-->
+</body>
+</html>

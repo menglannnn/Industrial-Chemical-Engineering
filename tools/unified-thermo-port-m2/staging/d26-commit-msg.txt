@@ -1,0 +1,56 @@
+thermo: an added phase starts at the node's own split (D26, option A)
+
+Owner decision D26 (2026-10-16). The outer phase check of D25 added a phase that the TP answer
+holds and the node lacks as a nucleus of 1e-6 of the node's amount. Two junctions cycled on it
+(quick check at 8a06b22f, class E7):
+- seed 35: 366 K crude let down to about 1 atm in a junction flashes 0.35 of its 4.64 mol
+  (10.8 L). The 4.6e-6 mol nucleus could not grow 7e4-fold in one pass, and the cap corrections
+  alternated.
+- seed 86: 85 C water meets 281 K nitrogen in a junction. The bubbles saturate with steam (58 of
+  171 kPa) and grow from 0.71 to 1.08 L beside 1.03 L of water. The steam nucleus left the gas at
+  0.71 L, the D41 fold dried it again, and the pass key repeated.
+
+Physics: a node at fixed amounts and energy (and volume, or pressure) has one equilibrium. The
+check now seeds an added phase there, at the node's own split:
+- a pipe junction: the engine's PH answer at its pressure and enthalpy (its mixing rows, D46),
+  NetworkPhaseEngine.ph, the target moved to the engine's datum by the spine's formation
+  enthalpies;
+- a vessel: its own InventoryEquilibrium closure of what the point holds (UV while the wall is
+  taut, PH at the ambient pressure while slack). No new closure code: InventoryEquilibrium.split
+  calls close() from the TP answer with the populated phases it lacks (tpSeed). Where the
+  closure stops short of its tolerance, its last iterate is the seed: from the TP split of a
+  liquid-full vessel at its bubble point (several vessel volumes of vapour), 24 iterations end
+  within about 1e-5 of the vessel's small bubble;
+- the seed is folded (D34 trace, D41 carried gas) and taken only if it then holds a phase the
+  node lacks: nothing the fold removes is added;
+- where the node's own flash fails, the TP-based state seeds (counter phaseSeedFallbacks; zero in
+  every check below).
+PHASE_NUCLEUS_FRACTION and nucleated() are deleted. phaseCorrection stops at the node it
+corrects (the later verdicts were discarded, and an own split is a flash). The refresh's regime
+loop seeds the same way. innerUv (M3a) is not on this path: a vessel's split is the network's own
+closure, not the engine's UV.
+
+Checks: seeds 35, 86 and 116 clean (phaseSeeds 2, 2, 150; no fallback). LiquidFullBubblePointTest
+4/4: the states print as at 8a06b22f; C2H6 interval 4 takes 7 substeps (was 9). NetworkPhaseEngineTest
+row rewritten: N2 vapour held 1 % above its saturation pressure at 100 K starts, in a junction, with
+0.048 of its 40 mol condensed at 100.143 K; water 1 % below its saturation pressure at 350 K boils
+4.3e-4 mol at 349.757 K; 1e-9 below, the steam is a trace and nothing is added. fluidScienceTest
+260/0. Quick check (200 seeds): random 195 clean with main's classes (C 101 175, E10 4 200, E3 157),
+defaults 200 clean.
+
+Moved lines:
+- PhasePortPriority oil-water-overflow, slice 56: the liquid-full tank loses its last gas by another
+  substep path (9 accepted and 5 rejected, was 10 and 6). It ends the slice 0.24 Pa lower, which at
+  water's compressibility is 1.1e-10 of its volume, and is within 0.01 Pa from the next slice.
+- STACK_PASS fails. The upper tank keeps 0.47 g of water (the bound is 0.3 g), with its gas 0.89 K
+  colder and 272 Pa lower. Physics: the last 1.3 g drains through the bottom outlet and the gas
+  stays saturated. Code: a failed pass drains that water to a trace, the fold removes it and A85
+  keeps it out for the solve. The passes after that hold all the tank's water as steam,
+  supersaturated (about 25 % at 295.7 K). The vessel's own split condenses 0.0685 mol of it at 298.96 K,
+  450 Pa above the rest state. From there the coupled Newton reaches points the equation gate
+  refuses: the bottom outlet's water column is stated over 2 g of water. Smaller steps drain the
+  water slowly, and the run comes to rest with a puddle whose 5 mPa level head does not reopen the
+  closed run. Under D25 the nucleus kept the iterate's lower pressure, the pass converged at rest,
+  and the water drained in slice 14. Left to the owner (M2 report).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>

@@ -1,0 +1,13 @@
+rack.frames 8cdb696b88b5b57d items=36864 (3952 ms)
+rack.frames.lanes b00d224d2c1665d7 items=4352 (483 ms)
+rack.lanes 447a51c00e160462 items=21760 (3654 ms)
+rack.fits d8f2584049f5a228 items=12520 (35 ms)
+rack.aim 23ac31c8b818e8d2 items=138720 (85 ms)
+rack.pick 1848c6b629572ca3 items=824 (29 ms)
+rack.placed c6c0ed9cda8bae6a items=1088256 (94 ms)
+rack.steel 56598f4e0d665bc7 items=3000 (98 ms)
+line.pipes f10537a792d361db items=13825 (3476 ms)
+line.devices 7152557b1116877c items=8071 (3510 ms)
+line.transitions 38984de50cb1d980 items=7133 (1617 ms)
+route.search dda2826346b6a2ef items=13424 (1335 ms)
+overall bf89be369ae600a5

@@ -1,0 +1,10 @@
+[
+ {
+  "from": "            catch(SparseNewton.Nonconvergence failure) {\n                if(failure.lastVariables()==null)throw failure;\n                double[] trialFlows=",
+  "to": "            catch(SparseNewton.Nonconvergence failure) {\n                m2probe.append((char)10).append(\"   FAILED \").append(failure.getMessage());\n                if(failure.lastVariables()!=null){var m2st=equations.states(failure.lastVariables());for(int m2=0;m2<m2st.size();m2++){var m2s=m2st.get(m2);var m2n=graph.reservoirs().get(m2);if(m2n.kind()!=PassiveNetwork.NodeKind.JUNCTION)continue;double m2v=0;for(double m2x:m2s.vaporView())m2v+=m2x;m2probe.append(\" [id=\").append(m2n.id()).append(\" T=\").append(m2s.temperature()).append(\" P=\").append(m2s.pressure()).append(\" code=\").append(phaseCode(m2s)).append(\" Vap=\").append(m2v).append(\" wv=\").append(m2s.waterVapor()).append(\" vv=\").append(m2s.vaporVolume()).append(\" vw=\").append(m2s.waterVolume()).append(\"]\");}}\n                if(failure.lastVariables()==null)throw failure;\n                double[] trialFlows="
+ },
+ {
+  "from": "            if(capChange>=0){caps[capChange]=capNext;changed=true;}",
+  "to": "            {m2probe.append((char)10).append(\"   CONVERGED flows=\").append(Arrays.toString(flows)).append(\" capChange=\").append(capChange).append(\"->\").append(capNext).append(\" deviceChange=\").append(deviceChange).append(\"->\").append(deviceNext);var m2st=states;for(int m2=0;m2<m2st.size();m2++){var m2s=m2st.get(m2);var m2n=graph.reservoirs().get(m2);if(m2n.kind()!=PassiveNetwork.NodeKind.JUNCTION)continue;double m2v=0;for(double m2x:m2s.vaporView())m2v+=m2x;m2probe.append(\" [id=\").append(m2n.id()).append(\" T=\").append(m2s.temperature()).append(\" P=\").append(m2s.pressure()).append(\" code=\").append(phaseCode(m2s)).append(\" Vap=\").append(m2v).append(\" wv=\").append(m2s.waterVapor()).append(\" vv=\").append(m2s.vaporVolume()).append(\" vw=\").append(m2s.waterVolume()).append(\"]\");}}\n            if(capChange>=0){caps[capChange]=capNext;changed=true;}"
+ }
+]

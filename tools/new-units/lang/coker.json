@@ -1,0 +1,14 @@
+{
+  "gui.createcheme.equipment_constructor.delayed_coker.drum": "Drum",
+  "gui.createcheme.equipment_constructor.delayed_coker.drum.hint": "Coke drum diameter outside the shell, 4 to 10 m in 0.5 m steps; the straight shell (2.5 D + 8 m, 29.3 m at most), the cone, the structure and the derricks follow",
+  "gui.createcheme.equipment_constructor.delayed_coker.pairs": "Drum pairs",
+  "gui.createcheme.equipment_constructor.delayed_coker.pairs.hint": "1 or 2 pairs of drums in one row, each pair with its switch valve: one drum fills while its partner is steamed, quenched and cut",
+  "gui.createcheme.equipment_constructor.delayed_coker.flange": "Bottom flange",
+  "gui.createcheme.equipment_constructor.delayed_coker.flange.hint": "Height of the drums' bottom flanges above the ground, 8 to 16 m: the unheading valves, the switch deck and the coke chutes hang under the concrete table",
+  "gui.createcheme.equipment_constructor.delayed_coker.coke": "Coke about %s t per drum, feed about %s t/h",
+  "gui.createcheme.equipment_constructor.delayed_coker.coke.hint": "A drum's coke bed at 0.85 t/m³ filling the cone and three quarters of the straight shell; each pair fills one drum in 16 h at a coke yield of 30 % of the vacuum residue fed",
+  "gui.createcheme.vessel.delayed_coker.drums": "%s drums %s m across, straight shell %s m, %s m from bottom flange to top",
+  "gui.createcheme.vessel.delayed_coker.derricks": "Derricks %s m tall, tops %s m above the ground",
+  "gui.createcheme.vessel.delayed_coker.coke": "Coke about %s t per drum, feed about %s t/h",
+  "gui.createcheme.vessel.unit_support.delayed_coker": "Bottom flanges %s m above the ground"
+}

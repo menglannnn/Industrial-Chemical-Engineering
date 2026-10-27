@@ -1,0 +1,2634 @@
+diff --git a/src/fluidGameTest/java/com/wormzjl/icheme/fluid/gametest/FluidHarnessGameTests.java b/src/fluidGameTest/java/com/wormzjl/icheme/fluid/gametest/FluidHarnessGameTests.java
+index 3e1a819aa..ee9bad280 100644
+--- a/src/fluidGameTest/java/com/wormzjl/icheme/fluid/gametest/FluidHarnessGameTests.java
++++ b/src/fluidGameTest/java/com/wormzjl/icheme/fluid/gametest/FluidHarnessGameTests.java
+@@ -55,6 +55,98 @@ public final class FluidHarnessGameTests {
+             helper.assertTrue(!level.getForcedChunks().contains(a.toLong())&&!level.getForcedChunks().contains(b.toLong()),"Test endpoint tickets leaked");
+         });
+     }
++    @GameTest(template="empty",timeoutTicks=100000,batch="fluid-world")
++    public static void gameplayPlacementTransfersFluidAndRemovalClosesThePersistentOwnershipLedger(GameTestHelper helper) {
++        var level=helper.getLevel();var world=com.wormzjl.icheme.runtime.fluid.FluidWorldAuthority.find(level.getServer()).orElseThrow();
++        var reservoir=helper.absolutePos(new net.minecraft.core.BlockPos(0,1,0));var pipe=reservoir.east();var source=pipe.east();
++        double oldConstructed=world.capture().world().constructed().moles()[com.wormzjl.icheme.science.fluid.thermo.FluidMaterialCatalog.nitrogenIndex()],oldDestroyed=world.capture().world().destroyed().moles()[com.wormzjl.icheme.science.fluid.thermo.FluidMaterialCatalog.nitrogenIndex()];
++        level.setBlock(reservoir,com.wormzjl.icheme.registry.ModBlocks.FLUID_RESERVOIR.get().defaultBlockState(),3);
++        level.setBlock(pipe,com.wormzjl.icheme.registry.ModBlocks.FLUID_PIPE.get().defaultBlockState(),3);
++        level.setBlock(source,com.wormzjl.icheme.registry.ModBlocks.FLUID_GENERATOR.get().defaultBlockState(),3);
++        var r=(com.wormzjl.icheme.world.level.block.entity.FluidDeviceBlockEntity)level.getBlockEntity(reservoir);
++        var p=(com.wormzjl.icheme.world.level.block.entity.FluidDeviceBlockEntity)level.getBlockEntity(pipe);
++        var g=(com.wormzjl.icheme.world.level.block.entity.FluidDeviceBlockEntity)level.getBlockEntity(source);
++        helper.assertTrue(r.fluidIdentity()>0&&p.fluidIdentity()>0&&g.fluidIdentity()>0,"Placement did not bind stable identities");
++        // A placed tank holds nothing (decision D54): construction books no nitrogen, and removal none.
++        long tankId=r.fluidIdentity(),pipeId=p.fluidIdentity();var initial=world.view(tankId).state();double nitrogen=initial==null?0:initial.phaseMoles()[2][com.wormzjl.icheme.science.fluid.thermo.FluidMaterialCatalog.nitrogenIndex()];
++        var registration=world.registrations().get(g.fluidIdentity());var spec=registration.spec();
++        world.edit(g.fluidIdentity(),registration.revision(),registration.device(),new com.wormzjl.icheme.runtime.fluid.FluidDeviceSpec(spec.volume(),spec.temperature(),200000,spec.composition()));
++        int[] phase={0};
++        helper.succeedWhen(()->{
++            if(phase[0]==0) {
++                var view=world.view(tankId);helper.assertTrue(view.state()!=null&&view.state().phaseMoles()[1][com.wormzjl.icheme.science.fluid.thermo.FluidMaterialCatalog.waterIndex()]>0,"Waiting for pressure-driven water filling");
++                helper.assertTrue(Math.abs(view.state().phaseMoles()[2][com.wormzjl.icheme.science.fluid.thermo.FluidMaterialCatalog.nitrogenIndex()]-nitrogen)<1e-8,"Initial nitrogen was lost or recreated");
++                helper.assertTrue(!world.view(pipeId).pipeHistory().isEmpty(),"Pipe has no committed phase/flow history");
++                var capture=world.capture();var data=new com.wormzjl.icheme.runtime.fluid.FluidSavedData(capture.checkpoint(),capture.world(),key->com.wormzjl.icheme.science.fluid.thermo.FluidThermodynamics.forNetwork(com.wormzjl.icheme.science.material.MaterialRuntime.active(),key.packageId()));
++                var tag=data.save(new net.minecraft.nbt.CompoundTag(),level.registryAccess());
++                var restored=com.wormzjl.icheme.runtime.fluid.FluidSavedData.load(tag,key->com.wormzjl.icheme.science.fluid.thermo.FluidThermodynamics.forNetwork(com.wormzjl.icheme.science.material.MaterialRuntime.active(),key.packageId()),data.store().reopen());
++                helper.assertTrue(restored.world().orElseThrow().active().size()==3,"Physical registry was not saved with inventory");
++                level.removeBlock(source,false);level.removeBlock(pipe,false);level.removeBlock(reservoir,false);phase[0]=1;
++                helper.assertTrue(false,"Waiting for removal event alignment");
++            }
++            var finalState=world.capture();helper.assertTrue(finalState.world().active().isEmpty()&&finalState.world().events().isEmpty()&&finalState.checkpoint().islands().isEmpty(),"Waiting for authoritative removal transactions");
++            helper.assertTrue(Math.abs(finalState.world().constructed().moles()[com.wormzjl.icheme.science.fluid.thermo.FluidMaterialCatalog.nitrogenIndex()]-oldConstructed-nitrogen)<1e-8,"Construction charged nitrogen more than once");
++            helper.assertTrue(Math.abs(finalState.world().destroyed().moles()[com.wormzjl.icheme.science.fluid.thermo.FluidMaterialCatalog.nitrogenIndex()]-oldDestroyed-nitrogen)<1e-8,"Removal did not account for the retained nitrogen");
++        });
++    }
++    @GameTest(template="empty",timeoutTicks=10000,batch="fluid-persistence")
++    public static void savedDataKeepsADepletedNitrogenChargeAndAtomicWritesKeepThePreviousCheckpoint(GameTestHelper helper) throws java.io.IOException {
++        var model=com.wormzjl.icheme.science.fluid.thermo.FluidThermodynamics.forNetwork(com.wormzjl.icheme.science.material.MaterialCatalog.bundled(),"icheme:tjl20_methane_nitrogen");
++        var graph=new com.wormzjl.icheme.science.fluid.network.PassiveNetwork(java.util.List.of(new com.wormzjl.icheme.science.fluid.network.PassiveNetwork.Reservoir(1,0,model.initialNitrogenCharge(1,298.15,65000,()->{}))),java.util.List.of());
++        var island=new com.wormzjl.icheme.runtime.fluid.IslandCoordinator.Snapshot(1,0,graph,new com.wormzjl.icheme.runtime.fluid.IslandClock.Snapshot(250,100,0,100),java.util.Optional.empty(),"HELD");
++        var checkpoint=new com.wormzjl.icheme.runtime.fluid.FluidCheckpointCodec.Checkpoint(java.util.List.of(new com.wormzjl.icheme.runtime.fluid.FluidCheckpointCodec.IslandEntry("minecraft:overworld","icheme:tjl20_methane_nitrogen",island)));
++        // Format 5 through Minecraft's own save path: the core record and a pack written on NeoForge's IO worker, in a
++        // folder of their own under the GameTest world's data.
++        var folder=helper.getLevel().getServer().getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT).resolve("data/fluid-checkpoint-tests/"+java.util.UUID.randomUUID());java.nio.file.Files.createDirectories(folder);
++        var store=com.wormzjl.icheme.runtime.fluid.FluidCheckpointStore.directory(folder,net.neoforged.neoforge.common.IOUtilities::withIOWorker,true);
++        var data=new com.wormzjl.icheme.runtime.fluid.FluidSavedData(checkpoint,key->model,store);data.setDirty();
++        var path=folder.resolve(com.wormzjl.icheme.runtime.fluid.FluidCheckpointStore.CORE_NAME);data.save(path.toFile(),helper.getLevel().registryAccess());
++        var pack=folder.resolve(com.wormzjl.icheme.runtime.fluid.FluidCheckpointStore.UNIT_DIRECTORY).resolve("fluid-1.pack");
++        helper.succeedWhen(()->{
++            helper.assertTrue(java.nio.file.Files.exists(path)&&java.nio.file.Files.exists(pack),"Waiting for the SavedData IO worker");
++            try {
++                store.flush();
++                var loaded=com.wormzjl.icheme.runtime.fluid.FluidSavedData.read(store.reopen(),key->model).orElseThrow().checkpoint().islands().getFirst().snapshot();
++                helper.assertTrue(loaded.graph().reservoirs().getFirst().inventory().equals(graph.reservoirs().getFirst().inventory()),"Save/load recreated or changed nitrogen inventory");
++                helper.assertTrue(loaded.clock().equals(island.clock()),"Save/load lost online debt or added offline time");
++                var before=java.nio.file.Files.readAllBytes(path);
++                boolean failed=false;
++                try{com.wormzjl.icheme.runtime.fluid.FluidCheckpointStore.atomicWrite(path,channel->{channel.write(java.nio.ByteBuffer.wrap(new byte[]{1,2,3}));throw new java.io.IOException("Injected checkpoint write failure");});}
++                catch(java.io.IOException expected){failed=true;}
++                helper.assertTrue(failed&&java.util.Arrays.equals(before,java.nio.file.Files.readAllBytes(path)),"Failed write replaced the complete checkpoint");
++                var packBytes=java.nio.file.Files.readAllBytes(pack);var corrupt=packBytes.clone();corrupt[corrupt.length-1]^=1;java.nio.file.Files.write(pack,corrupt);
++                boolean rejected=false;try{com.wormzjl.icheme.runtime.fluid.FluidSavedData.read(store.reopen(),key->model);}catch(IllegalArgumentException expected){rejected=expected.getMessage().contains("checksum");}
++                helper.assertTrue(rejected,"A corrupt unit was accepted");
++                java.nio.file.Files.write(pack,java.util.Arrays.copyOf(packBytes,packBytes.length-7));
++                rejected=false;try{com.wormzjl.icheme.runtime.fluid.FluidSavedData.read(store.reopen(),key->model);}catch(IllegalArgumentException expected){rejected=expected.getMessage().contains("half-written or damaged pack");}
++                helper.assertTrue(rejected,"A truncated pack was accepted");
++                java.nio.file.Files.delete(pack);java.nio.file.Files.delete(pack.getParent());java.nio.file.Files.delete(path);java.nio.file.Files.delete(folder);
++            }catch(java.io.IOException failure){helper.fail("Checkpoint integration failed: "+failure.getMessage());}
++        });
++    }
++    @GameTest(template="empty",timeoutTicks=10000,batch="fluid-coordinator")
++    public static void worldRuntimeCatchesUpNineIntervalsThroughSharedWorkers(GameTestHelper helper) {
++        var model=com.wormzjl.icheme.science.fluid.thermo.FluidThermodynamics.forNetwork(com.wormzjl.icheme.science.material.MaterialCatalog.bundled(),"icheme:tjl20_methane_nitrogen");
++        var graph=new com.wormzjl.icheme.science.fluid.network.PassiveNetwork(java.util.List.of(new com.wormzjl.icheme.science.fluid.network.PassiveNetwork.Reservoir(1,0,model.initialNitrogenCharge(1,298.15,101325,()->{}))),java.util.List.of());
++        int[] publications={0};
++        var runtime=new com.wormzjl.icheme.runtime.fluid.MinecraftFluidRuntime(helper.getLevel().getServer(),changed->{
++            helper.assertTrue(helper.getLevel().getServer().isSameThread(),"Publication left server thread");publications[0]++;
++        // This fixture counts nine solved catch-up intervals, so it runs with certificates off: an idle charge
++        // would otherwise certify REST after two intervals and advance the rest of its debt by identity.
++        },com.wormzjl.icheme.runtime.fluid.IslandCoordinator.Settings.defaults().withCertificates(com.wormzjl.icheme.runtime.fluid.CertificatePolicy.disabled()),null);
++        long id=com.wormzjl.icheme.runtime.ProcessSolveServices.nextRequestId();
++        runtime.register(helper.getLevel().dimension(),new com.wormzjl.icheme.runtime.fluid.IslandCoordinator.Snapshot(id,0,graph,
++                new com.wormzjl.icheme.runtime.fluid.IslandClock.Snapshot(900,0,0,100),
++                java.util.Optional.empty(),"READY"),model);
++        runtime.coordinator().pump();
++        helper.succeedWhen(()->{
++            var current=runtime.coordinator().snapshot(id);
++            helper.assertTrue(current.clock().committedTick()==900,"Waiting for nine catch-up intervals");
++            helper.assertTrue(publications[0]==9,"Unexpected publication count");
++            helper.assertTrue(current.graph().reservoirs().getFirst().inventory().equals(graph.reservoirs().getFirst().inventory()),"Idle nitrogen charge changed");
++            runtime.close();
++        });
++    }
+ 
+     @GameTest(template = "empty", timeoutTicks = 20)
+     public static void sparseSolverLoadsInServer(GameTestHelper helper) {
+@@ -70,4 +162,68 @@ public final class FluidHarnessGameTests {
+         }
+         helper.succeed();
+     }
++
++    // GameTestServer advances unpaced ticks. The command keeps its independent 2 s wall deadline.
++    @GameTest(template="empty",timeoutTicks=10000)
++    public static void fluidSnapshotRunsThroughTheSharedServiceAndReturnsOnServerThread(GameTestHelper helper) {
++        var server=helper.getLevel().getServer();
++        var model=com.wormzjl.icheme.science.fluid.thermo.FluidThermodynamics.forNetwork(
++                com.wormzjl.icheme.science.material.MaterialCatalog.bundled(),"icheme:tjl20_methane_nitrogen");
++        var state=model.initialNitrogenCharge(1,298.15,101325,()->{});
++        var graph=new com.wormzjl.icheme.science.fluid.network.PassiveNetwork(java.util.List.of(
++                new com.wormzjl.icheme.science.fluid.network.PassiveNetwork.Reservoir(1,0,model.initialNitrogenCharge(1,298.15,200000,()->{})),
++                new com.wormzjl.icheme.science.fluid.network.PassiveNetwork.Reservoir(2,0,state)),java.util.List.of(
++                new com.wormzjl.icheme.science.fluid.network.PassiveNetwork.Pipe(1,0,1,new com.wormzjl.icheme.science.fluid.network.PipeResistance.Geometry(100,.02,.000045,0))));
++        var received=new java.util.ArrayList<com.wormzjl.icheme.runtime.ProcessSolveServices.FluidIslandCompletion>();
++        var handler=new com.wormzjl.icheme.runtime.ProcessSolveServices.FluidCompletionHandler(){
++            public void completed(com.wormzjl.icheme.runtime.ProcessSolveServices.FluidIslandCompletion completion){helper.assertTrue(server.isSameThread(),"Fluid callback escaped server thread");received.add(completion);}
++            public void abandoned(com.wormzjl.icheme.runtime.ProcessSolveServices.FluidIslandRequest request){helper.fail("Fluid test request was abandoned");}
++        };
++        long requestId=com.wormzjl.icheme.runtime.ProcessSolveServices.nextRequestId();
++        var request=new com.wormzjl.icheme.runtime.ProcessSolveServices.FluidIslandRequest(requestId,
++                new com.wormzjl.icheme.runtime.ProcessSolveServices.FluidIslandTarget(helper.getLevel().dimension(),requestId),1,handler);
++        var command=new com.wormzjl.icheme.runtime.ProcessSolveServices.FluidIslandCommand(model,graph,5,
++                com.wormzjl.icheme.science.fluid.network.PassiveIntervalSolver.Settings.defaults(),2_000_000_000L);
++        var admission=com.wormzjl.icheme.runtime.ProcessSolveServices.submitFluidIsland(server,request,command);
++        helper.assertTrue(admission.accepted(),"Fluid request was not admitted to shared workers");
++        helper.succeedWhen(()->{
++            helper.assertTrue(received.size()==1,"Waiting for exactly one fluid completion");
++            var completion=received.getFirst();helper.assertTrue(completion.completion().result().orElseThrow().candidate().isPresent(),"Fluid job did not produce a candidate");
++            helper.assertTrue(completion.completion().result().orElseThrow().candidate().orElseThrow().averageMassFlows()[0]>0,"No pressure-driven transfer was calculated");
++            helper.assertTrue(completion.request().requestId()==requestId,"Fluid request identity changed");
++        });
++    }
++    @GameTest(template="empty",timeoutTicks=10000,batch="fluid-wakeup")
++    public static void shortJobsResumeBetweenTicksWithoutExceedingTheDrainBudget(GameTestHelper helper) {
++        var server=helper.getLevel().getServer();
++        var model=com.wormzjl.icheme.science.fluid.thermo.FluidThermodynamics.forNetwork(com.wormzjl.icheme.science.material.MaterialCatalog.bundled(),"icheme:tjl20_methane_nitrogen");
++        var graph=new com.wormzjl.icheme.science.fluid.network.PassiveNetwork(java.util.List.of(new com.wormzjl.icheme.science.fluid.network.PassiveNetwork.Reservoir(1,0,model.initialNitrogenCharge(1,298.15,101325,()->{}))),java.util.List.of());
++        var command=new com.wormzjl.icheme.runtime.ProcessSolveServices.FluidIslandCommand(model,graph,5,com.wormzjl.icheme.science.fluid.network.PassiveIntervalSolver.Settings.defaults(),2_000_000_000L);
++        long started=System.nanoTime();
++        int[] issued={0},completed={0};var byTick=new java.util.HashMap<Integer,Integer>();long island=com.wormzjl.icheme.runtime.ProcessSolveServices.nextRequestId();
++        var handler=new com.wormzjl.icheme.runtime.ProcessSolveServices.FluidCompletionHandler(){
++            public void completed(com.wormzjl.icheme.runtime.ProcessSolveServices.FluidIslandCompletion completion){
++                helper.assertTrue(server.isSameThread(),"Completion left the owner thread");helper.assertTrue(completion.completion().result().orElseThrow().candidate().isPresent(),"Idle job failed");completed[0]++;byTick.merge(server.getTickCount(),1,Integer::sum);
++            }
++            public void abandoned(com.wormzjl.icheme.runtime.ProcessSolveServices.FluidIslandRequest request){helper.fail("Wakeup job abandoned");}
++        };
++        Runnable pump=()->{
++            if(issued[0]>=70||issued[0]!=completed[0])return;
++            var request=new com.wormzjl.icheme.runtime.ProcessSolveServices.FluidIslandRequest(com.wormzjl.icheme.runtime.ProcessSolveServices.nextRequestId(),
++                    new com.wormzjl.icheme.runtime.ProcessSolveServices.FluidIslandTarget(helper.getLevel().dimension(),island),issued[0],handler);
++            if(com.wormzjl.icheme.runtime.ProcessSolveServices.submitFluidIsland(server,request,command).accepted())issued[0]++;
++        };
++        var previous=com.wormzjl.icheme.runtime.ProcessSolveServices.setReadinessPump(server,pump);pump.run();
++        // GameTestServer has no 50 ms inter-tick wait. Deliberately keep this test tick open,
++        // servicing the real server mailbox, to prove completion wakeups need no next tick.
++        server.managedBlock(()->completed[0]>=32||System.nanoTime()-started>=5_000_000_000L);
++        helper.assertTrue(completed[0]>=32,"Completion wakeups require another game tick");
++        helper.succeedWhen(()->{
++            helper.assertTrue(completed[0]==70,"Waiting for all short jobs");
++            helper.assertTrue(System.nanoTime()-started<5_000_000_000L,"Short-job sequence exceeded its real wall-time bound");
++            helper.assertTrue(byTick.values().stream().anyMatch(count->count>1),"Workers waited for a server tick after every completion");
++            helper.assertTrue(byTick.values().stream().allMatch(count->count<=64),"Completion budget exceeded");
++            com.wormzjl.icheme.runtime.ProcessSolveServices.setReadinessPump(server,previous);
++        });
++    }
+ }
+diff --git a/src/fluidGameTest/java/com/wormzjl/icheme/fluid/gametest/FluidPacketGameTests.java b/src/fluidGameTest/java/com/wormzjl/icheme/fluid/gametest/FluidPacketGameTests.java
+index 68f573baa..54e298795 100644
+--- a/src/fluidGameTest/java/com/wormzjl/icheme/fluid/gametest/FluidPacketGameTests.java
++++ b/src/fluidGameTest/java/com/wormzjl/icheme/fluid/gametest/FluidPacketGameTests.java
+@@ -23,6 +23,29 @@ import java.util.UUID;
+ @PrefixGameTestTemplate(false)
+ public final class FluidPacketGameTests {
+     private FluidPacketGameTests() {}
++    @GameTest(template="empty",timeoutTicks=100,batch="fluid-ambient-generator")
++    public static void generatorMenuAcceptsAmbientCrudeWithoutChangingTemperature(GameTestHelper helper) {
++        var level=helper.getLevel();var world=FluidWorldAuthority.find(level.getServer()).orElseThrow();
++        var pos=helper.absolutePos(new BlockPos(0,1,0));
++        var player=FakePlayerFactory.get(level,new GameProfile(UUID.randomUUID(),"AmbientCrude"));
++        player.setGameMode(GameType.CREATIVE);player.setPos(pos.getX()+1,pos.getY(),pos.getZ());
++        try {
++            for(var preset:com.wormzjl.icheme.runtime.fluid.FluidPresetCatalog.resolve(
++                    com.wormzjl.icheme.science.material.MaterialRuntime.active()).subList(2,5)) {
++                level.setBlock(pos,ModBlocks.FLUID_GENERATOR.get().defaultBlockState(),3);
++                long identity=((FluidDeviceBlockEntity)level.getBlockEntity(pos)).fluidIdentity();
++                player.containerMenu=new FluidDeviceMenu(43,player.getInventory(),pos,identity,false);
++                var controls=new FluidNetwork.Controls(298,101325,.05,.000045,.01,500000,preset.moleFractions());
++                var before=world.registrations().get(identity);
++                send(player,new FluidNetwork.EditPayload(43,pos,identity,before.revision(),new Gson().toJson(controls)));
++                var after=world.registrations().get(identity);
++                helper.assertTrue(after.revision()==before.revision()+1,"Ambient generator edit rejected: "+preset.name());
++                helper.assertTrue(after.spec().temperature()==298,"Generator temperature was clamped or reset");
++                level.removeBlock(pos,false);
++            }
++            helper.succeed();
++        } finally {level.removeBlock(pos,false);player.containerMenu=player.inventoryMenu;}
++    }
+     @GameTest(template="empty",timeoutTicks=100,batch="fluid-movement")
+     public static void createAndVanillaMovementRejectEveryFluidBlock(GameTestHelper helper) {
+         var level=helper.getLevel();var pos=helper.absolutePos(new BlockPos(0,1,0));
+diff --git a/src/fluidGameTest/java/com/wormzjl/icheme/fluid/gametest/FluidPhasePortGameTests.java b/src/fluidGameTest/java/com/wormzjl/icheme/fluid/gametest/FluidPhasePortGameTests.java
+index 756887a6d..2bd83677f 100644
+--- a/src/fluidGameTest/java/com/wormzjl/icheme/fluid/gametest/FluidPhasePortGameTests.java
++++ b/src/fluidGameTest/java/com/wormzjl/icheme/fluid/gametest/FluidPhasePortGameTests.java
+@@ -15,8 +15,8 @@ import java.util.*;
+ /**
+  * The three devices of the phase-ports batch placed as blocks (plan section 6, phase-ports WP5): a tank's top, side and
+  * bottom outlets each carrying their phase to a void; a liquid-only pump on a gas tank refused with its reason on its
+- * status line (the compressor's target, ratio limit and shutoff are CompressorTest's). Every observation is the device's
+- * view as the engine publishes it ({@link FluidWorldAuthority#view}).
++ * status line; and a gas compressor moving nitrogen between two tanks on its target, then to its pressure-ratio limit, then
++ * closed. Every observation is the device's view as the engine publishes it ({@link FluidWorldAuthority#view}).
+  */
+ @GameTestHolder("icheme_fluid_test")
+ @PrefixGameTestTemplate(false)
+@@ -146,4 +146,52 @@ public final class FluidPhasePortGameTests {
+             done[0]=true;clear(helper,all);helper.succeed();
+         });
+     }
++
++    /**
++     * Plan section 6, scenario 3 (its gas half). Two nitrogen tanks with a compressor at its placement default (0.05 m3/s,
++     * ratio 3, plan Appendix B) facing from the first into the second: it runs on its suction-flow target (PUMP_TARGET),
++     * the discharge rises until it stands at three times the suction (its ratio limit), and it closes there (CLOSED, the
++     * mover's shutoff), the second tank then holding three times the first tank's pressure. A placed tank holds nothing
++     * (decision D54), so both are charged first ({@link TankCharge}), to 250 kPa: the transfer then ends near 125 and 375
++     * kPa with both bags taut, as the rigid 1 atm tanks this test was written on did (charged at 1 atm, the suction bag
++     * would go slack at the ambient and run dry before the discharge reached three atmospheres).
++     */
++    @GameTest(template="empty",timeoutTicks=40000,batch="fluid-compressor-transfer")
++    public static void aCompressorMovesNitrogenToItsRatioLimitAndCloses(GameTestHelper helper) {
++        var level=helper.getLevel();var world=FluidWorldAuthority.find(level.getServer()).orElseThrow();
++        var suction=helper.absolutePos(new BlockPos(0,1,0));var inlet=suction.east();var compressor=inlet.east();var outlet=compressor.east();var discharge=outlet.east();
++        var all=List.of(suction,inlet,compressor,outlet,discharge);
++        place(helper,suction,ModBlocks.FLUID_RESERVOIR.get().defaultBlockState());place(helper,discharge,ModBlocks.FLUID_RESERVOIR.get().defaultBlockState());
++        var charges=List.of(new TankCharge(helper,world,suction,Direction.SOUTH,250000),new TankCharge(helper,world,discharge,Direction.SOUTH,250000));
++        var seen=new LinkedHashSet<String>();boolean[] done={false},started={false};long[] ids=new long[3];long[] deadline={System.nanoTime()+240_000_000_000L};
++        helper.onEachTick(()->{
++            if(done[0])return;
++            java.util.concurrent.locks.LockSupport.parkNanos(1_000_000L);
++            if(!started[0]) {
++                helper.assertTrue(System.nanoTime()<deadline[0],"The tanks were not charged");
++                boolean charged=true;for(var charge:charges)charged&=charge.charged();
++                if(!charged)return;
++                place(helper,compressor,ModBlocks.FLUID_COMPRESSOR.get().defaultBlockState().setValue(FluidDeviceBlock.FACING,Direction.EAST));
++                ids[0]=identity(helper,suction);ids[1]=identity(helper,discharge);ids[2]=identity(helper,compressor);
++                var control=world.registrations().get(ids[2]).device().control();
++                helper.assertTrue(control.equals(new com.wormzjl.icheme.science.fluid.network.FlowControl.Compressor(.05,3)),"Placement default: "+control);
++                place(helper,inlet,ModBlocks.FLUID_PIPE.get().defaultBlockState());place(helper,outlet,ModBlocks.FLUID_PIPE.get().defaultBlockState());
++                started[0]=true;deadline[0]=System.nanoTime()+120_000_000_000L;return;
++            }
++            long suctionId=ids[0],dischargeId=ids[1],compressorId=ids[2];
++            var view=world.view(compressorId);
++            helper.assertTrue(System.nanoTime()<deadline[0],"The compressor did not close: "+view.status()+", seen "+seen);
++            helper.assertTrue(!view.status().startsWith("HELD"),"Held: "+view.status());
++            for(var mode:List.of("PUMP_TARGET","PUMP_HEAD_LIMIT","CLOSED","INLET_WRONG_PHASE"))if(view.status().contains(" / "+mode))seen.add(mode);
++            helper.assertTrue(!seen.contains("INLET_WRONG_PHASE"),"A compressor on nitrogen is not refused: "+view.status());
++            if(!view.status().contains(" / CLOSED")||!seen.contains("PUMP_TARGET"))return;
++            var a=world.view(suctionId).state();var b=world.view(dischargeId).state();
++            helper.assertTrue(view.status().contains("limit")&&view.status().contains("at this suction"),"The compressor shows its limit: "+view.status());
++            helper.assertTrue(Math.abs(b.pressure()/a.pressure()-3)<3e-3,"Closed at its ratio limit: "+b.pressure()+" / "+a.pressure()+" = "+b.pressure()/a.pressure());
++            helper.assertTrue(b.temperature()>a.temperature(),"The discharge is heated by the compression work");
++            System.out.println("PHASE_PORT_GAMETEST compressor tick="+view.onlineTick()+" committed="+view.committedTick()+" seen="+seen+" suction="+a.pressure()+" Pa "+a.temperature()+" K discharge="+b.pressure()+" Pa "
++                    +b.temperature()+" K ratio="+b.pressure()/a.pressure()+" status="+view.status());
++            done[0]=true;clear(helper,all);helper.succeed();
++        });
++    }
+ }
+diff --git a/src/fluidGameTest/java/com/wormzjl/icheme/fluid/gametest/FluidPlacementGameTests.java b/src/fluidGameTest/java/com/wormzjl/icheme/fluid/gametest/FluidPlacementGameTests.java
+new file mode 100644
+index 000000000..3f06e4a9e
+--- /dev/null
++++ b/src/fluidGameTest/java/com/wormzjl/icheme/fluid/gametest/FluidPlacementGameTests.java
+@@ -0,0 +1,59 @@
++package com.wormzjl.icheme.fluid.gametest;
++
++import com.wormzjl.icheme.registry.ModBlocks;
++import com.wormzjl.icheme.runtime.fluid.FluidWorldAuthority;
++import com.wormzjl.icheme.world.level.block.FluidDeviceBlock;
++import net.minecraft.core.BlockPos;
++import net.minecraft.core.Direction;
++import net.minecraft.gametest.framework.GameTest;
++import net.minecraft.gametest.framework.GameTestHelper;
++import net.minecraft.world.level.block.Blocks;
++import net.minecraft.world.level.block.state.BlockState;
++import net.neoforged.neoforge.gametest.GameTestHolder;
++import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
++import java.util.*;
++
++/**
++ * Placement in a large world (FLUID_PLACEMENT_REVIEW.md): WP5 measured one datapack function placing 5,000 devices at
++ * 58 to 60 s of server thread, each block compiling the whole registry. Here one call places the same 1,000 rest lines
++ * (tank, three pipes, tank) through the blocks' own placement, stacked in two chunk columns: the world queues them and
++ * applies them in batches of 1,024 events, each compiling only the lines it builds, and one more pipe beside a line
++ * then costs the same as in an empty world.
++ */
++@GameTestHolder("icheme_fluid_test")
++@PrefixGameTestTemplate(false)
++public final class FluidPlacementGameTests {
++    private FluidPlacementGameTests() {}
++    private static final int LINES=1_000;
++    /** Line n: two per row (x 0 to 4 and 6 to 10), eight rows two blocks apart, levels two blocks apart. */
++    private static BlockPos lineStart(BlockPos origin,int n){int level=n/16,row=n%16/2,column=n%2;return origin.offset(6*column,2*level,2*row);}
++    private static BlockState device(int index){return (index==0||index==4?ModBlocks.FLUID_RESERVOIR:ModBlocks.FLUID_PIPE).get().defaultBlockState().setValue(FluidDeviceBlock.FACING,Direction.EAST);}
++
++    @GameTest(template="empty",timeoutTicks=2400,batch="fluid-large-world")
++    public static void fiveThousandDevicesPlacedAtOnceApplyInBatchesAndOneMoreCostsLittle(GameTestHelper helper) {
++        var level=helper.getLevel();var world=FluidWorldAuthority.find(level.getServer()).orElseThrow();
++        var origin=helper.absolutePos(new BlockPos(0,2,0));var placed=new ArrayList<BlockPos>();
++        int[] islandsBefore={-1};double[] placeMillis={0},extraMillis={0};
++        helper.startSequence().thenExecute(()->{
++            islandsBefore[0]=world.diagnosticSnapshots().size();int devicesBefore=world.registrations().size();
++            long started=System.nanoTime();
++            for(int n=0;n<LINES;n++){var start=lineStart(origin,n);for(int i=0;i<5;i++){var pos=start.east(i);level.setBlock(pos,device(i),3);placed.add(pos);}}
++            // The first read that needs the islands applies what is still queued.
++            int islands=world.diagnosticSnapshots().size();placeMillis[0]=(System.nanoTime()-started)/1e6;
++            helper.assertTrue(world.registrations().size()==devicesBefore+5*LINES,"Every device is registered");
++            helper.assertTrue(islands==islandsBefore[0]+LINES,"Every line is one island: "+(islands-islandsBefore[0]));
++            helper.assertTrue(placeMillis[0]<30_000,"5,000 devices placed in "+placeMillis[0]+" ms");
++            // One more pipe beside the first line, then broken again: the event touches that line's island only.
++            var extra=origin.north();double[] each=new double[11];
++            for(int k=0;k<each.length;k++) {
++                long t=System.nanoTime();level.setBlock(extra,ModBlocks.FLUID_PIPE.get().defaultBlockState(),3);world.diagnosticSnapshots();each[k]=(System.nanoTime()-t)/1e6;
++                level.setBlock(extra,Blocks.AIR.defaultBlockState(),3);world.diagnosticSnapshots();
++            }
++            Arrays.sort(each);extraMillis[0]=each[each.length/2];
++            com.wormzjl.icheme.IChemE.LOGGER.info("fluid_placement_gametest devices={} place_ms={} one_more_pipe_median_ms={}",5*LINES,String.format(Locale.ROOT,"%.1f",placeMillis[0]),String.format(Locale.ROOT,"%.3f",extraMillis[0]));
++            helper.assertTrue(extraMillis[0]<10,"One more pipe in a 5,000-device world costs "+extraMillis[0]+" ms");
++        }).thenExecute(()->{for(var pos:placed)level.setBlock(pos,Blocks.AIR.defaultBlockState(),3);})
++        .thenWaitUntil(()->helper.assertTrue(world.capture().world().events().isEmpty()&&world.diagnosticSnapshots().size()==islandsBefore[0],"Waiting for the lines to be removed"))
++        .thenSucceed();
++    }
++}
+diff --git a/src/fluidGameTest/java/com/wormzjl/icheme/fluid/gametest/FluidPropertyReloadGameTests.java b/src/fluidGameTest/java/com/wormzjl/icheme/fluid/gametest/FluidPropertyReloadGameTests.java
+index 7d19ca272..bd4a576d8 100644
+--- a/src/fluidGameTest/java/com/wormzjl/icheme/fluid/gametest/FluidPropertyReloadGameTests.java
++++ b/src/fluidGameTest/java/com/wormzjl/icheme/fluid/gametest/FluidPropertyReloadGameTests.java
+@@ -59,4 +59,56 @@ public final class FluidPropertyReloadGameTests {
+             level.removeBlock(pos,false);
+         }).thenWaitUntil(()->helper.assertTrue(!world.capture().world().active().containsKey(id),"Waiting for topology cleanup")).thenSucceed();
+     }
++
++    /**
++     * Plan section 3.6 with a certificate: a lone tank certifies REST; a property hold materialises it to the hold
++     * tick and freezes it there while online time accrues; resume discards the certificate, and the island solves
++     * its debt from the held state and certifies again only after restConfirmIntervals fresh intervals.
++     */
++    @GameTest(template="empty",timeoutTicks=10000,batch="fluid-property-reload")
++    public static void aCertifiedIslandIsFrozenByAHoldAndRequalifiesAfterResume(GameTestHelper helper) {
++        var level=helper.getLevel();var server=level.getServer();var world=FluidWorldAuthority.find(server).orElseThrow();
++        var original=MaterialRuntime.active();var resources=new HashMap<>(original.resources());
++        String path="data/icheme/materials/properties/crude_pc07.json";
++        var property=JsonParser.parseString(resources.get(path)).getAsJsonObject();property.addProperty("molecular_weight_kg_per_mol",.31);resources.put(path,property.toString());
++        var changed=MaterialCatalog.parse(resources);
++        var pos=helper.absolutePos(new BlockPos(0,1,0));level.setBlock(pos,ModBlocks.FLUID_RESERVOIR.get().defaultBlockState(),3);
++        long id=((FluidDeviceBlockEntity)level.getBlockEntity(pos)).fluidIdentity();
++        // Stored, not materialised: what the island holds without a read advancing it.
++        java.util.function.Supplier<IslandCoordinator.Snapshot> stored=()->world.diagnosticSnapshots().stream()
++                .filter(s->s.graph().reservoirs().stream().anyMatch(n->n.id()==id)).findFirst().orElseThrow();
++        java.util.function.Supplier<IslandCoordinator.Snapshot> current=()->world.capture().checkpoint().islands().stream().map(FluidCheckpointCodec.IslandEntry::snapshot)
++                .filter(s->s.graph().reservoirs().stream().anyMatch(n->n.id()==id)).findFirst().orElseThrow();
++        long[] hold={-1};IslandCoordinator.Snapshot[] held={null};
++        helper.startSequence().thenWaitUntil(()->helper.assertTrue(stored.get().certificate().isPresent(),"Waiting for the lone tank to certify"))
++        .thenExecute(()->{
++            var certified=stored.get();
++            helper.assertTrue(certified.certificate().orElseThrow().drift()==0,"A lone tank rests exactly: "+certified.certificate());
++            helper.assertTrue(certified.status().startsWith("STEADY: no flow since"),"Status while certified: "+certified.status());
++            try {
++                MaterialRuntime.publish(changed);ProcessSolveCoordinator.drainCompletedCalculations(server);
++                var s=stored.get();hold[0]=s.clock().onlineTick();held[0]=s;
++                helper.assertTrue(s.status().startsWith("HELD: property data"),"Not held: "+s.status());
++                helper.assertTrue(s.clock().committedTick()==hold[0],"The hold must materialise the certified island to the hold tick: "+s.clock());
++            }catch(RuntimeException|AssertionError failure){MaterialRuntime.publish(original);FluidWorldAuthority.refreshProperties(server);helper.fail("Certified hold scenario failed: "+failure);}
++        }).thenIdle(40).thenExecute(()->{
++            try {
++                var s=current.get();
++                helper.assertTrue(s.clock().committedTick()==hold[0],"A read during the hold advanced committed time: "+s.clock());
++                helper.assertTrue(s.clock().onlineTick()>=hold[0]+40,"The hold discarded online debt: "+s.clock());
++                helper.assertTrue(s.graph().equals(held[0].graph()),"The hold changed inventory");
++            }finally{MaterialRuntime.publish(original);FluidWorldAuthority.refreshProperties(server);}
++            var resumed=stored.get();
++            helper.assertTrue(resumed.certificate().isEmpty(),"Resume must discard the certificate");
++            helper.assertTrue(resumed.clock().committedTick()==hold[0],"Resume starts from the held state");
++        }).thenWaitUntil(()->helper.assertTrue(stored.get().certificate().isPresent(),"Waiting to requalify after resume"))
++        .thenExecute(()->{
++            var again=stored.get();var certificate=again.certificate().orElseThrow();
++            int confirm=world.certificates().confirmIntervals();
++            helper.assertTrue(certificate.sinceTick()==certificate.baseTick()&&certificate.baseTick()>=hold[0]+(long)confirm*again.clock().cadenceTicks(),
++                    "Requalified before "+confirm+" fresh intervals: base "+certificate.baseTick()+", hold "+hold[0]+", cadence "+again.clock().cadenceTicks());
++            helper.assertTrue(again.graph().reservoirs().getFirst().inventory().equals(held[0].graph().reservoirs().getFirst().inventory()),"Recovery changed the resting inventory");
++            level.removeBlock(pos,false);
++        }).thenWaitUntil(()->helper.assertTrue(!world.capture().world().active().containsKey(id),"Waiting for topology cleanup")).thenSucceed();
++    }
+ }
+diff --git a/src/fluidGameTest/java/com/wormzjl/icheme/fluid/gametest/FluidPumpStartupGameTests.java b/src/fluidGameTest/java/com/wormzjl/icheme/fluid/gametest/FluidPumpStartupGameTests.java
+index 3685086cb..05060964b 100644
+--- a/src/fluidGameTest/java/com/wormzjl/icheme/fluid/gametest/FluidPumpStartupGameTests.java
++++ b/src/fluidGameTest/java/com/wormzjl/icheme/fluid/gametest/FluidPumpStartupGameTests.java
+@@ -13,22 +13,26 @@ import net.neoforged.neoforge.gametest.*;
+ @PrefixGameTestTemplate(false)
+ public final class FluidPumpStartupGameTests {
+     private FluidPumpStartupGameTests() {}
++    @GameTest(template="empty",timeoutTicks=30000,batch="fluid-water-pump-startup")
++    public static void defaultWaterPumpStartsIntoNitrogenReservoir(GameTestHelper helper){verify(helper,false);}
+     @GameTest(template="empty",timeoutTicks=30000,batch="fluid-crude-pump-startup")
+-    public static void heatedCrudePumpStartsIntoNitrogenReservoir(GameTestHelper helper){verify(helper);}
+-    private static void verify(GameTestHelper helper) {
++    public static void heatedCrudePumpStartsIntoNitrogenReservoir(GameTestHelper helper){verify(helper,true);}
++    private static void verify(GameTestHelper helper,boolean crude) {
+         var level=helper.getLevel();var world=FluidWorldAuthority.find(level.getServer()).orElseThrow();
+         var source=helper.absolutePos(new BlockPos(0,1,0));var inlet=source.east();var pump=inlet.east();var outlet=pump.east();var tank=outlet.east();
+         level.setBlock(source,ModBlocks.FLUID_GENERATOR.get().defaultBlockState(),3);
+         level.setBlock(tank,ModBlocks.FLUID_RESERVOIR.get().defaultBlockState(),3);
+         level.setBlock(pump,ModBlocks.FLUID_PUMP.get().defaultBlockState().setValue(FluidDeviceBlock.FACING,Direction.EAST),3);
+         long sourceId=((FluidDeviceBlockEntity)level.getBlockEntity(source)).fluidIdentity(),tankId=((FluidDeviceBlockEntity)level.getBlockEntity(tank)).fluidIdentity();
+-        var feed=world.presets().stream().filter(p->p.id().equals("icheme:tia_juana_light_methane")).findFirst().orElseThrow();
+-        // A liquid-only pump (decision D1 of the phase-ports batch) refuses the crude at 350 K and 1 atm, which is 76 %
+-        // vapour by volume; its bubble point at 350 K is 226 kPa (one flashTP, PHASE_PORTS_REVIEW.md WP3), so the
+-        // generator stands at 1 MPa and supplies a liquid (re-baselined from 101325 Pa).
+-        var old=world.registrations().get(sourceId);world.edit(sourceId,old.revision(),old.device(),new FluidDeviceSpec(1,350,1e6,feed.moleFractions()));
+-        long id=((FluidDeviceBlockEntity)level.getBlockEntity(pump)).fluidIdentity();old=world.registrations().get(id);var d=old.device();
+-        world.edit(id,old.revision(),new PhysicalFluidTopology.Device(d.id(),d.position(),d.kind(),d.facing(),d.geometry(),new FlowControl.Pump(.0001,500000)),old.spec());
++        if(crude) {
++            var feed=world.presets().stream().filter(p->p.id().equals("icheme:tia_juana_light_methane")).findFirst().orElseThrow();
++            // A liquid-only pump (decision D1 of the phase-ports batch) refuses the crude at 350 K and 1 atm, which is 76 %
++            // vapour by volume; its bubble point at 350 K is 226 kPa (one flashTP, PHASE_PORTS_REVIEW.md WP3), so the
++            // generator stands at 1 MPa and supplies a liquid (re-baselined from 101325 Pa).
++            var old=world.registrations().get(sourceId);world.edit(sourceId,old.revision(),old.device(),new FluidDeviceSpec(1,350,1e6,feed.moleFractions()));
++            long id=((FluidDeviceBlockEntity)level.getBlockEntity(pump)).fluidIdentity();old=world.registrations().get(id);var d=old.device();
++            world.edit(id,old.revision(),new PhysicalFluidTopology.Device(d.id(),d.position(),d.kind(),d.facing(),d.geometry(),new FlowControl.Pump(.0001,500000)),old.spec());
++        }
+         // A placed tank holds nothing (decision D54): the nitrogen reservoir is charged first, at 102 kPa (TankCharge).
+         var charge=new TankCharge(helper,world,tank,Direction.SOUTH,102000);
+         boolean[] done={false};double[] initialMass={-1};long[] deadline={System.nanoTime()+150_000_000_000L};
+@@ -47,7 +51,7 @@ public final class FluidPumpStartupGameTests {
+             if(view.state()==null||view.state().mass()<initialMass[0]+.001)return;
+             helper.assertTrue(!view.status().startsWith("HELD"),"Pump held after transfer: "+view.status());
+             helper.assertTrue(Double.isFinite(view.state().pressure())&&view.state().pressure()>0,"Invalid receiving pressure");
+-            int component=world.components().indexOf("crude_pc12");double delivered=0;
++            int component=world.components().indexOf(crude?"crude_pc12":"Water");double delivered=0;
+             for(var phase:view.state().phaseMoles())delivered+=phase[component];
+             helper.assertTrue(delivered>0,"Requested fluid did not reach the reservoir");
+             done[0]=true;for(var pos:java.util.List.of(source,inlet,pump,outlet,tank))level.removeBlock(pos,false);helper.succeed();
+diff --git a/src/fluidGameTest/java/com/wormzjl/icheme/fluid/gametest/FluidPumpedFillGameTests.java b/src/fluidGameTest/java/com/wormzjl/icheme/fluid/gametest/FluidPumpedFillGameTests.java
+new file mode 100644
+index 000000000..c0d73c45e
+--- /dev/null
++++ b/src/fluidGameTest/java/com/wormzjl/icheme/fluid/gametest/FluidPumpedFillGameTests.java
+@@ -0,0 +1,55 @@
++package com.wormzjl.icheme.fluid.gametest;
++
++import com.wormzjl.icheme.registry.ModBlocks;
++import com.wormzjl.icheme.runtime.fluid.FluidWorldAuthority;
++import com.wormzjl.icheme.world.level.block.FluidDeviceBlock;
++import com.wormzjl.icheme.world.level.block.entity.FluidDeviceBlockEntity;
++import net.minecraft.core.*;
++import net.minecraft.gametest.framework.*;
++import net.neoforged.neoforge.gametest.*;
++
++/**
++ * {@code fill100}'s line placed block by block with the mod's placement defaults: a water generator, a pump facing east
++ * and a closed chain of three tanks (placed empty since decision D54; nitrogen-charged before). In game on 0.3.0 such a line was held for minutes (a third of 100 never
++ * recovered); here it must start through the real coordinator, its wall budget and its hold policy, and fill.
++ */
++@GameTestHolder("icheme_fluid_test")
++@PrefixGameTestTemplate(false)
++public final class FluidPumpedFillGameTests {
++    private FluidPumpedFillGameTests() {}
++    @GameTest(template="empty",timeoutTicks=40000,batch="fluid-pumped-fill")
++    public static void aPlacedPumpedThreeTankChainFills(GameTestHelper helper) {
++        var level=helper.getLevel();var world=FluidWorldAuthority.find(level.getServer()).orElseThrow();
++        var origin=helper.absolutePos(new BlockPos(0,1,0));var positions=new java.util.ArrayList<BlockPos>();
++        // A pipe block between the generator and the pump: only pipes connect (decision D20).
++        String layout="GPUPRPRPR";
++        for(int i=0;i<layout.length();i++) {
++            var pos=origin.east(i);positions.add(pos);
++            var state=switch(layout.charAt(i)) {
++                case 'G'->ModBlocks.FLUID_GENERATOR.get().defaultBlockState();
++                case 'U'->ModBlocks.FLUID_PUMP.get().defaultBlockState().setValue(FluidDeviceBlock.FACING,Direction.EAST);
++                case 'P'->ModBlocks.FLUID_PIPE.get().defaultBlockState();
++                default->ModBlocks.FLUID_RESERVOIR.get().defaultBlockState();
++            };
++            level.setBlock(pos,state,3);
++        }
++        long firstTank=((FluidDeviceBlockEntity)level.getBlockEntity(positions.get(4))).fluidIdentity();
++        long lastTank=((FluidDeviceBlockEntity)level.getBlockEntity(positions.get(8))).fluidIdentity();
++        boolean[] done={false};int[] heldTicks={0};long deadline=System.nanoTime()+90_000_000_000L;
++        helper.onEachTick(()->{
++            if(done[0])return;
++            java.util.concurrent.locks.LockSupport.parkNanos(1_000_000L);
++            var first=world.view(firstTank);var last=world.view(lastTank);
++            if(first.status().startsWith("HELD"))heldTicks[0]++;
++            helper.assertTrue(System.nanoTime()<deadline,"The pumped chain did not fill within 90 s of wall time: "+first.status()+", held for "+heldTicks[0]+" ticks");
++            if(first.state()==null)return;
++            // A tenth of the first tank in water: about 25 s of pumping at the pump's 0.01 m3/s.
++            if(first.state().mass()<100)return;
++            helper.assertTrue(!first.status().startsWith("HELD"),"Held while filling: "+first.status());
++            // Placed tanks hold nothing (decision D54): the first fills as a slack bag at the ambient, the last still empty.
++            helper.assertTrue(Math.abs(first.state().pressure()-101325)<1&&first.state().fill()<1,"The first tank fills slack at the ambient: "+first.state().pressure()+" Pa, fill "+first.state().fill());
++            helper.assertTrue(last.state()==null&&last.status().startsWith("EMPTY: holds nothing"),"The last tank is still empty: "+last.status());
++            done[0]=true;for(var pos:positions)level.removeBlock(pos,false);helper.succeed();
++        });
++    }
++}
+diff --git a/src/fluidGameTest/java/com/wormzjl/icheme/fluid/gametest/FluidTopologyGameTests.java b/src/fluidGameTest/java/com/wormzjl/icheme/fluid/gametest/FluidTopologyGameTests.java
+new file mode 100644
+index 000000000..fe08297b0
+--- /dev/null
++++ b/src/fluidGameTest/java/com/wormzjl/icheme/fluid/gametest/FluidTopologyGameTests.java
+@@ -0,0 +1,50 @@
++package com.wormzjl.icheme.fluid.gametest;
++
++import com.wormzjl.icheme.registry.ModBlocks;
++import com.wormzjl.icheme.runtime.fluid.*;
++import com.wormzjl.icheme.world.level.block.entity.FluidDeviceBlockEntity;
++import net.minecraft.core.BlockPos;
++import net.minecraft.gametest.framework.GameTest;
++import net.minecraft.gametest.framework.GameTestHelper;
++import net.neoforged.neoforge.gametest.GameTestHolder;
++import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
++import java.util.*;
++
++@GameTestHolder("icheme_fluid_test")
++@PrefixGameTestTemplate(false)
++public final class FluidTopologyGameTests {
++    private FluidTopologyGameTests() {}
++    @GameTest(template="empty",timeoutTicks=10000,batch="fluid-independent-events")
++    public static void anUnresolvedIslandHorizonDoesNotBlockUnrelatedPhysicalEdits(GameTestHelper helper) {
++        var level=helper.getLevel();var world=FluidWorldAuthority.find(level.getServer()).orElseThrow();
++        var tank=helper.absolutePos(new BlockPos(0,1,0));var pipe=tank.east();var source=pipe.east();var independent=tank.north(8);
++        level.setBlock(tank,ModBlocks.FLUID_RESERVOIR.get().defaultBlockState(),3);level.setBlock(pipe,ModBlocks.FLUID_PIPE.get().defaultBlockState(),3);level.setBlock(source,ModBlocks.FLUID_GENERATOR.get().defaultBlockState(),3);
++        long tankId=((FluidDeviceBlockEntity)level.getBlockEntity(tank)).fluidIdentity(),sourceId=((FluidDeviceBlockEntity)level.getBlockEntity(source)).fluidIdentity();
++        var coordinator=coordinator(world);var island=world.capture().checkpoint().islands().stream().map(FluidCheckpointCodec.IslandEntry::snapshot).filter(s->s.graph().reservoirs().stream().anyMatch(n->n.id()==tankId)).findFirst().orElseThrow();
++        var held=UUID.randomUUID();coordinator.fence(held,island.clock().committedTick(),Set.of(island.id()));long[] editTick={-1};
++        helper.startSequence().thenIdle(2).thenExecute(()->{
++            try {
++                var before=world.registrations().get(sourceId);editTick[0]=world.onlineTick();
++                world.edit(sourceId,before.revision(),before.device(),new FluidDeviceSpec(before.spec().volume(),before.spec().temperature(),200000,before.spec().composition()));
++                helper.assertTrue(!world.capture().world().events().isEmpty(),"The dependent edit should wait at the unresolved horizon");
++                level.setBlock(independent,ModBlocks.FLUID_RESERVOIR.get().defaultBlockState(),3);
++                long id=((FluidDeviceBlockEntity)level.getBlockEntity(independent)).fluidIdentity();
++                var capture=world.capture();helper.assertTrue(capture.world().active().containsKey(id),"Unrelated placement was blocked by an earlier island event");
++                // A placed tank holds nothing (decision D54): its authority is initialized when an island owns it and reports it.
++                helper.assertTrue(world.view(id).status().startsWith("EMPTY: holds nothing"),"Unrelated reservoir has no initialized authority: "+world.view(id).status());
++                helper.assertTrue(capture.world().events().stream().anyMatch(e->e.tick()==editTick[0]&&e.edits().stream().anyMatch(change->change.id()==sourceId)),"Blocked edit was dropped or retimestamped");
++                helper.assertTrue(coordinator.snapshot(island.id()).clock().committedTick()==island.clock().committedTick(),"Blocked island advanced past its causal horizon");
++                level.removeBlock(independent,false);helper.assertTrue(!world.capture().world().active().containsKey(id),"Unrelated removal was blocked");
++            } finally {
++                coordinator.releaseFence(held,Set.of(island.id()));
++            }
++        }).thenWaitUntil(()->helper.assertTrue(world.capture().world().events().isEmpty(),"Waiting for the original timestamped edit after horizon release"))
++        .thenExecute(()->{level.removeBlock(source,false);level.removeBlock(pipe,false);level.removeBlock(tank,false);})
++        .thenWaitUntil(()->helper.assertTrue(world.capture().world().events().isEmpty(),"Waiting for topology cleanup")).thenSucceed();
++    }
++    /** Controlled unresolved dependency; no scientific state or worker result is fabricated. */
++    private static IslandCoordinator coordinator(FluidWorldAuthority world) {
++        try {var field=FluidWorldAuthority.class.getDeclaredField("runtime");field.setAccessible(true);return ((MinecraftFluidRuntime)field.get(world)).coordinator();}
++        catch(ReflectiveOperationException failure){throw new AssertionError("World coordinator test adapter changed",failure);}
++    }
++}
+diff --git a/src/test/java/com/wormzjl/icheme/client/gui/common/ComponentSearchTest.java b/src/test/java/com/wormzjl/icheme/client/gui/common/ComponentSearchTest.java
+new file mode 100644
+index 000000000..17f0ed587
+--- /dev/null
++++ b/src/test/java/com/wormzjl/icheme/client/gui/common/ComponentSearchTest.java
+@@ -0,0 +1,36 @@
++package com.wormzjl.icheme.client.gui.common;
++
++import java.util.*;
++import org.junit.jupiter.api.Test;
++import static org.junit.jupiter.api.Assertions.*;
++
++class ComponentSearchTest {
++    private static ComponentSearch.Option option(int id,String name){return new ComponentSearch.Option(id,name,name);}
++    private static final List<ComponentSearch.Option> OPTIONS=List.of(option(0,"Methane"),option(1,"Ethane"),option(2,"Nitrogen"),option(3,"Water"),option(4,"Isobutane"));
++    private static List<Integer> ids(String query){return ComponentSearch.rank(OPTIONS,query).stream().map(ComponentSearch.Option::id).toList();}
++    @Test void exactNamesOutrankPrefixAndSubstringMatches(){
++        assertEquals(1,ids("ethane").getFirst());assertEquals(0,ids("meth").getFirst());assertEquals(2,ids("NITROGEN").getFirst());
++    }
++    @Test void missingCharactersAndTransposedLettersStillFindTheIntendedComponent(){
++        assertEquals(0,ids("methne").getFirst());assertEquals(1,ids("ethnae").getFirst());assertEquals(2,ids("ntgn").getFirst());
++    }
++    @Test void localizedNamesAndStableIdentitiesAreBothSearchable(){
++        var entries=List.of(new ComponentSearch.Option(8,"Wässer","Water"),new ComponentSearch.Option(9,"氮气","Nitrogen"));
++        assertEquals(8,ComponentSearch.rank(entries,"wasser").getFirst().id());
++        assertEquals(8,ComponentSearch.rank(entries,"water").getFirst().id());
++        assertEquals(9,ComponentSearch.rank(entries,"氮").getFirst().id());
++        assertEquals(9,ComponentSearch.rank(entries,"nitro").getFirst().id());
++    }
++    @Test void multipleWordsCanBeTypedInAnyOrderAndPunctuationIsNormalized(){
++        var entries=List.of(option(1,"Crude oil, NBP 84.3–134.5°C"),option(2,"Crude oil, NBP 134.5–182.9°C"));
++        assertEquals(List.of(1),ComponentSearch.rank(entries,"134 84 nbp").stream().map(ComponentSearch.Option::id).toList());
++    }
++    @Test void noMatchDoesNotOfferAnUnrelatedComponentAndEmptySearchKeepsCatalogOrder(){
++        assertTrue(ids("xyzzy").isEmpty());assertEquals(List.of(0,1,2,3,4),ids("  "));
++        var available=OPTIONS.stream().filter(o->o.id()!=0).toList();
++        assertTrue(ComponentSearch.rank(available,"methane").stream().noneMatch(o->o.id()==0));
++    }
++    @Test void matchingDoesNotMutateTheCatalog(){
++        var copy=new ArrayList<>(OPTIONS);ComponentSearch.rank(copy,"eth");assertEquals(OPTIONS,copy);
++    }
++}
+diff --git a/src/test/java/com/wormzjl/icheme/client/gui/common/TextInputPriorityTest.java b/src/test/java/com/wormzjl/icheme/client/gui/common/TextInputPriorityTest.java
+new file mode 100644
+index 000000000..6d1d9a63a
+--- /dev/null
++++ b/src/test/java/com/wormzjl/icheme/client/gui/common/TextInputPriorityTest.java
+@@ -0,0 +1,26 @@
++package com.wormzjl.icheme.client.gui.common;
++
++import net.minecraft.client.gui.Font;
++import net.minecraft.client.gui.components.EditBox;
++import net.minecraft.client.gui.screens.Screen;
++import net.minecraft.network.chat.Component;
++import org.junit.jupiter.api.Test;
++import org.lwjgl.glfw.GLFW;
++import static org.junit.jupiter.api.Assertions.*;
++
++class TextInputPriorityTest {
++    private static final class Form extends Screen {Form(){super(Component.literal("Test form"));}}
++    @Test void focusedNativeEditBoxConsumesInventoryAndOtherPrintableKeyBindings(){
++        var screen=new Form();var edit=new EditBox(new Font(id->null,false),0,0,150,18,Component.literal("Input"));
++        screen.setFocused(edit);edit.setFocused(true);
++        assertTrue(ProcessUi.textKeyPressed(screen,GLFW.GLFW_KEY_E,0,0));
++        assertTrue(ProcessUi.textKeyPressed(screen,GLFW.GLFW_KEY_1,0,0));
++        assertTrue(ProcessUi.textKeyPressed(screen,GLFW.GLFW_KEY_ENTER,0,0));
++        assertFalse(ProcessUi.textKeyPressed(screen,GLFW.GLFW_KEY_ESCAPE,0,0));
++        assertFalse(ProcessUi.textKeyPressed(screen,GLFW.GLFW_KEY_TAB,0,0));
++        edit.setFocused(false);assertFalse(ProcessUi.textKeyPressed(screen,GLFW.GLFW_KEY_E,0,0));
++    }
++    @Test void noFocusedEditorLeavesTheNormalScreenBindingsAlone(){
++        assertFalse(ProcessUi.textKeyPressed(new Form(),GLFW.GLFW_KEY_E,0,0));
++    }
++}
+diff --git a/src/test/java/com/wormzjl/icheme/client/gui/screens/inventory/V3PumparoundDraftTest.java b/src/test/java/com/wormzjl/icheme/client/gui/screens/inventory/V3PumparoundDraftTest.java
+new file mode 100644
+index 000000000..e076081ea
+--- /dev/null
++++ b/src/test/java/com/wormzjl/icheme/client/gui/screens/inventory/V3PumparoundDraftTest.java
+@@ -0,0 +1,114 @@
++package com.wormzjl.icheme.client.gui.screens.inventory;
++
++import static org.junit.jupiter.api.Assertions.*;
++
++import com.wormzjl.icheme.science.column.v3.V3PumparoundSpec;
++import java.util.List;
++import org.junit.jupiter.api.Test;
++
++class V3PumparoundDraftTest {
++    @Test
++    void authoredCoolingIsNegatedIntoTheScienceDutyAndRoundTrips() {
++        assertEquals(-5.0e6, V3EditorDraft.PumparoundDraft.coolingMegawattsToDutyWatts(5.0));
++        assertEquals(5.0, V3EditorDraft.PumparoundDraft.dutyWattsToCoolingMegawatts(-5.0e6));
++        assertEquals(-1.0e6, V3EditorDraft.PumparoundDraft.coolingMegawattsToDutyWatts(1.0));
++        for (double megawatts : List.of(0.1, 0.5, 3.3, 5.0, 12.75, 250.0)) {
++            assertEquals(megawatts, V3EditorDraft.PumparoundDraft.dutyWattsToCoolingMegawatts(
++                    V3EditorDraft.PumparoundDraft.coolingMegawattsToDutyWatts(megawatts)), () -> "round trip " + megawatts);
++        }
++        // A server-authored heater is positive in the contract and therefore shows as negative cooling.
++        assertEquals(-2.0, V3EditorDraft.PumparoundDraft.dutyWattsToCoolingMegawatts(2.0e6));
++    }
++
++    @Test
++    void bothTraysBlankDisablesTheRowWithoutReadingTheDuty() {
++        assertEquals(List.of(), V3EditorDraft.PumparoundDraft.parse(List.of(
++                row("", "", "", V3PumparoundSpec.Split.UNIFORM),
++                row("  ", " ", "5", V3PumparoundSpec.Split.RETURN_TRAY)), 24));
++    }
++
++    @Test
++    void completeRowsBecomeSignedSpecificationsInRowOrder() {
++        List<V3PumparoundSpec> coolers = V3EditorDraft.PumparoundDraft.parse(List.of(
++                row("20", "16", "5.0", V3PumparoundSpec.Split.UNIFORM),
++                row("", "", "", V3PumparoundSpec.Split.UNIFORM),
++                row("12", "9", "2.5", V3PumparoundSpec.Split.RETURN_TRAY)), 24);
++        assertEquals(List.of(
++                new V3PumparoundSpec(16, 20, -5.0e6, V3PumparoundSpec.Split.UNIFORM),
++                new V3PumparoundSpec(9, 12, -2.5e6, V3PumparoundSpec.Split.RETURN_TRAY)), coolers);
++    }
++
++    @Test
++    void oneBlankTrayIsAnErrorRatherThanADisabledRow() {
++        assertEquals("Cooler 1 needs both a draw tray and a return tray", message(
++                row("20", "", "5", V3PumparoundSpec.Split.UNIFORM)));
++        assertEquals("Cooler 1 needs both a draw tray and a return tray", message(
++                row("", "16", "5", V3PumparoundSpec.Split.UNIFORM)));
++    }
++
++    @Test
++    void nonPositiveOrUnreadableCoolingIsRejectedWithTheFieldName() {
++        assertEquals("Cooler 1 needs a cooling duty in MW", message(
++                row("20", "16", "", V3PumparoundSpec.Split.UNIFORM)));
++        assertEquals("Cooler 1 cooling must be a number of MW", message(
++                row("20", "16", "warm", V3PumparoundSpec.Split.UNIFORM)));
++        for (String cooling : List.of("0", "-5", "NaN", "Infinity")) {
++            assertEquals("Cooler 1 cooling must be a positive number of MW", message(
++                    row("20", "16", cooling, V3PumparoundSpec.Split.UNIFORM)));
++        }
++    }
++
++    @Test
++    void traysMustBeWholeNumbersInsideTheColumnAndOrderedDrawBelowReturn() {
++        assertEquals("Cooler 1 draw tray must be a whole tray number", message(
++                row("20.5", "16", "5", V3PumparoundSpec.Split.UNIFORM)));
++        assertEquals("Cooler 1 must stay within trays 1..24", message(
++                row("25", "16", "5", V3PumparoundSpec.Split.UNIFORM)));
++        assertEquals("Cooler 1 must stay within trays 1..24", message(
++                row("20", "0", "5", V3PumparoundSpec.Split.UNIFORM)));
++        assertEquals("Cooler 1 must return above the tray it draws from", message(
++                row("12", "16", "5", V3PumparoundSpec.Split.UNIFORM)));
++    }
++
++    @Test
++    void repeatedTrayPairsAndOverlongRowListsAreRejected() {
++        assertEquals("Cooler 2 repeats an existing draw and return tray pair",
++                assertThrows(IllegalArgumentException.class, () -> V3EditorDraft.PumparoundDraft.parse(List.of(
++                        row("20", "16", "5", V3PumparoundSpec.Split.UNIFORM),
++                        row("20", "16", "3", V3PumparoundSpec.Split.RETURN_TRAY)), 24)).getMessage());
++        assertThrows(IllegalArgumentException.class, () -> V3EditorDraft.PumparoundDraft.parse(List.of(
++                row("20", "16", "5", V3PumparoundSpec.Split.UNIFORM),
++                row("19", "15", "5", V3PumparoundSpec.Split.UNIFORM),
++                row("18", "14", "5", V3PumparoundSpec.Split.UNIFORM),
++                row("17", "13", "5", V3PumparoundSpec.Split.UNIFORM),
++                row("16", "12", "5", V3PumparoundSpec.Split.UNIFORM)), 24));
++    }
++
++    @Test
++    void fourthCoolerIsRetainedIncludingItsSplitAndDuty() {
++        List<V3PumparoundSpec> coolers = V3EditorDraft.PumparoundDraft.parse(List.of(
++                row("20", "16", "5", V3PumparoundSpec.Split.UNIFORM),
++                row("19", "15", "4", V3PumparoundSpec.Split.UNIFORM),
++                row("18", "14", "3", V3PumparoundSpec.Split.UNIFORM),
++                row("17", "13", "2", V3PumparoundSpec.Split.RETURN_TRAY)), 24);
++        assertEquals(4, coolers.size());
++        assertEquals(new V3PumparoundSpec(13, 17, -2.0e6, V3PumparoundSpec.Split.RETURN_TRAY),
++                coolers.get(3));
++    }
++
++    @Test
++    void aSingleTrayZoneIsAllowedForBothSplits() {
++        assertEquals(List.of(new V3PumparoundSpec(16, 16, -1.0e6, V3PumparoundSpec.Split.RETURN_TRAY)),
++                V3EditorDraft.PumparoundDraft.parse(List.of(row("16", "16", "1", V3PumparoundSpec.Split.RETURN_TRAY)), 24));
++    }
++
++    private static String message(V3EditorDraft.PumparoundDraft.Row row) {
++        return assertThrows(IllegalArgumentException.class, () -> V3EditorDraft.PumparoundDraft.parse(List.of(row), 24))
++                .getMessage();
++    }
++
++    private static V3EditorDraft.PumparoundDraft.Row row(
++            String drawTray, String returnTray, String cooling, V3PumparoundSpec.Split split) {
++        return new V3EditorDraft.PumparoundDraft.Row(drawTray, returnTray, cooling, split);
++    }
++}
+diff --git a/src/test/java/com/wormzjl/icheme/fluid/benchmark/FluidNetworkBenchmarkTest.java b/src/test/java/com/wormzjl/icheme/fluid/benchmark/FluidNetworkBenchmarkTest.java
+new file mode 100644
+index 000000000..2341099ac
+--- /dev/null
++++ b/src/test/java/com/wormzjl/icheme/fluid/benchmark/FluidNetworkBenchmarkTest.java
+@@ -0,0 +1,54 @@
++package com.wormzjl.icheme.fluid.benchmark;
++
++import com.wormzjl.icheme.science.math.DeterministicMath;
++
++import com.google.gson.GsonBuilder;
++import com.wormzjl.icheme.science.fluid.network.*;
++import com.wormzjl.icheme.science.fluid.solver.PhaseLayout;
++import com.wormzjl.icheme.science.fluid.thermo.FluidThermodynamics;
++import com.wormzjl.icheme.science.column.v3.thermo.V3PengRobinsonThermo;
++import com.wormzjl.icheme.science.material.MaterialCatalog;
++import java.nio.file.*;
++import java.util.*;
++import org.junit.jupiter.api.Test;
++import static org.junit.jupiter.api.Assertions.*;
++
++/** Unpaced numerical scaling screening. M9 requires separate paced server replicates and soak. */
++class FluidNetworkBenchmarkTest {
++    @Test void screenWetCrudeChainsWithTheConfiguredComponents() throws Exception {
++        var model=com.wormzjl.icheme.fluid.support.FluidTestSupport.networkModel();
++        var composition=new double[model.componentCount()];
++        var crude=V3PengRobinsonThermo.fromRegisteredPackage("icheme:tjl20_methane");
++        var feed=crude.crudeFeed("icheme:tia_juana_light_methane").moleFractions();
++        for(int c=0;c<feed.length;c++)composition[model.components().indexOf(crude.componentBasis().componentId(c))]=feed[c];
++        composition[model.components().indexOf("Nitrogen")]=.1;composition[model.components().indexOf("Water")]=.2;
++        var rows=new ArrayList<Map<String,Object>>();var failures=new ArrayList<String>();
++        Files.createDirectories(Path.of("build/reports/fluid"));
++        for(int count:new int[]{2,10,100}) {
++            var nodes=new ArrayList<PassiveNetwork.Reservoir>();var pipes=new ArrayList<PassiveNetwork.Pipe>();
++            for(int i=0;i<count;i++) {
++                double pressure=150000+1000*DeterministicMath.cos(i*.7);var n=composition.clone();var unit=model.flashTP(350,pressure,n,()->{});
++                for(int c=0;c<n.length;c++)n[c]/=unit.volume();var state=model.flashTP(350,pressure,n,()->{});
++                nodes.add(new PassiveNetwork.Reservoir(i+1,0,state,PassiveNetwork.NodeKind.RESERVOIR,new PassiveNetwork.Inventory(1,n,state.internalEnergy())));
++                if(i>0)pipes.add(new PassiveNetwork.Pipe(i,i-1,i,new PipeResistance.Geometry(100,.05,.000045,0)));
++            }
++            var graph=new PassiveNetwork(nodes,pipes);var row=new LinkedHashMap<String,Object>();rows.add(row);
++            row.put("reservoirs",count);row.put("compiledEdges",pipes.size());row.put("components",model.componentCount());row.put("equations",nodes.stream().mapToInt(node->new PhaseLayout(model,node.state()).size()).sum()+pipes.size());
++            row.put("profile","Unpaced 5 simulated seconds; wet TJL20 + nitrogen; 350 K; P=150000+1000*cos(0.7*i) Pa; 100 m pipe runs");
++            long start=System.nanoTime();
++            try {
++                var result=new PassiveIntervalSolver(model).solve(graph,5,PassiveIntervalSolver.Settings.defaults(),()->{});
++                row.put("status","CONVERGED");row.put("acceptedSubsteps",result.acceptedSubsteps());row.put("rejectedSubsteps",result.rejectedSubsteps());
++                row.put("rejectionReasons",result.rejectionReasons());row.put("integrator","backward Euler under the state-change controller (vessel pressure and mass change at most 5 % per step)");
++                row.put("firstCallMilliseconds",(System.nanoTime()-start)/1e6);
++                var repeated=new ArrayList<Double>();
++                for(int repeat=0;repeat<2;repeat++){long measured=System.nanoTime();new PassiveIntervalSolver(model).solve(graph,5,PassiveIntervalSolver.Settings.defaults(),()->{});repeated.add((System.nanoTime()-measured)/1e6);}
++                row.put("warmRepeatedMilliseconds",repeated);
++            }catch(RuntimeException failure){row.put("status","FAILED");row.put("failure",failure.toString());failures.add(count+": "+failure);}
++            row.put("wallMilliseconds",(System.nanoTime()-start)/1e6);row.put("propertyRevision",model.hydrocarbon.revision());
++            Files.writeString(Path.of("build/reports/fluid/M2-network-scaling-screening.json"),new GsonBuilder().setPrettyPrinting().create().toJson(rows));
++            System.out.println("Fluid scaling screening "+row);
++        }
++        assertTrue(failures.isEmpty(),String.join("\n",failures));
++    }
++}
+diff --git a/src/test/java/com/wormzjl/icheme/fluid/benchmark/FluidPropertyBenchmarkTest.java b/src/test/java/com/wormzjl/icheme/fluid/benchmark/FluidPropertyBenchmarkTest.java
+new file mode 100644
+index 000000000..c0ac4bb13
+--- /dev/null
++++ b/src/test/java/com/wormzjl/icheme/fluid/benchmark/FluidPropertyBenchmarkTest.java
+@@ -0,0 +1,49 @@
++package com.wormzjl.icheme.fluid.benchmark;
++
++import com.google.gson.GsonBuilder;
++import com.wormzjl.icheme.science.fluid.thermo.FluidThermodynamics;
++import com.wormzjl.icheme.science.material.MaterialCatalog;
++import com.wormzjl.icheme.science.column.v3.thermo.V3PengRobinsonThermo;
++import java.nio.file.*;
++import java.util.*;
++import org.junit.jupiter.api.Test;
++import static org.junit.jupiter.api.Assertions.*;
++
++/** Standalone property microbenchmark. It makes no server-tick or network-latency claim. */
++class FluidPropertyBenchmarkTest {
++    private static volatile double consumed;
++    @Test void measureDirectStateAndStandaloneTpInitializationSeparately() throws Exception {
++        String id="icheme:tjl20_methane";var model=com.wormzjl.icheme.fluid.support.FluidTestSupport.model(MaterialCatalog.bundled(),id);
++        var n=Arrays.copyOf(V3PengRobinsonThermo.fromRegisteredPackage(id).crudeFeed("icheme:tia_juana_light_methane").moleFractions(),21);n[20]=.2;
++        var seed=model.flashTP(350,101325,n,()->{});
++        var output=new LinkedHashMap<String,Object>();output.put("java",System.getProperty("java.version"));
++        output.put("propertyRevision",model.hydrocarbon.revision());output.put("viscosityRevision",model.viscosity.revision());
++        output.put("fixture","TJL20 + 0.2 mol water per mol hydrocarbon; 350 K; 101325 Pa");
++        output.put("directPhaseState",measure(()->model.state(seed.temperature(),seed.pressure(),seed.liquid(),seed.vapor(),seed.waterLiquid(),seed.waterVapor(),seed.hydrocarbonPartialPressure()).internalEnergy(),2000));
++        // What a residual evaluation pays per node once the temperature-only properties are prepared:
++        // the mixing terms, the reference-pressure Region 1 water state, saturation and vapor enthalpy.
++        var prepared=model.prepare(seed.temperature());
++        output.put("directPhaseStateWithPreparedTemperature",measure(()->model.state(seed.temperature(),seed.pressure(),seed.liquid(),seed.vapor(),seed.waterLiquid(),seed.waterVapor(),seed.hydrocarbonPartialPressure(),prepared).internalEnergy(),2000));
++        output.put("prepareTemperature",measure(()->model.prepare(seed.temperature()).temperature(),2000));
++        output.put("waterLiquid",measure(()->model.waterLiquid(seed.temperature(),seed.pressure()).molarVolume(),2000));
++        output.put("waterLiquidWithPreparedTemperature",measure(()->model.waterLiquid(seed.temperature(),seed.pressure(),prepared).molarVolume(),2000));
++        output.put("saturationPressure",measure(()->model.saturationPressure(seed.temperature()),2000));
++        // The transport term the decode builds on top of state(), with and without its prepared terms.
++        var scratch=new com.wormzjl.icheme.science.fluid.transport.MixtureViscosity.Workspace();
++        var transport=prepared.viscosities();
++        output.put("viscosityLiquid",measure(()->model.viscosity.liquid(seed.temperature(),seed.liquidView()).pascalSeconds(),2000));
++        output.put("viscosityLiquidPrepared",measure(()->model.viscosity.liquid(seed.temperature(),seed.liquidView(),transport).pascalSeconds(),2000));
++        output.put("viscosityVapor",measure(()->model.viscosity.vapor(seed.temperature(),seed.vaporView(),seed.waterVapor()),2000));
++        output.put("viscosityVaporPrepared",measure(()->model.viscosity.vapor(seed.temperature(),seed.vaporView(),seed.waterVapor(),scratch,transport),2000));
++        output.put("standaloneTpInitializer",measure(()->model.flashTP(350,101325,n,()->{}).internalEnergy(),200));
++        output.put("limitations","Microbenchmark only; measures direct state and TP initialization, not the UV inventory recovery or coupled network solve. No nested initializer permitted in network residuals.");
++        Files.createDirectories(Path.of("build/reports/fluid"));Files.writeString(Path.of("build/reports/fluid/M1-property-cost.json"),new GsonBuilder().setPrettyPrinting().create().toJson(output));
++        assertTrue(Double.isFinite(consumed));
++    }
++    private static Map<String,Object> measure(java.util.function.DoubleSupplier action,int count) {
++        for(int i=0;i<count;i++)consumed=action.getAsDouble();
++        long[] times=new long[count];
++        for(int i=0;i<count;i++){long start=System.nanoTime();consumed=action.getAsDouble();times[i]=System.nanoTime()-start;}
++        Arrays.sort(times);return Map.of("warmupCalls",count,"samples",count,"medianNanoseconds",times[count/2],"p95Nanoseconds",times[(int)(count*.95)],"maxNanoseconds",times[count-1]);
++    }
++}
+diff --git a/src/test/java/com/wormzjl/icheme/fluid/benchmark/SolverRegressionHarness.java b/src/test/java/com/wormzjl/icheme/fluid/benchmark/SolverRegressionHarness.java
+index 59994213d..19f85dd69 100644
+--- a/src/test/java/com/wormzjl/icheme/fluid/benchmark/SolverRegressionHarness.java
++++ b/src/test/java/com/wormzjl/icheme/fluid/benchmark/SolverRegressionHarness.java
+@@ -83,7 +83,7 @@ final class SolverRegressionHarness {
+     }
+ 
+     /**
+-     * The 100-reservoir cosine-pressure chain of FluidNetworkBenchmarkTest (archived 2026-10-21 to tools/test-archive-2026-10-21/), on the
++     * The 100-reservoir cosine-pressure chain of {@link FluidNetworkBenchmarkTest}, on the
+      * configured network basis: the Tia Juana Light + methane assay placed by component name into
+      * the model's basis, with 0.1 mole nitrogen and 0.2 mole water added. Nothing here depends on
+      * the basis size, so a package that gains or loses a component moves the reference states,
+diff --git a/src/test/java/com/wormzjl/icheme/fluid/support/LegacyLiquidPath.java b/src/test/java/com/wormzjl/icheme/fluid/support/LegacyLiquidPath.java
+new file mode 100644
+index 000000000..ad5abc05e
+--- /dev/null
++++ b/src/test/java/com/wormzjl/icheme/fluid/support/LegacyLiquidPath.java
+@@ -0,0 +1,80 @@
++package com.wormzjl.icheme.fluid.support;
++
++import com.wormzjl.icheme.science.fluid.thermo.TranslatedPengRobinson;
++import com.wormzjl.icheme.science.material.MaterialCatalog;
++import com.wormzjl.icheme.science.thermo.PengRobinson78;
++import com.wormzjl.icheme.science.thermo.PengRobinsonKernel.Root;
++import com.wormzjl.icheme.science.thermo.ThermoComponent;
++import java.util.List;
++
++/**
++ * The retired reference-pressure liquid path (before P3 WP4), rebuilt from the same catalog for the continuity and
++ * deviation checks only: the translated PR78 liquid at 2 MPa, anchored through {@code exp(k (P_anchor - 2 MPa))},
++ * carried to the state pressure by one global compressibility {@code k} ({@code v = v_ref exp(-k (P - Pref))}, the
++ * enthalpy and {@code ln phi} by the matching integrals). The arithmetic is the deleted {@code GlobalLiquidResponse}'s
++ * and {@code HydrocarbonModel}'s, line for line. It also exposes both formulations' translations, so a first-order
++ * estimate can separate the pressure term from the anchor term.
++ */
++public final class LegacyLiquidPath {
++    public static final double REFERENCE_PRESSURE=2e6,COMPRESSIBILITY=1e-9;
++    private static final double R=8.31446261815324;
++    private final TranslatedPengRobinson legacy;
++    private final double[] legacyShifts,directShifts;
++    private final double k;
++
++    public LegacyLiquidPath(MaterialCatalog catalog,String packageId){this(catalog,packageId,COMPRESSIBILITY);}
++    public LegacyLiquidPath(MaterialCatalog catalog,String packageId,double compressibility) {
++        k=compressibility;
++        var propertyPackage=catalog.requirePackage(packageId);
++        List<ThermoComponent> components=propertyPackage.properties().stream().map(p->new ThermoComponent(
++                p.component(),p.pr().criticalTemperature(),p.pr().criticalPressure(),p.pr().acentricFactor(),p.molecularWeight())).toList();
++        int count=components.size();
++        double[][] interactions=new double[count][count],cp=new double[count][6];
++        for(int i=0;i<count;i++) {
++            for(int j=0;j<count;j++)interactions[i][j]=propertyPackage.interactions().get(i).get(j);
++            var property=propertyPackage.properties().get(i);
++            for(int j=0;j<6;j++)cp[i][j]=property.cp().get(j);
++        }
++        var raw=new PengRobinson78(components,interactions);
++        var calibrations=catalog.fluidData().volumeReferences();
++        legacyShifts=new double[count];directShifts=new double[count];
++        for(int i=0;i<count;i++) {
++            var property=propertyPackage.properties().get(i);
++            var point=calibrations.get(property.component());
++            double t=point==null?property.standardTemperature():point.temperatureKelvin();
++            double target=point==null?property.molecularWeight()/property.density():point.molarVolumeCubicMetres();
++            double anchorP=point==null?property.standardPressure():point.pressurePascal();
++            double[] pure=new double[count];pure[i]=1;
++            double atReference=raw.evaluate(t,REFERENCE_PRESSURE,pure,Root.LIQUID).compressibilityFactor()*PengRobinson78.GAS_CONSTANT*t/REFERENCE_PRESSURE;
++            double atAnchor=raw.evaluate(t,anchorP,pure,Root.LIQUID).compressibilityFactor()*PengRobinson78.GAS_CONSTANT*t/anchorP;
++            legacyShifts[i]=target*Math.exp(k*(anchorP-REFERENCE_PRESSURE))-atReference;
++            directShifts[i]=target-atAnchor;
++        }
++        legacy=new TranslatedPengRobinson(components,interactions,cp,legacyShifts);
++    }
++
++    /** {@code c_i} of the retired path, m3/mol. */
++    public double legacyShift(int component){return legacyShifts[component];}
++    /** {@code c_i} of the direct path (the anchor at its own pressure), m3/mol, as {@code HydrocarbonModel} computes it. */
++    public double directShift(int component){return directShifts[component];}
++    public double compressibility(){return k;}
++
++    /** The retired liquid at (T, P): volume, enthalpy, {@code dv/dP}, {@code dh/dP}, {@code ln phi_i} and partial molar volumes. */
++    public record Liquid(double molarVolume,double molarEnthalpy,double volumePressureDerivative,double enthalpyPressureDerivative,
++                         double[] logFugacity,double[] partialMolarVolumes) {}
++
++    public Liquid liquid(double temperature,double pressure,double[] amounts) {
++        var reference=legacy.evaluate(temperature,REFERENCE_PRESSURE,amounts,Root.LIQUID,legacy.prepare(temperature));
++        double exponent=-k*(pressure-REFERENCE_PRESSURE);
++        if(Math.abs(exponent)>1)throw new IllegalArgumentException("Liquid compression approximation outside domain");
++        double factor=Math.exp(exponent),integral=-Math.expm1(exponent)/k;
++        double v=reference.molarVolume()*factor,vt=reference.volumeTemperatureDerivative()*factor;
++        double h=reference.molarEnthalpy()+(reference.molarVolume()-temperature*reference.volumeTemperatureDerivative())*integral;
++        double[] phi=reference.logFugacityCoefficients(),partial=reference.partialMolarVolumes();
++        for(int i=0;i<phi.length;i++) {
++            phi[i]+=Math.log(REFERENCE_PRESSURE/pressure)+partial[i]*integral/(R*temperature);
++            partial[i]*=factor;
++        }
++        return new Liquid(v,h,-k*v,v-temperature*vt,phi,partial);
++    }
++}
+diff --git a/src/test/java/com/wormzjl/icheme/runtime/fluid/PhysicalRegistryTest.java b/src/test/java/com/wormzjl/icheme/runtime/fluid/PhysicalRegistryTest.java
+index c35740ba1..b9d2756f9 100644
+--- a/src/test/java/com/wormzjl/icheme/runtime/fluid/PhysicalRegistryTest.java
++++ b/src/test/java/com/wormzjl/icheme/runtime/fluid/PhysicalRegistryTest.java
+@@ -353,16 +353,21 @@ class PhysicalRegistryTest {
+      * registry: 1.6, 5.2 and 19.3 ms (FLUID_PLACEMENT_REVIEW.md section 1). Counted, it compiles six devices at every size.
+      */
+     @Test void placementCostIsFlatInWorldSize() {
+-        var w=new World(0);int lines=0;
++        var w=new World(0);var medians=new LinkedHashMap<Integer,Double>();int lines=0;
+         FluidRuntimeDiagnostics.ENABLED=true;
+         for(int size:new int[]{500,2_000,5_000}) {
+             for(;lines*5<size;lines++){w.queueLine(lines);if(w.registry.unapplied()>=FluidWorldAuthority.APPLY_BATCH)w.apply();}w.apply();
+             assertEquals(size,w.ledger.active().size());
+-            for(int i=0;i<80;i++) {
+-                FluidRuntimeDiagnostics.reset();long pipe=w.place(17,15,Kind.PIPE);
++            double[] millis=new double[60];
++            for(int i=-20;i<millis.length;i++) {
++                FluidRuntimeDiagnostics.reset();long started=System.nanoTime();long pipe=w.place(17,15,Kind.PIPE);long took=System.nanoTime()-started;
+                 assertEquals(6,w.counter("compiledDevices"),"one placement compiles its own island at "+size+" devices");
+-                w.remove(pipe);
++                w.remove(pipe);if(i>=0)millis[i]=took/1e6;
+             }
++            Arrays.sort(millis);medians.put(size,millis[millis.length/2]);
+         }
++        System.out.println("one placement, median ms by world size: "+medians);
++        assertTrue(medians.get(5_000)<=4*medians.get(500)+.05,"one placement costs the same in any world: "+medians);
++        assertTrue(medians.get(5_000)<1,"and under a millisecond: "+medians);
+     }
+ }
+diff --git a/src/test/java/com/wormzjl/icheme/science/column/v3/V3FlashTruncationColumnTest.java b/src/test/java/com/wormzjl/icheme/science/column/v3/V3FlashTruncationColumnTest.java
+index 1c72a4c4f..c6d1b83ca 100644
+--- a/src/test/java/com/wormzjl/icheme/science/column/v3/V3FlashTruncationColumnTest.java
++++ b/src/test/java/com/wormzjl/icheme/science/column/v3/V3FlashTruncationColumnTest.java
+@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
+ 
+ import com.wormzjl.icheme.science.column.v3.thermo.V3CrudeFeed;
+ import com.wormzjl.icheme.science.column.v3.thermo.V3PengRobinsonThermo;
++import com.wormzjl.icheme.science.thermo.TraceTruncationPolicy;
+ import java.util.List;
+ import java.util.concurrent.CancellationException;
+ import org.junit.jupiter.api.Test;
+@@ -46,4 +47,34 @@ class V3FlashTruncationColumnTest {
+                 thermo.datasetRevision(), V3ColumnCalculator.ASSUMPTIONS_REVISION, 1.0e-6), success.result().inputDigest());
+         assertArrayEquals(flows, input.feedComponentMolarFlowsMolPerSecond(), 0.0);
+     }
++
++    @Test
++    void zeroCutoffKeepsTheLegacyCallResultsAndHasNoFlashTraceEvents() {
++        V3ColumnInput input = binaryInput();
++        V3ColumnOutcome.Success strict = assertInstanceOf(V3ColumnOutcome.Success.class, V3TestInputs.calculate(input));
++        V3ColumnOutcome.Success zero = assertInstanceOf(V3ColumnOutcome.Success.class,
++                V3ColumnCalculator.calculate(input, V3SolveControl.UNBOUNDED, 0.0, 0.0, V3ColumnCalculator.DEFAULT_LIQUID_SUPPLY_SCREEN_RATIO));
++        assertEquals(strict.result().inputDigest(), zero.result().inputDigest());
++        assertEquals(strict.result().streams(), zero.result().streams());
++        assertEquals(strict.diagnostics(), zero.diagnostics());
++        assertEquals("v3-dry-mesh-r23", zero.result().formulationRevision());
++        assertTrue(zero.diagnostics().events().stream().noneMatch(event -> event.startsWith("flash-trace ")));
++    }
++
++    @Test
++    void stageSupportAndFlashPolicyShareExactlyTheSameCutoffDomain() {
++        assertEquals(TraceTruncationPolicy.MAX_CUTOFF_MOLE_FRACTION, V3TruncationSupport.MAX_CUTOFF_MOLE_FRACTION);
++        for (double cutoff : new double[] {0.0, -0.0, 1.0e-6, TraceTruncationPolicy.MAX_CUTOFF_MOLE_FRACTION}) {
++            assertDoesNotThrow(() -> V3TruncationSupport.requireCutoff(cutoff));
++            assertDoesNotThrow(() -> TraceTruncationPolicy.requireCutoff(cutoff));
++        }
++        for (double cutoff : new double[] {-1.0e-6, 0.010001, Double.NaN, Double.POSITIVE_INFINITY}) {
++            assertThrows(IllegalArgumentException.class, () -> V3TruncationSupport.requireCutoff(cutoff));
++            assertThrows(IllegalArgumentException.class, () -> TraceTruncationPolicy.requireCutoff(cutoff));
++        }
++    }
++
++    private static V3ColumnInput binaryInput() {
++        return V3TestInputs.cdu17Binary("test:registered-pr-binary");
++    }
+ }
+diff --git a/src/test/java/com/wormzjl/icheme/science/fluid/network/SolidChainTransportTest.java b/src/test/java/com/wormzjl/icheme/science/fluid/network/SolidChainTransportTest.java
+index eed134112..16be53306 100644
+--- a/src/test/java/com/wormzjl/icheme/science/fluid/network/SolidChainTransportTest.java
++++ b/src/test/java/com/wormzjl/icheme/science/fluid/network/SolidChainTransportTest.java
+@@ -1,6 +1,7 @@
+ package com.wormzjl.icheme.science.fluid.network;
+ 
+ import com.wormzjl.icheme.fluid.support.FluidTestSupport;
++import com.wormzjl.icheme.science.fluid.diagnostics.SolverDiagnostics;
+ import com.wormzjl.icheme.science.fluid.state.*;
+ import com.wormzjl.icheme.science.fluid.thermo.FluidThermodynamics;
+ import java.util.*;
+@@ -15,9 +16,14 @@ import static org.junit.jupiter.api.Assertions.*;
+  * treated them as live boundaries and bounded the Newton step at 1e-12 to 1e-18, where the
+  * candidate point is bitwise the current one and no backtrack can change the residual. This
+  * fixture is the regression for that: the chain has to integrate without a single line-search
+- * stall, with its solids closed.
++ * stall, and the clear-fluid chain beside it has to be untouched.
+  */
+ class SolidChainTransportTest {
++    // Measured under the backward-Euler controller (WP1); see clearChainSubstepCountsAreUnchanged. Re-recorded in the D36/D38
++    // re-baseline (claude/integration-1, A222): the clear chain reaches the gauge (D42) after two steps (was 3/1, 5/1, 4/0).
++    private static final int HALF_ACCEPTED=2,HALF_REJECTED=1,FULL_ACCEPTED=2,FULL_REJECTED=1,TWO_ACCEPTED=2,TWO_REJECTED=0;
++    /** The solid closure pass solves the port graph once at each interval start (measured: 1 per interval). */
++    private static final int RATE_SOLVES_PER_INTERVAL=2;
+     private final FluidThermodynamics model=FluidTestSupport.networkModel();
+ 
+     private FluidThermodynamics.State water(double pressure) {
+@@ -70,4 +76,77 @@ class SolidChainTransportTest {
+         System.out.printf(Locale.ROOT,"solid chain: 10 nodes 5 s ms=%d accepted=%d rejected=%d reasons=%s%n",
+                 ms,result.acceptedSubsteps(),result.rejectedSubsteps(),result.rejectionReasons());
+     }
++
++    @Test void thirtyReservoirChainIntegratesOneIntervalWithinItsBudget() {
++        var graph=chain(30,true);
++        var solver=new PassiveIntervalSolver(model);
++        solver.solve(chain(30,true),0.05,PassiveIntervalSolver.Settings.defaults(),()->{}); // warm the JIT
++        long start=System.nanoTime();
++        var result=solver.solve(graph,5,PassiveIntervalSolver.Settings.defaults(),()->{});
++        long ms=(System.nanoTime()-start)/1_000_000;
++
++        assertEquals(0,reasons(result,"line search stalled"),result.rejectionReasons().toString());
++        assertTrue(result.acceptedSubsteps()<=50,"accepted="+result.acceptedSubsteps()); // measured 31
++        assertTrue(result.rejectedSubsteps()<=16,"rejected="+result.rejectedSubsteps()); // measured 10
++        assertSolidMassClosed(result,100);
++        assertTrue(ms<=1500,"Thirty reservoirs took "+ms+" ms");
++        System.out.printf(Locale.ROOT,"solid chain: 30 nodes 5 s ms=%d accepted=%d rejected=%d%n",
++                ms,result.acceptedSubsteps(),result.rejectedSubsteps());
++    }
++
++    @Test void clearChainSubstepCountsAreUnchanged() {
++        // Recorded under the backward-Euler controller (WP1 of the mixed-gas junction batch; the TR-BDF2 counts of
++        // 440a754 were 25/10, 32/14 and 18/5). The nonnegativity floor is zero for every fluid amount and the decode
++        // projection exists only where there are solid moments, so a clear island must take the same steps it always
++        // took, not merely a similar number.
++        var graph=chain(10,false);
++        var half=new PassiveIntervalSolver(model).solve(graph,0.5,PassiveIntervalSolver.Settings.defaults(),()->{});
++        var full=new PassiveIntervalSolver(model).solve(graph,5,PassiveIntervalSolver.Settings.defaults(),()->{});
++        var two=new PassiveIntervalSolver(model).solve(chain(2,false),5,PassiveIntervalSolver.Settings.defaults(),()->{});
++        assertEquals(HALF_ACCEPTED,half.acceptedSubsteps());
++        assertEquals(HALF_REJECTED,half.rejectedSubsteps());
++        assertEquals(FULL_ACCEPTED,full.acceptedSubsteps());
++        assertEquals(FULL_REJECTED,full.rejectedSubsteps());
++        assertEquals(TWO_ACCEPTED,two.acceptedSubsteps());
++        assertEquals(TWO_REJECTED,two.rejectedSubsteps());
++    }
++
++    @Test void filterIslandReusesItsSolverWorkspacesAcrossIntervals() {
++        // PassiveNetwork.Pipe is a record whose equality used to include the mutable cake, and
++        // every step rebuilds the pipe list with the cake it left, so every workspace key, structure
++        // key and warm-flow comparison missed on every step of a filter island.
++        var slurry=water(400000).withSolids(new SolidInventory(List.of(new SolidInventory.Population(
++                model.solids.require("icheme:demo_particle"),ParticleSize.micrometres("100"),100))));
++        var graph=new PassiveNetwork(List.of(
++                new PassiveNetwork.Reservoir(1,0,slurry,PassiveNetwork.NodeKind.GENERATOR),
++                new PassiveNetwork.Reservoir(2,0,water(150000),PassiveNetwork.NodeKind.VOID)),List.of(
++                new PassiveNetwork.Pipe(3,0,1,List.of(new PipeResistance.Geometry(1,.05,.000045,0)),
++                        new FlowControl.Passive(),0,new InlineFilter(10,1e6,SolidInventory.EMPTY,0))));
++        var solver=new PassiveIntervalSolver(model);
++        boolean enabled=SolverDiagnostics.ENABLED;
++        try {
++            var first=solver.solve(graph,5,PassiveIntervalSolver.Settings.defaults(),()->{});
++            SolverDiagnostics.reset();SolverDiagnostics.ENABLED=true;
++            var running=first.graph();
++            for(int interval=1;interval<20;interval++)running=solver.solve(running,5,PassiveIntervalSolver.Settings.defaults(),()->{}).graph();
++            var sample=SolverDiagnostics.sample();
++            long reuses=sample.value("workspaceReuses"),builds=sample.value("workspaceBuilds");
++            assertTrue(reuses>0,"A filter island never reused a solver workspace");
++            assertTrue(reuses>builds,"Workspace reuse must dominate after the first interval: "+reuses+" vs "+builds);
++            assertEquals(0,sample.value("solidMomentProjectionsAtAcceptedPoints"),
++                    "The decode projection must never be active at an accepted point");
++            // The block sweep covers solid and filter islands; a fallback here would mean every
++            // Jacobian of this island was paying a coloured whole-island residual per colour again.
++            assertTrue(sample.value("jacobianBlockBuilds")>0,"A filter island built no block Jacobian");
++            assertEquals(0,sample.value("jacobianBlockFallbacks"),"A filter island fell back to the coloured Jacobian sweep");
++            // Every step is one implicit solve (backward Euler): the solves beyond the attempted steps are the rate
++            // solves of the solid closure pass at each interval start and of the start-of-step guard, a few per interval.
++            long solves=sample.value("implicitSolves"),attempts=sample.value("stepAttempts"),acceptedSteps=sample.value("stepAttemptsAccepted");
++            assertTrue(solves<=attempts+RATE_SOLVES_PER_INTERVAL*19,"Implicit solves beyond one per step: "+solves+" for "+attempts+" attempted steps in 19 intervals");
++            assertFalse(running.pipes().getFirst().filter().captured().empty());
++            System.out.printf(Locale.ROOT,"solid chain: filter island reuses=%d builds=%d orderings=%d factorizations=%d jacobians=%d block=%d fallbacks=%d solves=%d/%d attempts%n",
++                    reuses,builds,sample.value("luOrderings"),sample.value("luFactorizations"),
++                    sample.value("jacobianBuilds"),sample.value("jacobianBlockBuilds"),sample.value("jacobianBlockFallbacks"),solves,attempts);
++        } finally {SolverDiagnostics.ENABLED=enabled;SolverDiagnostics.reset();}
++    }
+ }
+diff --git a/src/test/java/com/wormzjl/icheme/science/fluid/thermo/DirectLiquidContinuityTest.java b/src/test/java/com/wormzjl/icheme/science/fluid/thermo/DirectLiquidContinuityTest.java
+index f84e39349..15853bc63 100644
+--- a/src/test/java/com/wormzjl/icheme/science/fluid/thermo/DirectLiquidContinuityTest.java
++++ b/src/test/java/com/wormzjl/icheme/science/fluid/thermo/DirectLiquidContinuityTest.java
+@@ -4,6 +4,8 @@ import com.wormzjl.icheme.fluid.support.FluidTestSupport;
+ 
+ import static org.junit.jupiter.api.Assertions.*;
+ import com.google.gson.JsonParser;
++import com.wormzjl.icheme.fluid.support.LegacyLiquidPath;
++import com.wormzjl.icheme.science.column.v3.thermo.V3PengRobinsonThermo;
+ import com.wormzjl.icheme.science.fluid.network.InventoryEquilibrium;
+ import com.wormzjl.icheme.science.fluid.network.PassiveNetwork;
+ import com.wormzjl.icheme.science.fluid.solver.PhaseLayout;
+@@ -15,9 +17,9 @@ import org.junit.jupiter.api.Test;
+ 
+ /**
+  * Continuity of the direct liquid path (P3 WP4, plan section 2.6): from the qualified region below 2 MPa into the new
+- * one above it, nothing is special about 2 MPa any more: isotherms cross it on a liquid root and meet their
+- * targets, and a closed vessel of liquid nitrogen compressed through 2 MPa by the network's own UV solve follows the
+- * equation of state's adiabat.
++ * one above it, nothing is special about 2 MPa any more; below 2 MPa the direct liquid differs from the retired
++ * reference-pressure liquid only by what the old path approximated; and a closed vessel of liquid nitrogen compressed
++ * through 2 MPa by the network's own UV solve follows the equation of state's adiabat.
+  */
+ class DirectLiquidContinuityTest {
+     private static final String NETWORK="icheme:tjl20_methane_nitrogen";
+@@ -66,6 +68,102 @@ class DirectLiquidContinuityTest {
+         System.out.print(report);
+     }
+ 
++    /**
++     * Item 1, second half: second differences of v(P) and h(P) along each liquid isotherm vary smoothly through 2 MPa
++     * (no jump), for the hydrocarbon liquid and for liquid water.
++     */
++    @Test void secondDifferencesShowNoJumpAtTwoMegapascals() {
++        var hydrocarbon=model.hydrocarbon;var eos=hydrocarbon.translated();
++        double[] crude=crudeLiquid();
++        for(double t:new double[]{300,350,375}) {
++            var terms=eos.prepare(t);
++            smooth("crude liquid v at "+t+" K",p->eos.evaluate(t,p,crude,Root.LIQUID,terms).molarVolume());
++            smooth("crude liquid h at "+t+" K",p->eos.evaluate(t,p,crude,Root.LIQUID,terms).molarEnthalpy());
++            smooth("water v at "+t+" K",p->model.waterLiquid(t,p).molarVolume());
++            smooth("water h at "+t+" K",p->model.waterLiquid(t,p).molarEnthalpy());
++        }
++        int n2=hydrocarbon.components().indexOf("Nitrogen");double[] pure=new double[hydrocarbon.componentCount()];pure[n2]=1;
++        for(double t:new double[]{77,90,100}) {
++            var terms=eos.prepare(t);
++            smooth("N2 liquid v at "+t+" K",p->eos.evaluate(t,p,pure,Root.LIQUID,terms).molarVolume());
++            smooth("N2 liquid h at "+t+" K",p->eos.evaluate(t,p,pure,Root.LIQUID,terms).molarEnthalpy());
++        }
++    }
++    private static void smooth(String what,java.util.function.DoubleUnaryOperator f) {
++        double h=5e4;int n=20;double[] y=new double[2*n+1];
++        for(int j=-n;j<=n;j++)y[j+n]=f.applyAsDouble(2e6+j*h);
++        double[] second=new double[y.length-2];double largest=0;
++        for(int j=1;j<y.length-1;j++){second[j-1]=y[j+1]-2*y[j]+y[j-1];largest=Math.max(largest,Math.abs(second[j-1]));}
++        for(int j=1;j<second.length;j++)
++            assertTrue(Math.abs(second[j]-second[j-1])<=.02*largest,what+": second difference jumps at "+(2e6+(j-n)*h)+" Pa: "+second[j-1]+" -> "+second[j]);
++    }
++    private double[] crudeLiquid() {
++        var feed=V3PengRobinsonThermo.fromRegisteredPackage("icheme:tjl20_methane").crudeFeed("icheme:tia_juana_light_methane");
++        var basis=feed.moleFractions();double[] x=new double[model.hydrocarbon.componentCount()];
++        var crude=V3PengRobinsonThermo.fromRegisteredPackage("icheme:tjl20_methane");
++        // The heavy part of the assay: the cuts, a liquid at every state of the grid.
++        for(int c=0;c<basis.length;c++){String id=crude.componentBasis().componentId(c);if(id.startsWith("crude_"))x[model.hydrocarbon.components().indexOf(id)]=basis[c];}
++        return x;
++    }
++
++    /**
++     * Item 2: on the {@code FluidPropertyCoverageTest} grid (293.15-375 K x 50 kPa-2 MPa, the network package and the six
++     * presets), the direct liquid's volume, enthalpy and {@code ln phi} differ from the retired path's by at most the
++     * first-order bound: the anchor term (the change of the translations, {@code sum x_i dc_i} in volume, {@code P dc}
++     * in enthalpy and {@code P dc_i/RT} in {@code ln phi} at 2 MPa, where both paths evaluate the same cubic) plus
++     * {@code |P - 2 MPa|} times the largest difference of the pressure derivatives at the two ends
++     * ({@code v kappa_EOS - v k} for volume, {@code dh/dP} for enthalpy, {@code vbar_i/RT} for {@code ln phi}).
++     */
++    @Test void belowTwoMegapascalsTheLiquidMovesOnlyByTheFirstOrderCorrection() {
++        var summary=new StringBuilder();
++        for(String packageId:List.of(NETWORK,"icheme:tjl20_methane","icheme:wti_light_export_tjl20","icheme:cold_lake_blend_tjl20",
++                "icheme:upper_zakum_tjl20","icheme:bonga_tjl20","icheme:dalia_tjl20")) {
++            var direct=packageId.equals(NETWORK)?model:FluidTestSupport.model(catalog,packageId);
++            var legacy=new LegacyLiquidPath(catalog,packageId);var eos=direct.hydrocarbon.translated();
++            String assayPackage=packageId.equals(NETWORK)?"icheme:tjl20_methane":packageId;
++            var assay=V3PengRobinsonThermo.fromRegisteredPackage(assayPackage);
++            var feed=assay.crudeFeed(catalog.requirePackage(assayPackage).assays().keySet().iterator().next()).moleFractions();
++            double[] n=new double[direct.componentCount()];
++            for(int c=0;c<feed.length;c++)n[direct.components().indexOf(assay.componentBasis().componentId(c))]=feed[c];
++            if(packageId.equals(NETWORK))n[direct.components().indexOf("Nitrogen")]=.1;
++            n[n.length-1]=.2;
++            double worstVolume=0,worstEnthalpy=0,worstPhi=0,largestVolume=0;int states=0;
++            for(double t:new double[]{293.15,298.15,300,325,350,375})for(double p:new double[]{50000,101325,500000,1e6,2e6}) {
++                var state=direct.flashTP(t,p,n,()->{});if(state.liquidVolume()==0)continue;
++                double[] x=state.liquid();double total=0;for(double value:x)total+=value;for(int i=0;i<x.length;i++)x[i]/=total;
++                var terms=eos.prepare(t);
++                var now=eos.evaluateValues(t,p,x,Root.LIQUID,terms);
++                double v=now.molarVolume(),h=now.molarEnthalpy(),kv=-now.volumePressureDerivative(),dh=now.enthalpyPressureDerivative();
++                double[] phi=now.logFugacityCoefficientsView().clone(),vbar=now.partialMolarVolumesView().clone();
++                var high=eos.evaluateValues(t,2e6,x,Root.LIQUID,terms);
++                double kvHigh=-high.volumePressureDerivative(),dhHigh=high.enthalpyPressureDerivative();double[] vbarHigh=high.partialMolarVolumesView().clone();
++                var old=legacy.liquid(t,p,x);var oldHigh=legacy.liquid(t,2e6,x);
++                double shift=0;double[] dc=new double[x.length];
++                for(int i=0;i<x.length;i++){dc[i]=legacy.directShift(i)-legacy.legacyShift(i);shift+=x[i]*dc[i];}
++                double span=2e6-p,rt=FluidThermodynamics.R*t;
++                double volumeBound=span*Math.max(Math.abs(kv+old.volumePressureDerivative()),Math.abs(kvHigh+oldHigh.volumePressureDerivative()))*1.05+1e-12*v;
++                double volumeError=Math.abs(v-old.molarVolume()-shift);
++                assertTrue(volumeError<=volumeBound,packageId+" "+t+" K "+p+" Pa volume: "+volumeError+" > "+volumeBound);
++                double enthalpyBound=span*Math.max(Math.abs(dh-old.enthalpyPressureDerivative()),Math.abs(dhHigh-oldHigh.enthalpyPressureDerivative()))*1.05+1e-9*Math.abs(h)+1e-9;
++                double enthalpyError=Math.abs(h-old.molarEnthalpy()-2e6*shift);
++                assertTrue(enthalpyError<=enthalpyBound,packageId+" "+t+" K "+p+" Pa enthalpy: "+enthalpyError+" > "+enthalpyBound);
++                for(int i=0;i<x.length;i++) {
++                    if(x[i]<=0)continue;
++                    double bound=span*Math.max(Math.abs(vbar[i]-old.partialMolarVolumes()[i]),Math.abs(vbarHigh[i]-oldHigh.partialMolarVolumes()[i]))/rt*1.05+1e-10;
++                    double error=Math.abs(phi[i]-old.logFugacity()[i]-2e6*dc[i]/rt);
++                    assertTrue(error<=bound,packageId+" "+t+" K "+p+" Pa ln phi["+i+"]: "+error+" > "+bound);
++                    worstPhi=Math.max(worstPhi,Math.abs(phi[i]-old.logFugacity()[i]));
++                }
++                worstVolume=Math.max(worstVolume,Math.abs(v/old.molarVolume()-1));largestVolume=Math.max(largestVolume,volumeBound/v);
++                worstEnthalpy=Math.max(worstEnthalpy,Math.abs(h-old.molarEnthalpy()));states++;
++            }
++            summary.append(String.format(Locale.ROOT,"%s: %d liquid states, |dv/v| <= %.3e, |dh| <= %.2f J/mol, |d ln phi| <= %.3e%n",
++                    packageId,states,worstVolume,worstEnthalpy,worstPhi));
++            assertTrue(states>0,packageId);
++        }
++        System.out.print(summary);
++    }
++
+     /**
+      * Item 3: a closed 1 m3 vessel of liquid nitrogen at 90 K compressed reversibly from 0.5 to 8 MPa by the network's
+      * own UV solve ({@link InventoryEquilibrium}, the vessel's volume closure and energy rows), on a catalog whose
+diff --git a/src/test/java/com/wormzjl/icheme/science/fluid/thermo/TranslatedPengRobinsonPairInteractionsTest.java b/src/test/java/com/wormzjl/icheme/science/fluid/thermo/TranslatedPengRobinsonPairInteractionsTest.java
+new file mode 100644
+index 000000000..9e452632b
+--- /dev/null
++++ b/src/test/java/com/wormzjl/icheme/science/fluid/thermo/TranslatedPengRobinsonPairInteractionsTest.java
+@@ -0,0 +1,286 @@
++package com.wormzjl.icheme.science.fluid.thermo;
++
++import static org.junit.jupiter.api.Assertions.*;
++
++import com.google.gson.JsonObject;
++import com.wormzjl.icheme.science.material.MaterialCatalog;
++import com.wormzjl.icheme.science.material.PilotCryogenicTestCatalog;
++import com.wormzjl.icheme.science.thermo.PengRobinsonKernel.Root;
++import com.wormzjl.icheme.science.thermo.phase.CubicPhaseEvaluator;
++import com.wormzjl.icheme.science.thermo.phase.PhaseDerivatives;
++import com.wormzjl.icheme.science.thermo.phase.PhaseState;
++import java.util.ArrayList;
++import java.util.LinkedHashMap;
++import java.util.List;
++import java.util.Locale;
++import java.util.Map;
++import java.util.Random;
++import org.junit.jupiter.api.Test;
++
++/**
++ * {@link TranslatedPengRobinson} on a {@code PairInteractions} model, as the phase engine reaches it: the evaluator of a
++ * package with a reference spine ({@link CubicPhaseEvaluator#forPackage}) runs the residual-only model on the kernel's
++ * {@code TEMPERATURE_DEPENDENT_PAIRS}. The pilot package with constant pairs instead of its E-PPR78 rule is, through
++ * that path, the constant matrix's model ({@link CubicPhaseEvaluator#fromPackage}, {@code SPARSE_PAIRS}) bit for bit,
++ * values and every derivative block; on the E-PPR78 pilot every derivative block the evaluator forms matches central
++ * differences of its own values.
++ */
++class TranslatedPengRobinsonPairInteractionsTest {
++    private static final String PILOT = PilotCryogenicTestCatalog.PACKAGE_ID;
++    private static final String INTERACTIONS = "data/icheme/materials/interactions/pilot_cryogenic.json";
++    private static final double TEMPERATURE_STEP = 1.0e-3;
++    private static final double MOLE_STEP = 1.0e-6;
++    private static final double PRESSURE_FRACTION = 1.0e-4;
++    private static final double TOLERANCE = 1.0e-6;
++    /** The pilot's E-PPR78 k_ij at 300 K (appendix A of P3_PILOT_ENGINE_PLAN.md), as six constant pairs. */
++    private static final Object[][] CONSTANT_PAIRS = {
++            {"Methane", "Ethane", 0.0057}, {"Methane", "CarbonDioxide", 0.1104}, {"Nitrogen", "Methane", 0.0256},
++            {"Ethane", "CarbonDioxide", 0.1267}, {"Nitrogen", "Ethane", 0.0262}, {"CarbonDioxide", "Nitrogen", -0.0306}};
++
++    @Test void constantPairModelIsTheMatrixModelBitForBit() {
++        var catalog = PilotCryogenicTestCatalog.parseWith(INTERACTIONS, o -> {
++            o.remove("rule");
++            for (Object[] row : CONSTANT_PAIRS) {
++                var pair = new JsonObject();
++                pair.addProperty("first", (String) row[0]);
++                pair.addProperty("second", (String) row[1]);
++                pair.addProperty("kij", (Double) row[2]);
++                o.getAsJsonArray("pairs").add(pair);
++            }
++        });
++        var pkg = catalog.requirePackage(PILOT);
++        assertNull(pkg.groupContributions(), "the edited package has no rule");
++        var data = SpinePackageData.of(catalog, PILOT);
++        var model = CubicPhaseEvaluator.forPackage(catalog, PILOT);
++        var matrix = CubicPhaseEvaluator.fromPackage(pkg, pkg.components(), data.translations(), data.idealGas());
++        int n = pkg.components().size();
++        var random = new Random(20260924L);
++        var states = new ArrayList<State>();
++        for (double t : new double[] {95, 110, 130, 150, 190, 250, 300, 450, 900}) {
++            for (double p : new double[] {1e5, 1e6, 5e6}) {
++                double[] x = new double[n];
++                for (int i = 0; i < n; i++) x[i] = Math.pow(10.0, -2.0 * random.nextDouble());
++                states.add(new State(t, p, x));
++            }
++        }
++        states.add(new State(120, 2e6, new double[] {0.2, 0.8, 0, 0}));
++        states.add(new State(240, 5e6, new double[] {0, 0.6, 0, 0.4}));
++        var modelWorkspace = model.newWorkspace();
++        var matrixWorkspace = matrix.newWorkspace();
++        var modelDerivatives = model.newDerivatives();
++        var matrixDerivatives = matrix.newDerivatives();
++        int compared = 0;
++        for (State state : states) {
++            for (Root root : Root.values()) {
++                RuntimeException modelFailure = null;
++                RuntimeException matrixFailure = null;
++                try { model.derivatives(state.temperature, state.pressure, state.amounts, root, modelWorkspace, modelDerivatives); }
++                catch (RuntimeException failure) { modelFailure = failure; }
++                try { matrix.derivatives(state.temperature, state.pressure, state.amounts, root, matrixWorkspace, matrixDerivatives); }
++                catch (RuntimeException failure) { matrixFailure = failure; }
++                String at = state + " " + root;
++                assertEquals(matrixFailure == null, modelFailure == null, "same refusal at " + at);
++                if (matrixFailure != null) continue;
++                compared += same(matrixDerivatives.state(), modelDerivatives.state(), at);
++                compared += same(matrixDerivatives, modelDerivatives, n, at);
++                // The value path on its own, as a flash calls it.
++                compared += same(matrix.evaluate(state.temperature, state.pressure, state.amounts, root, matrixWorkspace, matrix.newState()),
++                        model.evaluate(state.temperature, state.pressure, state.amounts, root, modelWorkspace, model.newState()), at + " evaluate");
++            }
++        }
++        System.out.println("CubicPhaseEvaluator on constant pairs (TEMPERATURE_DEPENDENT_PAIRS) vs the matrix (SPARSE_PAIRS), pilot package: "
++                + compared + " doubles compared, all bit-identical");
++        assertTrue(compared > 2_000, "compared " + compared);
++    }
++
++    private static int same(PhaseState expected, PhaseState actual, String at) {
++        assertEquals(expected.kind(), actual.kind(), at);
++        assertEquals(expected.physicalRootCount(), actual.physicalRootCount(), at);
++        int n = expected.componentCount();
++        double[] e = {expected.molarVolume(), expected.molarEnthalpy(), expected.idealGasEnthalpy(), expected.residualEnthalpy(),
++                expected.molarEntropy(), expected.residualEntropy(), expected.molarGibbsEnergy(), expected.compressibilityFactor()};
++        double[] a = {actual.molarVolume(), actual.molarEnthalpy(), actual.idealGasEnthalpy(), actual.residualEnthalpy(),
++                actual.molarEntropy(), actual.residualEntropy(), actual.molarGibbsEnergy(), actual.compressibilityFactor()};
++        int compared = same(e, a, at + " scalars");
++        for (int i = 0; i < n; i++) compared += same(expected.logFugacityCoefficient(i), actual.logFugacityCoefficient(i), at + " ln phi " + i);
++        return compared;
++    }
++
++    private static int same(PhaseDerivatives expected, PhaseDerivatives actual, int n, String at) {
++        int compared = same(new double[] {expected.volumeTemperatureDerivative(), expected.volumePressureDerivative(),
++                        expected.enthalpyTemperatureDerivative(), expected.enthalpyPressureDerivative()},
++                new double[] {actual.volumeTemperatureDerivative(), actual.volumePressureDerivative(),
++                        actual.enthalpyTemperatureDerivative(), actual.enthalpyPressureDerivative()}, at + " volumetric and caloric");
++        compared += same(expected.logFugacityTemperatureDerivativeView(), actual.logFugacityTemperatureDerivativeView(), at + " d ln phi/dT");
++        compared += same(expected.logFugacityPressureDerivativeView(), actual.logFugacityPressureDerivativeView(), at + " d ln phi/dP");
++        for (int i = 0; i < n; i++) for (int j = 0; j < n; j++) {
++            compared += same(expected.logFugacityCompositionDerivative(i, j), actual.logFugacityCompositionDerivative(i, j), at + " dn " + i + "," + j);
++        }
++        return compared;
++    }
++
++    private static int same(double[] expected, double[] actual, String what) {
++        for (int i = 0; i < expected.length; i++) same(expected[i], actual[i], what + "[" + i + "]");
++        return expected.length;
++    }
++
++    private static int same(double expected, double actual, String what) {
++        assertEquals(Double.doubleToLongBits(expected), Double.doubleToLongBits(actual), () -> what + ": " + expected + " vs " + actual);
++        return 1;
++    }
++
++    // ---------------------------------------------------------------------------------------------------------------
++
++    /** The pilot states of the kernel test (seed 20260925): twelve four-component states and eight binaries. */
++    private static List<State> pilotStates() {
++        var states = new ArrayList<State>();
++        var random = new Random(20260925L);
++        for (double[] point : new double[][] {{95, 1e5}, {110, 5e5}, {130, 2e6}, {150, 1e6}, {170, 4e6}, {190, 2e6},
++                {220, 6e6}, {250, 1e6}, {300, 1e7}, {450, 2e6}, {900, 2e5}, {1150, 2e5}}) {
++            double[] x = new double[4];
++            for (int i = 0; i < 4; i++) x[i] = Math.pow(10.0, -2.0 * random.nextDouble());
++            states.add(new State(point[0], point[1], x));
++        }
++        states.add(new State(100, 3e5, new double[] {0.3, 0.7, 0, 0}));
++        states.add(new State(160, 3e6, new double[] {0.2, 0.8, 0, 0}));
++        states.add(new State(200, 2e6, new double[] {0, 0.5, 0.5, 0}));
++        states.add(new State(240, 5e6, new double[] {0, 0.6, 0, 0.4}));
++        states.add(new State(260, 3e6, new double[] {0, 0, 0.4, 0.6}));
++        states.add(new State(230, 8e6, new double[] {0.3, 0, 0, 0.7}));
++        states.add(new State(180, 1e6, new double[] {0.2, 0, 0.8, 0}));
++        states.add(new State(600, 5e6, new double[] {0, 0.5, 0.5, 0}));
++        return List.copyOf(states);
++    }
++
++    /**
++     * The E-PPR78 pilot through the engine's evaluator: {@code d ln phi_i/dT}, {@code c_p}, {@code dv/dT},
++     * {@code d ln phi_i/dP}, {@code dv/dP}, {@code dh/dP} and {@code d ln phi_i/dn_j} against central differences of the
++     * evaluator's values on the same root; 1e-6 of the largest magnitude each quantity reaches at the state.
++     */
++    @Test void groupModelDerivativesMatchCentralDifferences() {
++        var evaluator = CubicPhaseEvaluator.forPackage(MaterialCatalog.bundled(), PILOT);
++        assertTrue(MaterialCatalog.bundled().requirePackage(PILOT).groupContributions() != null, "the pilot pairs follow E-PPR78");
++        var workspace = evaluator.newWorkspace();
++        var output = evaluator.newDerivatives();
++        var worst = new LinkedHashMap<String, Worst>();
++        int compared = 0;
++        for (State state : pilotStates()) for (Root root : Root.values()) {
++            try {
++                evaluator.derivatives(state.temperature, state.pressure, state.amounts, root, workspace, output);
++            } catch (RuntimeException unavailable) { continue; }
++            compared++;
++            int count = state.amounts.length;
++            String at = state + " " + root;
++            PhaseState phase = output.state().copy();
++
++            if (state.keepsRoot(evaluator, root, TEMPERATURE_STEP, 0, 0)) {
++                var higher = state.at(evaluator, root, TEMPERATURE_STEP, 0, 0);
++                var lower = state.at(evaluator, root, -TEMPERATURE_STEP, 0, 0);
++                double scale = 0;
++                for (int i = 0; i < count; i++) scale = Math.max(scale, Math.abs(output.logFugacityTemperatureDerivativeView()[i]));
++                for (int i = 0; i < count; i++) {
++                    if (state.fractions[i] == 0) continue;
++                    record(worst, "d ln phi_i/dT", at, (higher.logFugacityCoefficient(i) - lower.logFugacityCoefficient(i))
++                            / (2 * TEMPERATURE_STEP), output.logFugacityTemperatureDerivativeView()[i], scale);
++                }
++                record(worst, "dh/dT (cp)", at, (higher.molarEnthalpy() - lower.molarEnthalpy()) / (2 * TEMPERATURE_STEP),
++                        output.enthalpyTemperatureDerivative(), Math.abs(output.enthalpyTemperatureDerivative()));
++                record(worst, "dv/dT", at, (higher.molarVolume() - lower.molarVolume()) / (2 * TEMPERATURE_STEP),
++                        output.volumeTemperatureDerivative(), Math.abs(output.volumeTemperatureDerivative()));
++            }
++            double pressureStep = state.pressure * PRESSURE_FRACTION;
++            if (state.keepsRoot(evaluator, root, 0, pressureStep, 0)) {
++                var higher = state.at(evaluator, root, 0, pressureStep, 0);
++                var lower = state.at(evaluator, root, 0, -pressureStep, 0);
++                double scale = 0;
++                for (int i = 0; i < count; i++) scale = Math.max(scale, Math.abs(output.logFugacityPressureDerivativeView()[i]));
++                for (int i = 0; i < count; i++) {
++                    if (state.fractions[i] == 0) continue;
++                    record(worst, "d ln phi_i/dP", at, (higher.logFugacityCoefficient(i) - lower.logFugacityCoefficient(i))
++                            / (2 * pressureStep), output.logFugacityPressureDerivativeView()[i], scale);
++                }
++                record(worst, "dv/dP", at, (higher.molarVolume() - lower.molarVolume()) / (2 * pressureStep),
++                        output.volumePressureDerivative(), Math.abs(output.volumePressureDerivative()));
++                record(worst, "dh/dP", at, (higher.molarEnthalpy() - lower.molarEnthalpy()) / (2 * pressureStep),
++                        output.enthalpyPressureDerivative(), Math.abs(output.enthalpyPressureDerivative()));
++            }
++            double logPhiScale = 0;
++            for (int i = 0; i < count; i++) for (int j = 0; j < count; j++) {
++                logPhiScale = Math.max(logPhiScale, Math.abs(output.logFugacityCompositionDerivative(i, j)));
++            }
++            for (int j = 0; j < count; j++) {
++                if (!(state.fractions[j] > 10 * MOLE_STEP) || !state.keepsRoot(evaluator, root, 0, 0, j + 1)) continue;
++                var higher = state.at(evaluator, root, 0, 0, j + 1);
++                var lower = state.at(evaluator, root, 0, 0, -(j + 1));
++                for (int i = 0; i < count; i++) {
++                    if (state.fractions[i] == 0) continue;
++                    record(worst, "d ln phi_i/dn_j", at, (higher.logFugacityCoefficient(i) - lower.logFugacityCoefficient(i))
++                            / (2 * MOLE_STEP), output.logFugacityCompositionDerivative(i, j), logPhiScale);
++                }
++            }
++            assertEquals(Double.doubleToLongBits(phase.molarVolume()), Double.doubleToLongBits(
++                    evaluator.evaluate(state.temperature, state.pressure, state.amounts, root, workspace, evaluator.newState()).molarVolume()),
++                    "the derivative block describes the evaluated phase at " + at);
++        }
++        System.out.println("CubicPhaseEvaluator (E-PPR78 pilot) derivatives vs central differences: " + compared + " phase evaluations");
++        worst.forEach((quantity, value) -> System.out.println("    " + String.format(Locale.ROOT, "%-18s", quantity) + value));
++        assertTrue(compared >= 30, "too few phase evaluations: " + compared);
++        for (String quantity : List.of("dh/dT (cp)", "dv/dT", "d ln phi_i/dT", "d ln phi_i/dP", "d ln phi_i/dn_j")) {
++            assertTrue(worst.containsKey(quantity) && worst.get(quantity).count >= 20, quantity + " barely compared");
++        }
++        worst.forEach((quantity, value) -> assertTrue(value.deviation <= TOLERANCE, quantity + ": " + value));
++    }
++
++    /** {@code amounts} sums to one mole, so a mole perturbation is also a fraction perturbation. */
++    private record State(double temperature, double pressure, double[] amounts, double[] fractions) {
++        State(double temperature, double pressure, double[] raw) {
++            this(temperature, pressure, normalized(raw), normalized(raw));
++        }
++        private static double[] normalized(double[] raw) {
++            double total = 0;
++            for (double value : raw) total += value;
++            double[] fractions = new double[raw.length];
++            for (int i = 0; i < raw.length; i++) fractions[i] = raw[i] / total;
++            return fractions;
++        }
++        /** {@code component} is a signed one-based index; zero means no composition perturbation. */
++        PhaseState at(CubicPhaseEvaluator evaluator, Root root, double temperatureStep, double pressureStep, int component) {
++            double[] moles = amounts;
++            if (component != 0) {
++                moles = amounts.clone();
++                moles[Math.abs(component) - 1] += Math.signum(component) * MOLE_STEP;
++            }
++            return evaluator.evaluate(temperature + temperatureStep, pressure + pressureStep, moles, root,
++                    evaluator.newWorkspace(), evaluator.newState());
++        }
++        /** Both probe endpoints stay on the base state's root: a derivative is a derivative of one branch. */
++        boolean keepsRoot(CubicPhaseEvaluator evaluator, Root root, double temperatureStep, double pressureStep, int component) {
++            try {
++                var base = at(evaluator, root, 0, 0, 0);
++                var higher = at(evaluator, root, temperatureStep, pressureStep, component);
++                var lower = at(evaluator, root, -temperatureStep, -pressureStep, component == 0 ? 0 : -component);
++                return sameBranch(base, higher) && sameBranch(base, lower);
++            } catch (RuntimeException unavailable) { return false; }
++        }
++        private static boolean sameBranch(PhaseState base, PhaseState probe) {
++            return Math.abs(probe.molarVolume() - base.molarVolume()) < 1e-3 * Math.abs(base.molarVolume());
++        }
++        @Override public String toString() { return "T=" + temperature + " P=" + pressure; }
++    }
++
++    private record Worst(double deviation, double expected, double actual, String at, int count) {
++        @Override public String toString() {
++            return String.format(Locale.ROOT, "%.2e over %d (expected %.6e, actual %.6e at %s)", deviation, count, expected, actual, at);
++        }
++    }
++
++    private static void record(Map<String, Worst> worst, String quantity, String at, double expected, double actual, double scale) {
++        assertTrue(Double.isFinite(expected) && Double.isFinite(actual), quantity + " must be finite at " + at);
++        double denominator = Math.max(scale, Math.max(Math.abs(expected), Math.abs(actual)));
++        double deviation = denominator == 0 ? 0 : Math.abs(expected - actual) / denominator;
++        var previous = worst.get(quantity);
++        if (previous == null) worst.put(quantity, new Worst(deviation, expected, actual, at, 1));
++        else if (deviation > previous.deviation) worst.put(quantity, new Worst(deviation, expected, actual, at, previous.count + 1));
++        else worst.put(quantity, new Worst(previous.deviation, previous.expected, previous.actual, previous.at, previous.count + 1));
++    }
++}
+diff --git a/src/test/java/com/wormzjl/icheme/science/material/Cdu17TestCatalogTest.java b/src/test/java/com/wormzjl/icheme/science/material/Cdu17TestCatalogTest.java
+new file mode 100644
+index 000000000..4c13981ae
+--- /dev/null
++++ b/src/test/java/com/wormzjl/icheme/science/material/Cdu17TestCatalogTest.java
+@@ -0,0 +1,45 @@
++package com.wormzjl.icheme.science.material;
++
++import com.google.gson.JsonParser;
++import com.wormzjl.icheme.science.column.v3.thermo.V3PengRobinsonThermo;
++import java.util.HashMap;
++import org.junit.jupiter.api.Test;
++import static org.junit.jupiter.api.Assertions.*;
++
++class Cdu17TestCatalogTest {
++    @Test void referenceLoadsWithoutAnyProductionResources() {
++        var reference = Cdu17TestCatalog.catalog();
++        assertEquals(1, reference.packages().size());
++        var p = reference.requirePackage(Cdu17TestCatalog.PACKAGE_ID);
++        assertEquals("cdu17-tjl-kl1976-r2", p.revision());
++        assertEquals(16, p.components().size());
++        assertEquals(0.016043, p.properties().getFirst().molecularWeight());
++        assertEquals(0.0, Cdu17TestCatalog.with(() -> {
++            var thermo = V3PengRobinsonThermo.fromRegisteredPackage(Cdu17TestCatalog.PACKAGE_ID);
++            return thermo.crudeFeed("icheme:tia_juana_light").moleFractions()[0];
++        }));
++    }
++
++    @Test void scopeRestoresTheEnclosingCatalogOnFailure() {
++        var before = MaterialRuntime.current();
++        var marker = new IllegalStateException("scope probe");
++        assertSame(marker, assertThrows(IllegalStateException.class, () -> Cdu17TestCatalog.with(() -> {
++            assertSame(Cdu17TestCatalog.catalog(), MaterialRuntime.current());
++            throw marker;
++        })));
++        assertSame(before, MaterialRuntime.current());
++    }
++
++    @Test void editingProductionPropertiesCannotAlterTheReference() {
++        var before = Cdu17TestCatalog.catalog().requirePackage(Cdu17TestCatalog.PACKAGE_ID);
++        var resources = new HashMap<>(MaterialCatalog.bundled().resources());
++        String path = "data/icheme/materials/properties/tjl20_methane.json";
++        var edited = JsonParser.parseString(resources.get(path)).getAsJsonObject();
++        edited.addProperty("molecular_weight_kg_per_mol", .017);
++        resources.put(path, edited.toString());
++        MaterialRuntime.with(MaterialCatalog.parse(resources), "icheme:tjl20_methane", () -> {
++            assertEquals(before, Cdu17TestCatalog.catalog().requirePackage(Cdu17TestCatalog.PACKAGE_ID));
++            return null;
++        });
++    }
++}
+diff --git a/src/test/java/com/wormzjl/icheme/science/thermo/PengRobinson78Test.java b/src/test/java/com/wormzjl/icheme/science/thermo/PengRobinson78Test.java
+index a4ce43ff9..ccd46eea6 100644
+--- a/src/test/java/com/wormzjl/icheme/science/thermo/PengRobinson78Test.java
++++ b/src/test/java/com/wormzjl/icheme/science/thermo/PengRobinson78Test.java
+@@ -1,5 +1,6 @@
+ package com.wormzjl.icheme.science.thermo;
+ 
++import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+ import static org.junit.jupiter.api.Assertions.assertEquals;
+ import static org.junit.jupiter.api.Assertions.assertTrue;
+ 
+@@ -11,6 +12,8 @@ class PengRobinson78Test {
+             "methane", 190.564, 4_599_200.0, 0.01142, 0.016043);
+     private static final ThermoComponent PROPANE = new ThermoComponent(
+             "propane", 369.83, 4_248_000.0, 0.1523, 0.044097);
++    private static final ThermoComponent N_BUTANE = new ThermoComponent(
++            "n_butane", 425.12, 3_796_000.0, 0.2002, 0.058124);
+ 
+     @Test
+     void methaneReferencePointMatchesPengRobinsonCalculation() {
+@@ -37,4 +40,84 @@ class PengRobinson78Test {
+         assertEquals(0.8146036935018395, vapor.compressibilityFactor(), 1.0e-12);
+         assertTrue(liquid.compressibilityFactor() < vapor.compressibilityFactor());
+     }
++
++    @Test
++    void diluteGasApproachesTheIdealGasLimit() {
++        PengRobinson78 model = PengRobinson78.withoutBinaryInteractions(List.of(METHANE, N_BUTANE));
++
++        PhaseProperties properties = model.evaluate(
++                500.0, 1.0, new double[] {0.7, 0.3}, PengRobinsonKernel.Root.VAPOR);
++
++        assertEquals(1.0, properties.compressibilityFactor(), 1.0e-7);
++        assertEquals(0.0, properties.logFugacityCoefficient(0), 1.0e-7);
++        assertEquals(0.0, properties.logFugacityCoefficient(1), 1.0e-7);
++    }
++
++    @Test
++    void mixtureResidualEnthalpyMatchesFugacityTemperatureDerivative() {
++        PengRobinson78 model = new PengRobinson78(
++                List.of(METHANE, N_BUTANE),
++                new double[][] {{0.0, 0.03}, {0.03, 0.0}});
++        double temperature = 350.0;
++        double pressure = 3_000_000.0;
++        double temperatureStep = 0.01;
++        double[] composition = {0.4, 0.6};
++
++        PhaseProperties properties = model.evaluate(
++                temperature, pressure, composition, PengRobinsonKernel.Root.VAPOR);
++        PhaseProperties above = model.evaluate(
++                temperature + temperatureStep, pressure, composition, PengRobinsonKernel.Root.VAPOR);
++        PhaseProperties below = model.evaluate(
++                temperature - temperatureStep, pressure, composition, PengRobinsonKernel.Root.VAPOR);
++        double weightedLogPhiDerivative = 0.0;
++        for (int i = 0; i < composition.length; i++) {
++            weightedLogPhiDerivative += composition[i]
++                    * (above.logFugacityCoefficient(i) - below.logFugacityCoefficient(i))
++                    / (2.0 * temperatureStep);
++        }
++        double numericalResidualEnthalpy = -PengRobinson78.GAS_CONSTANT * temperature * temperature
++                * weightedLogPhiDerivative;
++
++        assertEquals(
++                numericalResidualEnthalpy,
++                properties.residualEnthalpyJoulesPerMol(),
++                1.0e-4);
++    }
++
++    @Test
++    void residualEnthalpyApproachesZeroAtLowPressure() {
++        PengRobinson78 model = PengRobinson78.withoutBinaryInteractions(List.of(METHANE, N_BUTANE));
++
++        PhaseProperties properties = model.evaluate(
++                500.0, 1.0, new double[] {0.7, 0.3}, PengRobinsonKernel.Root.VAPOR);
++
++        assertEquals(0.0, properties.residualEnthalpyJoulesPerMol(), 1.0e-3);
++    }
++
++    @Test
++    void propaneLiquidResidualEnthalpyIsMoreNegativeThanVapor() {
++        PengRobinson78 model = PengRobinson78.withoutBinaryInteractions(List.of(PROPANE));
++
++        PhaseProperties liquid = model.evaluate(
++                300.0, 1_000_000.0, new double[] {1.0}, PengRobinsonKernel.Root.LIQUID);
++        PhaseProperties vapor = model.evaluate(
++                300.0, 1_000_000.0, new double[] {1.0}, PengRobinsonKernel.Root.VAPOR);
++
++        assertTrue(liquid.residualEnthalpyJoulesPerMol() < vapor.residualEnthalpyJoulesPerMol());
++    }
++
++    @Test
++    void returnedFugacityVectorCannotMutateTheResult() {
++        PengRobinson78 model = PengRobinson78.withoutBinaryInteractions(List.of(METHANE));
++        PhaseProperties properties = model.evaluate(
++                300.0, 5_000_000.0, new double[] {1.0}, PengRobinsonKernel.Root.VAPOR);
++
++        double[] copy = properties.logFugacityCoefficients();
++        copy[0] = 123.0;
++
++        assertArrayEquals(
++                new double[] {-0.10383585031450415},
++                properties.logFugacityCoefficients(),
++                1.0e-12);
++    }
+ }
+diff --git a/src/test/java/com/wormzjl/icheme/science/thermo/phase/CrystalPhaseEvaluatorTest.java b/src/test/java/com/wormzjl/icheme/science/thermo/phase/CrystalPhaseEvaluatorTest.java
+index c44a6e8da..cef563a7f 100644
+--- a/src/test/java/com/wormzjl/icheme/science/thermo/phase/CrystalPhaseEvaluatorTest.java
++++ b/src/test/java/com/wormzjl/icheme/science/thermo/phase/CrystalPhaseEvaluatorTest.java
+@@ -11,14 +11,15 @@ import com.wormzjl.icheme.science.material.MaterialCatalog;
+ import com.wormzjl.icheme.science.material.PilotCryogenicTestCatalog;
+ import com.wormzjl.icheme.science.thermo.PengRobinsonKernel;
+ import com.wormzjl.icheme.science.thermo.PengRobinsonKernel.Root;
++import com.wormzjl.icheme.science.thermo.reference.HelmholtzFluid;
+ import org.junit.jupiter.api.Test;
+ 
+ /**
+  * The crystal evaluator (P4 stage 1, batch 2026-09-24-coolprop-low-temperature): the CO2-I crystal anchored to the pilot
+  * family's liquid (the P2 contract: g_s = mu_L and h_s = h_L - dH_fus at the triple point, ln phi against the spine),
+  * and the port and the anchoring validated independently of any reference-state convention: anchored to the Span-Wagner
+- * oracle's liquid, foreign anchors refused, and the state continued past its data range. The oracle's published figures
+- * are reproduced by the material package's JaegerSpanGibbsFunctionTest.
++ * oracle's liquid with Jaeger and Span's 8875 J/mol, the crystal recovers the paper's own g0 and g1 and reproduces its
++ * Figures 9 (sublimation) and 11 (melting) against the Span-Wagner correlations.
+  */
+ class CrystalPhaseEvaluatorTest {
+     static final String PILOT = "icheme:pilot_cryogenic";
+@@ -111,4 +112,91 @@ class CrystalPhaseEvaluatorTest {
+         });
+         assertThrows(IllegalStateException.class, () -> CrystalPhaseEvaluator.forPackage(incomplete, PILOT, CRYSTAL));
+     }
++
++    /**
++     * Anchored to the oracle's Span-Wagner liquid at (216.592 K, 517 950 Pa) with 8875 J/mol, the solved constants are
++     * the paper's to 3.6e-5 (g0) and 9.7e-7 (g1): the g0 difference, 0.045 J/mol, is the oracle's own vapour-liquid
++     * chemical-potential mismatch at that pressure (the Span-Wagner triple pressure is 517 964 Pa on the equation).
++     */
++    @Test
++    void oracleAnchoringRecoversThePublishedIntegrationConstants() {
++        var record = jaegerSpanRecord();
++        var co2 = HelmholtzFluid.load("CarbonDioxide");
++        double[] constants = oracleConstants(record, co2);
++        var js = record.gibbsFunction();
++        var liquid = co2.stateAtPressure(TRIPLE_TEMPERATURE, TRIPLE_PRESSURE, HelmholtzFluid.Root.LIQUID);
++        var vapour = co2.stateAtPressure(TRIPLE_TEMPERATURE, TRIPLE_PRESSURE, HelmholtzFluid.Root.VAPOUR);
++        System.out.printf("Oracle anchoring (8875 J/mol): g0 %.9f vs %.7f (%.2e), g1 %.9f vs %.7f (%.2e); oracle mu_V - mu_L at (T_t, p_t) %.4f J/mol%n",
++                constants[0], js.publishedG0(), constants[0] - js.publishedG0(), constants[1], js.publishedG1(), constants[1] - js.publishedG1(),
++                vapour.gibbsEnergy() - liquid.gibbsEnergy());
++        assertEquals(js.publishedG0(), constants[0], 5e-5);
++        assertEquals(js.publishedG1(), constants[1], 2e-6);
++        assertEquals(Math.abs(vapour.gibbsEnergy() - liquid.gibbsEnergy()), Math.abs(constants[0] - js.publishedG0()) * js.gasConstant() * js.referenceTemperature(), 2e-3);
++        // The anchored solid's triple-point entropy is the paper's Table 5 value (Span-Wagner reference state).
++        assertEquals(-1.803247012e1, js.evaluate(TRIPLE_TEMPERATURE, TRIPLE_PRESSURE, constants[0], constants[1]).entropy(), 2e-5);
++    }
++
++    /**
++     * Figure 9 of the paper: dp = p_SW(3.12) - p_calc. The calculated line stays within the Span-Wagner uncertainty
++     * (50 Pa below 170 K, 250 Pa from 185 K to T_t) except from 170 to 185 K, where it reaches 1.5 times the 100 Pa band,
++     * as the paper's own line does; its extremes, about -227 Pa near 194 K and +237 Pa near 212 K, are the figure's.
++     * Trusler's equation 48 (his solid with the same fluid) agrees within 0.85 % from 150 K to T_t.
++     */
++    @Test
++    void oracleSublimationFollowsTheSpanWagnerCorrelationAsInFigureNine() {
++        var record = jaegerSpanRecord();
++        var co2 = HelmholtzFluid.load("CarbonDioxide");
++        double[] constants = oracleConstants(record, co2);
++        var js = record.gibbsFunction();
++        double minimum = Double.POSITIVE_INFINITY, maximum = Double.NEGATIVE_INFINITY, tMinimum = 0, tMaximum = 0, worstBand = 0, worstTrusler = 0;
++        double[] temperatures = new double[70];
++        for (int k = 0; k < 69; k++) temperatures[k] = 80 + 2 * k;
++        temperatures[69] = TRIPLE_TEMPERATURE;
++        for (double t : temperatures) {
++            double p = oracleCoexistence(js, constants, co2, t, HelmholtzFluid.Root.VAPOUR, spanWagnerSublimationPressure(t));
++            double dp = spanWagnerSublimationPressure(t) - p;
++            double band = spanWagnerSublimationUncertainty(t);
++            double allowed = t >= 170 && t < 185 ? 1.55 * band : band;
++            assertTrue(Math.abs(dp) <= allowed, "dp " + dp + " Pa at " + t + " K beyond " + allowed + " Pa");
++            worstBand = Math.max(worstBand, Math.abs(dp) / band);
++            if (dp < minimum) { minimum = dp; tMinimum = t; }
++            if (dp > maximum) { maximum = dp; tMaximum = t; }
++            if (t >= 150) worstTrusler = Math.max(worstTrusler, Math.abs(p / truslerSublimationPressure(t) - 1));
++        }
++        System.out.printf("Oracle sublimation 80..216.592 K: dp min %.1f Pa at %.0f K, max %.1f Pa at %.0f K, worst |dp|/uncertainty %.3f, worst vs Trusler eq 48 %.3f %%%n",
++                minimum, tMinimum, maximum, tMaximum, worstBand, 100 * worstTrusler);
++        assertTrue(minimum > -240 && minimum < -215 && tMinimum >= 192 && tMinimum <= 196, "Figure 9 minimum");
++        assertTrue(maximum > 225 && maximum < 250 && tMaximum >= 210 && tMaximum <= 214, "Figure 9 maximum");
++        assertTrue(worstTrusler < 0.0085);
++        // Sublimation enthalpy at the normal sublimation point on the reference equations: within 0.1 % of 25.2 kJ/mol.
++        double t = 194.67;
++        double p = oracleCoexistence(js, constants, co2, t, HelmholtzFluid.Root.VAPOUR, spanWagnerSublimationPressure(t));
++        double dh = co2.stateAtPressure(t, p, HelmholtzFluid.Root.VAPOUR).enthalpy() - js.evaluate(t, p, constants[0], constants[1]).enthalpy();
++        System.out.printf("Oracle sublimation enthalpy at %.2f K: %.1f J/mol (%.3f %% from %.0f)%n", t, dh, 100 * (dh / GIAUQUE_EGAN_SUBLIMATION_ENTHALPY - 1),
++                GIAUQUE_EGAN_SUBLIMATION_ENTHALPY);
++        assertEquals(GIAUQUE_EGAN_SUBLIMATION_ENTHALPY, dh, 0.001 * GIAUQUE_EGAN_SUBLIMATION_ENTHALPY);
++    }
++
++    /**
++     * Figure 11 of the paper: (p_SW(3.10) - p_calc)/p_SW within the Span-Wagner uncertainty (1.5 % to 225 K, 0.5 % from
++     * 225 to 270 K), measured worst 0.93 of the band: +0.85 % near 217.5 K, -0.47 % near 245 K, +0.10 % at 270 K.
++     */
++    @Test
++    void oracleMeltingFollowsTheSpanWagnerCorrelationAsInFigureEleven() {
++        var record = jaegerSpanRecord();
++        var co2 = HelmholtzFluid.load("CarbonDioxide");
++        double[] constants = oracleConstants(record, co2);
++        var js = record.gibbsFunction();
++        double worst = 0, minimum = 0, maximum = 0;
++        for (double t : new double[] {216.6, 216.7, 217, 217.5, 218, 219, 220, 222, 225, 230, 235, 240, 245, 250, 255, 260, 265, 270}) {
++            double p = oracleCoexistence(js, constants, co2, t, HelmholtzFluid.Root.LIQUID, spanWagnerMeltingPressure(t));
++            double relative = (spanWagnerMeltingPressure(t) - p) / spanWagnerMeltingPressure(t);
++            assertTrue(Math.abs(relative) <= spanWagnerMeltingUncertainty(t), "melting at " + t + " K: " + relative);
++            worst = Math.max(worst, Math.abs(relative) / spanWagnerMeltingUncertainty(t));
++            minimum = Math.min(minimum, relative);
++            maximum = Math.max(maximum, relative);
++        }
++        System.out.printf("Oracle melting 216.6..270 K: dp/p from %.3f %% to %.3f %%, worst |dp/p|/uncertainty %.3f%n", 100 * minimum, 100 * maximum, worst);
++        assertTrue(maximum > 0.0080 && maximum < 0.0090 && minimum < -0.0045 && minimum > -0.0050, "Figure 11 extremes");
++    }
+ }
+diff --git a/src/test/java/com/wormzjl/icheme/science/thermo/phase/SolidCarbonDioxideReferences.java b/src/test/java/com/wormzjl/icheme/science/thermo/phase/SolidCarbonDioxideReferences.java
+index 381b5d90a..4d991e0e5 100644
+--- a/src/test/java/com/wormzjl/icheme/science/thermo/phase/SolidCarbonDioxideReferences.java
++++ b/src/test/java/com/wormzjl/icheme/science/thermo/phase/SolidCarbonDioxideReferences.java
+@@ -75,6 +75,11 @@ public final class SolidCarbonDioxideReferences {
+                 * (-14.740846 * theta + 2.4327015 * Math.pow(theta, 1.9) - 5.3061778 * Math.pow(theta, 2.9)));
+     }
+ 
++    /** The stated uncertainty of equation 3.12, Pa. */
++    static double spanWagnerSublimationUncertainty(double t) {
++        return t < 170 ? 50 : t < 185 ? 100 : 250;
++    }
++
+     /** Span and Wagner 1996 equation 3.10 from the CoolProp file, Pa. */
+     public static double spanWagnerMeltingPressure(double t) {
+         if (t < MELTING[0] || t > MELTING[4]) throw new IllegalArgumentException("melting line covers " + MELTING[0] + ".." + MELTING[4] + " K");
+@@ -82,6 +87,11 @@ public final class SolidCarbonDioxideReferences {
+         return MELTING[1] * (1 + MELTING[2] * x + MELTING[3] * x * x);
+     }
+ 
++    /** The stated relative uncertainty of equation 3.10. */
++    public static double spanWagnerMeltingUncertainty(double t) {
++        return t <= 225 ? 0.015 : 0.005;
++    }
++
+     /** Trusler 2011 equation 48, Pa. */
+     static double truslerSublimationPressure(double t) {
+         double theta = 1 - t / TRIPLE_TEMPERATURE;
+diff --git a/src/test/java/com/wormzjl/icheme/science/thermo/qualification/G3F4HighPressureContinuityTest.java b/src/test/java/com/wormzjl/icheme/science/thermo/qualification/G3F4HighPressureContinuityTest.java
+new file mode 100644
+index 000000000..23fc40692
+--- /dev/null
++++ b/src/test/java/com/wormzjl/icheme/science/thermo/qualification/G3F4HighPressureContinuityTest.java
+@@ -0,0 +1,171 @@
++package com.wormzjl.icheme.science.thermo.qualification;
++
++import static com.wormzjl.icheme.science.thermo.qualification.G3Support.*;
++import static org.junit.jupiter.api.Assertions.assertEquals;
++import static org.junit.jupiter.api.Assertions.assertTrue;
++
++import com.wormzjl.icheme.science.fluid.thermo.FluidThermodynamics;
++import com.wormzjl.icheme.science.thermo.PengRobinsonKernel.Root;
++import com.wormzjl.icheme.science.thermo.reference.HelmholtzFluid;
++import java.util.ArrayList;
++import java.util.List;
++import java.util.function.DoubleUnaryOperator;
++import org.junit.jupiter.api.Test;
++
++/**
++ * G3 fixture family F4 (plan {@code P3_PILOT_ENGINE_PLAN.md} sections 2.6 and 8.2; D7, D14, D15): pressures up to 10 MPa and
++ * continuity through the retired 2 MPa ceiling, for the pilot species ({@code icheme:pilot_cryogenic}) and for the
++ * bundled network package's nitrogen and methane records ({@code icheme:tjl20_methane_nitrogen}, 10 MPa since WP7).
++ *
++ * <ul>
++ *   <li>The P1 dense and supercritical probe states (P1 study section 2.5, H2 omitted) scored at the D7 targets and the
++ *   D14 and D15 bounds; band states reported (box 2 widened by D15 since P3 WP7d).</li>
++ *   <li>Isotherms from 0.1 MPa (or just above saturation) to 10 MPa: liquid isotherms at Tr 0.6, 0.7, 0.8, 0.9 and
++ *   supercritical ones at Tr 1.3 and 2 for the pilot species; liquid nitrogen at 77, 90, 100 and 110 K and methane gas
++ *   at 300 and 400 K through the bundled network's own domain-checked {@code phase}. Every point against the oracle;
++ *   second differences of v(P) and h(P) across 2 MPa without a jump (the check of {@code DirectLiquidContinuityTest},
++ *   here on the pilot and on the widened bundled domain).</li>
++ * </ul>
++ *
++ * The closed-vessel compression of liquid nitrogen through 2 MPa (plan section 2.6 item 3) is WP4's
++ * {@code DirectLiquidContinuityTest.aClosedLiquidNitrogenVesselCompressedThroughTwoMegapascalsFollowsTheAdiabat}; it is
++ * not repeated here.
++ */
++class G3F4HighPressureContinuityTest {
++    /** P1 section 2.5 rows (anchor b columns): species index, T K, P MPa, printed density %, printed cp %. */
++    static final double[][] P1_DENSE = {
++            {0, 77.36, 5, 1.53, -6.07}, {0, 77.36, 10, 1.46, -6.79}, {0, 100, 10, 1.79, -1.53}, {0, 126.2, 3.4, -14.39, 89.2}, {0, 130, 4, -4.03, -27.6},
++            {0, 130, 6, -5.60, 7.05}, {0, 130, 10, -1.55, 4.14}, {0, 150, 10, -4.05, -3.75}, {0, 300, 10, 0.24, 1.00},
++            {1, 110, 10, 2.14, -1.39}, {1, 150, 10, 1.76, 2.10}, {1, 190.6, 4.6, -2.47, -26.7}, {1, 200, 6, -5.20, -22.9}, {1, 200, 10, -4.69, 4.95},
++            {1, 250, 10, 0.11, -4.56}, {1, 300, 10, 0.95, -0.17},
++            {2, 200, 10, 2.20, -3.63}, {2, 300, 10, -2.91, 6.25}, {2, 305.4, 4.9, -15.96, 10.8}, {2, 320, 6, -0.31, -13.9}, {2, 320, 10, -5.92, 4.59},
++            {2, 400, 10, 0.01, -2.04},
++            {3, 280, 8, -3.24, 9.22}, {3, 280, 10, -2.38, 6.80}, {3, 300, 8, -10.06, 22.6}, {3, 304.5, 7.4, -1.36, -19.9}, {3, 310, 8, 0.17, -12.8},
++            {3, 310, 10, -10.86, 11.5}, {3, 320, 8, 1.99, -7.07}, {3, 320, 10, -6.60, -20.8}, {3, 350, 10, 0.87, -3.61}, {3, 400, 10, 0.58, 0.01}};
++
++    @Test
++    void p1DenseAndSupercriticalStatesAtTheTargets() {
++        var table = new Table("G3 F4 P1", "Package", "Species", "T K", "P MPa", "Region", "rho %", "cp %", "P1 rho / cp %", "D7 rho", "Held rho");
++        int scored = 0, band = 0;
++        for (var model : List.of(pilot(), network())) {
++            boolean isPilot = model == pilot();
++            for (double[] row : P1_DENSE) {
++                int s = (int) row[0];
++                if (!isPilot && (s == 2 || s == 3 || s == 1 && row[1] < 293.15)) continue; // the bundled network: N2, and CH4 from 293.15 K
++                var fluid = oracle(s);
++                double t = row[1], p = row[2] * 1e6, tc = fluid.criticalTemperature(), pc = fluid.criticalPressure();
++                boolean liquid = t < tc && p > fluid.saturation(Math.min(t, tc - 1e-6)).pressure();
++                boolean vapour = !liquid && (t < tc || p < pc);
++                var e = evaluate(model, t, p, pure(model, SPECIES[s]), liquid ? Root.LIQUID : vapour ? Root.VAPOR : null);
++                var reference = fluid.stateAtPressure(t, p, liquid ? HelmholtzFluid.Root.LIQUID : HelmholtzFluid.Root.VAPOUR);
++                double rho = 100 * (e.density() / reference.density() - 1), cp = 100 * (e.heatCapacity() / reference.isobaricHeatCapacity() - 1);
++                var rule = densityRule(fluid, t, p, reference.compressibility());
++                table.row(isPilot ? "pilot" : "net", SHORT[s], number(t), number(row[2]), rule.region(), f("%+.2f", rho), f("%+.2f", cp),
++                        isPilot ? f("%+.2f / %+.2f", row[3], row[4]) : "(anchor a)", verdict(rule.d7(), rho),
++                        rule.scored() ? number(rule.held()) + " %" : rule.region().startsWith("band") ? "research-only" : "report");
++                if (!rule.scored()) {
++                    band++;
++                    continue;
++                }
++                scored++;
++                assertTrue(Math.abs(rho) <= rule.held(), SHORT[s] + " " + t + " K " + row[2] + " MPa density " + rho);
++                // Outside the band the D7 supercritical and near-Tc liquid cp targets are 10 % (liquid cp Tr > 0.9 is flagged).
++                if (!liquid || t / tc <= 0.9) assertTrue(Math.abs(cp) <= 12, SHORT[s] + " cp " + cp);
++                if (isPilot) assertEquals(row[3], rho, 0.02, "P1 reproduced"); // ethane's record constants differ by 1e-5 (WP5)
++            }
++        }
++        table.print(f("P1 dense and supercritical probe states: %d scored, %d in the band or report-only", scored, band));
++    }
++
++    record Isotherm(FluidThermodynamics model, String packageLabel, int species, double temperature, boolean networkEntry) {}
++
++    @Test
++    void isothermsToTenMegapascalsAndNoJumpAtTwo() {
++        List<Isotherm> isotherms = new ArrayList<>();
++        for (int s = 0; s < 4; s++) {
++            double tc = oracle(s).criticalTemperature();
++            for (double tr : new double[] {0.6, 0.7, 0.8, 0.9, 1.3, 2.0}) {
++                if (tr * tc < oracle(s).tripleTemperature()) continue; // CO2's triple point is at Tr 0.712
++                isotherms.add(new Isotherm(pilot(), "pilot", s, tr * tc, false));
++            }
++        }
++        for (double t : new double[] {77, 90, 100, 110}) isotherms.add(new Isotherm(network(), "net", 0, t, true));
++        for (double t : new double[] {300, 400}) isotherms.add(new Isotherm(network(), "net", 1, t, true));
++        var table = new Table("G3 F4 isotherm", "Package", "Species", "T K", "Tr", "From MPa", "Points", "Worst rho % (P MPa)", "D7 rho met", "Held",
++                "Band or report-only points", "2 MPa second differences");
++        int points = 0;
++        for (var iso : isotherms) {
++            var fluid = oracle(iso.species());
++            double t = iso.temperature(), tc = fluid.criticalTemperature(), tr = t / tc;
++            double[] x = pure(iso.model(), SPECIES[iso.species()]);
++            double psat = t < tc ? fluid.saturation(t).pressure() : 0;
++            boolean liquidIsotherm = t < tc;
++            double start = liquidIsotherm ? Math.max(1e5, 1.02 * psat) : 1e5;
++            Root root = liquidIsotherm ? Root.LIQUID : null;
++            var worst = new Worst();
++            double held = 0;
++            int band = 0, n = 0, d7met = 0;
++            for (int k = 0; k <= 40; k++) {
++                double p = k == 40 ? 1e7 : start * Math.pow(1e7 / start, k / 40.0);
++                if (liquidIsotherm && p > meltingPressure(SPECIES[iso.species()], t)) continue;
++                if (iso.networkEntry()) {
++                    // The bundled network's own entry: domain-checked (N2 and CH4 to 10 MPa since WP7), liquid at the state pressure.
++                    var phase = iso.model().hydrocarbon.phase(t, p, x, liquidIsotherm ? Root.LIQUID : Root.VAPOR);
++                    assertTrue(phase.molarVolume() > 0);
++                }
++                var e = evaluate(iso.model(), t, p, x, root);
++                var reference = fluid.stateAtPressure(t, p, liquidIsotherm ? HelmholtzFluid.Root.LIQUID : HelmholtzFluid.Root.VAPOUR);
++                double rho = 100 * (e.density() / reference.density() - 1);
++                var rule = densityRule(fluid, t, p, reference.compressibility());
++                if (!rule.scored()) {
++                    band++;
++                    continue;
++                }
++                if (!(Math.abs(rho) > rule.d7())) d7met++;
++                held = Math.max(held, rule.held());
++                worst.add(rho, f("%.2f", p / 1e6));
++                assertTrue(Math.abs(rho) <= rule.held(), iso.packageLabel() + " " + SHORT[iso.species()] + " " + t + " K " + p + " Pa: " + rho);
++                n++;
++            }
++            points += n;
++            // Differences across 2 MPa on 41 points in one phase region outside the band: 2 MPa +- 1 MPa, narrowed for a
++            // liquid whose saturation pressure lies above 1 MPa (the window starts at 1.05 Psat).
++            String smooth;
++            double step = liquidIsotherm ? Math.min(5e4, (2e6 - 1.05 * psat) / 20) : 5e4;
++            boolean window = step >= 5e3 && bandBox(tr, (2e6 - 20 * step) / fluid.criticalPressure()) == 0
++                    && bandBox(tr, (2e6 + 20 * step) / fluid.criticalPressure()) == 0 && (liquidIsotherm || t > tc * 1.2);
++            if (window) {
++                // Liquids: v(P); gases: P v(P), whose second difference is nearly constant (v itself curves as 1/P).
++                DoubleUnaryOperator v = liquidIsotherm ? p -> evaluate(iso.model(), t, p, x, root).molarVolume()
++                        : p -> p * evaluate(iso.model(), t, p, x, root).molarVolume();
++                DoubleUnaryOperator h = p -> evaluate(iso.model(), t, p, x, root).enthalpy();
++                double jv = jump(v, step), jh = jump(h, step);
++                smooth = f("%s %.1e, h %.1e (%.2f-%.2f MPa)", liquidIsotherm ? "v" : "Pv", jv, jh, (2e6 - 20 * step) / 1e6, (2e6 + 20 * step) / 1e6);
++                assertTrue(jv <= 0.02 && jh <= 0.02, iso.packageLabel() + " " + SHORT[iso.species()] + " " + t + " K: second differences jump");
++            } else smooth = "2 MPa at or below 1.05 Psat: no liquid window";
++            table.row(iso.packageLabel(), SHORT[iso.species()], f("%.2f", t), f("%.2f", tr), f("%.3f", start / 1e6), n, worst.signed("%+.2f"),
++                    d7met + " of " + n, number(held) + " %", band, smooth);
++        }
++        table.print(f("isotherms to 10 MPa (%d points scored); differences on 41 points around 2 MPa: largest fourth difference"
++                + " relative to the largest second difference (a jump at 2 MPa would be of order 1)", points));
++    }
++
++    /**
++     * f on 41 points 2 MPa +- 20 h: the largest fourth difference relative to the largest second difference. A
++     * smooth isotherm's second differences drift slowly (a gas's curvature grows with P, a liquid's near its spinodal), so
++     * their own second differences stay small; a kink or jump at 2 MPa makes one of order one next to it.
++     */
++    static double jump(DoubleUnaryOperator f, double h) {
++        int n = 20;
++        double[] y = new double[2 * n + 1];
++        for (int j = -n; j <= n; j++) y[j + n] = f.applyAsDouble(2e6 + j * h);
++        double[] second = new double[y.length - 2];
++        double largest = 0, fourth = 0;
++        for (int j = 0; j < second.length; j++) {
++            second[j] = y[j + 2] - 2 * y[j + 1] + y[j];
++            largest = Math.max(largest, Math.abs(second[j]));
++        }
++        for (int j = 0; j + 2 < second.length; j++) fourth = Math.max(fourth, Math.abs(second[j + 2] - 2 * second[j + 1] + second[j]));
++        return fourth / largest;
++    }
++}
+diff --git a/src/test/java/com/wormzjl/icheme/science/thermo/qualification/G3F6CurrentCutProbeTest.java b/src/test/java/com/wormzjl/icheme/science/thermo/qualification/G3F6CurrentCutProbeTest.java
+new file mode 100644
+index 000000000..338d8f9ae
+--- /dev/null
++++ b/src/test/java/com/wormzjl/icheme/science/thermo/qualification/G3F6CurrentCutProbeTest.java
+@@ -0,0 +1,207 @@
++package com.wormzjl.icheme.science.thermo.qualification;
++
++import static com.wormzjl.icheme.science.thermo.qualification.G3Support.*;
++import static org.junit.jupiter.api.Assertions.assertEquals;
++import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
++import static org.junit.jupiter.api.Assertions.assertTrue;
++
++import com.wormzjl.icheme.science.fluid.thermo.FluidThermodynamics;
++import com.wormzjl.icheme.science.thermo.PengRobinsonKernel.Root;
++import com.wormzjl.icheme.science.thermo.TangentPlaneStability;
++import com.wormzjl.icheme.science.thermo.phase.EquilibriumRequest;
++import com.wormzjl.icheme.science.thermo.phase.EquilibriumResult;
++import com.wormzjl.icheme.science.thermo.phase.PhaseCompetition;
++import com.wormzjl.icheme.science.thermo.phase.PhaseKind;
++import java.util.List;
++import org.junit.jupiter.api.Test;
++
++/**
++ * G3 fixture family F6 (plan {@code P3_PILOT_ENGINE_PLAN.md} section 8.2; P0 rows N16 and C2; D5): compact probes of the
++ * current crude cuts on the bundled network package {@code icheme:tjl20_methane_nitrogen} (Tia Juana light assay),
++ * <b>probes only, no qualification claim</b>; the values are recorded for the G3 report and the later process families
++ * (VDU batch WP0, P7).
++ *
++ * <ul>
++ *   <li>VDU: PR78 pure-cut saturation temperatures at 1, 5 and 13 kPa next to the D5 declared bias against
++ *   Maxwell-Bonnell (P0 section 6.1, recorded, not recomputed), the normal boiling point reproduced; the heavy cut's
++ *   K-values of a vacuum flash at Case A (655.15 K, 13.1 kPa) and at 673 K, 4 kPa through the network's flash.</li>
++ *   <li>CDU: pure-cut saturation temperatures at 250 kPa (with the recorded PR - MB there) and the whole assay at the
++ *   literature preset's 638.15 K and 250 kPa.</li>
++ *   <li>Coking 739-783 K at 0.20-0.52 MPa: the assay through the network's flash; the engine's feed stability verdict
++ *   agrees with the phase count.</li>
++ *   <li>Hydrotreating 589-713 K at 6.1 and 9.1 MPa: carried by the network past the cuts' 2 MPa data on their
++ *   continuations (a notice since the owner rule of 2026-10-16, a typed refusal before); the same states on a research contract of the engine (open domain): phase count,
++ *   labels, verdict (H2 absent until P7).</li>
++ *   <li>Cut and light-end liquid densities at 300 K from 0.1 to 10 MPa: the root is liquid-like at every pressure
++ *   (the NIST 300 K isotherms of {@code LiquidCompressionQualificationTest} end at 1.1 MPa; no reference above).</li>
++ * </ul>
++ */
++class G3F6CurrentCutProbeTest {
++    static final String[] CUTS = {"crude_pc01", "crude_pc02", "crude_pc03", "crude_pc04", "crude_pc05", "crude_pc06", "crude_pc07",
++            "crude_pc08", "crude_pc09", "crude_pc10", "crude_pc11", "crude_pc12"};
++    /** P0 section 6.1 / {@code research/.../vdu-k-policy/psat-mb-check-output.txt}: PR - MB at 1, 5, 13 and 250 kPa, K (D5, recorded). */
++    static final double[][] PR_MINUS_MB = {
++            {-1.6, -0.8, -0.3, -0.06}, {-2.5, -1.5, -0.9, 0.47}, {-3.1, -2.1, -1.5, 1.04}, {-4.0, -2.9, -2.2, 1.71}, {-5.4, -4.1, -3.1, 2.57},
++            {-6.9, -5.4, -4.2, 3.47}, {-8.4, -6.7, -5.3, 4.38}, {-10.1, -8.2, -6.5, 5.44}, {-11.9, -9.9, -7.9, 6.63}, {-12.8, -10.9, -8.9, 7.55},
++            {-12.6, -11.1, -9.2, 7.94}, {-12.9, -11.7, -9.8, 8.56}};
++
++    static double[] assay(FluidThermodynamics model) {
++        var pkg = model.hydrocarbon.propertyPackage();
++        var assay = pkg.assays().get("icheme:tia_juana_light_methane");
++        double[] z = new double[model.componentCount()];
++        for (int c = 0; c < assay.components().size(); c++) z[model.hydrocarbon.components().indexOf(assay.components().get(c))] = assay.amounts().get(c);
++        return z;
++    }
++
++    /** The model's pure-component saturation temperature at {@code p}: a secant on ln Psat against 1/T from the NBP. */
++    static double saturationTemperature(FluidThermodynamics model, String component, double p) {
++        var property = model.hydrocarbon.propertyPackage().properties().get(model.hydrocarbon.components().indexOf(component));
++        double tc = property.pr().criticalTemperature(), pc = property.pr().criticalPressure(), omega = property.pr().acentricFactor();
++        double x0 = 1 / property.normalBoilingPoint(), x1 = x0 * (p < 101325 ? 1.02 : 0.98);
++        double f0 = Double.NaN, f1;
++        for (int k = 0; k < 60; k++) {
++            double t = 1 / x1;
++            double wilson = pc * Math.exp(5.373 * (1 + omega) * (1 - tc / t));
++            double psat = G3Support.saturationPressure(model, component, t, wilson);
++            f1 = Math.log(psat / p);
++            if (Math.abs(f1) < 1e-11) return t;
++            if (!Double.isFinite(f1)) return Double.NaN;
++            if (k == 0) {
++                double t0 = 1 / x0;
++                f0 = Math.log(G3Support.saturationPressure(model, component, t0, pc * Math.exp(5.373 * (1 + omega) * (1 - tc / t0))) / p);
++            }
++            double next = x1 - f1 * (x1 - x0) / (f1 - f0);
++            next = Math.max(1 / (0.999 * tc), Math.min(1 / (0.3 * property.normalBoilingPoint()), next));
++            x0 = x1;
++            f0 = f1;
++            x1 = next;
++        }
++        return Double.NaN;
++    }
++
++    @Test
++    void vacuumAndAtmosphericCutSaturation() {
++        var model = network();
++        var table = new Table("G3 F6 Tsat", "Cut", "NBP K (record)", "PR Tsat(101.325 kPa) - NBP K", "PR Tsat 1 / 5 / 13 kPa K",
++                "D5 PR - MB 1 / 5 / 13 kPa K (recorded)", "Implied MB Tsat 13 kPa K", "PR Tsat 250 kPa K", "PR - MB 250 kPa K (recorded)");
++        for (int c = 0; c < CUTS.length; c++) {
++            var property = model.hydrocarbon.propertyPackage().properties().get(model.hydrocarbon.components().indexOf(CUTS[c]));
++            double nbp = property.normalBoilingPoint();
++            double t101 = saturationTemperature(model, CUTS[c], 101325), t1 = saturationTemperature(model, CUTS[c], 1e3),
++                    t5 = saturationTemperature(model, CUTS[c], 5e3), t13 = saturationTemperature(model, CUTS[c], 13e3),
++                    t250 = saturationTemperature(model, CUTS[c], 250e3);
++            table.row(CUTS[c], f("%.1f", nbp), f("%+.3f", t101 - nbp), f("%.1f / %.1f / %.1f", t1, t5, t13),
++                    f("%+.1f / %+.1f / %+.1f", PR_MINUS_MB[c][0], PR_MINUS_MB[c][1], PR_MINUS_MB[c][2]), f("%.1f", t13 - PR_MINUS_MB[c][2]),
++                    f("%.1f", t250), f("%+.2f", PR_MINUS_MB[c][3]));
++            // The P0 harness's PR78 passes through the record's NBP within 0.01 K; the network's cubic is the same PR78.
++            assertEquals(nbp, t101, 0.05, CUTS[c] + " NBP");
++            assertTrue(t1 < t5 && t5 < t13 && t13 < t101 && t101 < t250, CUTS[c] + " monotone");
++        }
++        table.print("PR78 pure-cut saturation temperatures on the network package (probe; the D5 vacuum bias declared, P0 section 6.1)");
++    }
++
++    @Test
++    void processFlashesThroughTheNetwork() {
++        var model = network();
++        double[] z = assay(model);
++        int heavyStart = model.hydrocarbon.components().indexOf("crude_pc06");
++        double[] residue = new double[z.length];
++        for (int i = heavyStart; i < heavyStart + 7; i++) residue[i] = z[i];
++        var engine = researchEngine(networkEvaluator(), "tjl20-network-probe");
++        var table = new Table("G3 F6 flash", "Probe", "Feed", "T K", "P kPa", "Vapour fraction (network flash)", "Engine feed verdict",
++                "Engine phases", "Verdict = phase count", "K-values PC06..PC12 (y/x)");
++        record Probe(String name, boolean residueFeed, double t, double p) {}
++        var probes = List.of(new Probe("VDU Case A", true, 655.15, 13.1e3), new Probe("VDU deep cut", true, 673, 4e3),
++                new Probe("CDU flash zone (literature preset feed)", false, 638.15, 250e3),
++                new Probe("Coking drum feed", false, 739, 200e3), new Probe("Coking drum", false, 761, 340e3),
++                new Probe("Coking heater outlet", false, 783, 520e3), new Probe("Coking heater outlet", false, 755, 520e3),
++                new Probe("Coking drum", false, 783, 200e3));
++        var ws = engine.newWorkspace();
++        for (var probe : probes) {
++            double[] feed = probe.residueFeed() ? residue : z;
++            var state = model.flashTP(probe.t(), probe.p(), feed, () -> { });
++            double vapour = 0, total = 0;
++            for (int i = 0; i < state.vaporView().length; i++) {
++                vapour += state.vaporView()[i];
++                total += state.vaporView()[i] + state.liquidView()[i];
++            }
++            var result = engine.tp(EquilibriumRequest.tp(probe.t(), probe.p(), engine.contract().components(),
++                    java.util.Arrays.copyOf(feed, engine.contract().components().size()), PhaseCompetition.FLUID_ONLY), ws);
++            assertTrue(result.converged(), probe.name() + " " + result.detail());
++            var verdict = result.diagnostics().feedVerdict();
++            boolean consistent = verdict == TangentPlaneStability.Verdict.UNSTABLE ? result.phases().size() == 2 : result.phases().size() == 1;
++            assertTrue(consistent, probe.name() + ": verdict " + verdict + ", " + result.phases().size() + " phases");
++            boolean networkTwoPhase = vapour > 0 && vapour < total;
++            assertEquals(result.phases().size() == 2, networkTwoPhase, probe.name() + ": network phase count = engine phase count");
++            var k = new StringBuilder();
++            if (networkTwoPhase) {
++                double liquidTotal = total - vapour;
++                for (int i = heavyStart; i < heavyStart + 7; i++) {
++                    double y = state.vaporView()[i] / vapour, x = state.liquidView()[i] / liquidTotal;
++                    k.append(i == heavyStart ? "" : " ").append(f("%.3g", y / x));
++                }
++            }
++            table.row(probe.name(), probe.residueFeed() ? "PC06-PC12 of the assay" : "whole assay", number(probe.t()), f("%.1f", probe.p() / 1e3),
++                    f("%.4f", vapour / total), verdict, result.phases().size(), consistent ? "yes" : "NO", networkTwoPhase ? k : "-");
++        }
++        table.print("process flashes of the Tia Juana light assay on the network (probe; VDU K-values carry the D5 bias: PR/MB vapour"
++                + " pressure 1.13-1.24 at 13 kPa for PC06-PC12, i.e. K 13-24 % high)");
++    }
++
++    @Test
++    void hydrotreatingPressureIsCarriedByTheNetworkAndProbedOnAResearchContract() {
++        var model = network();
++        double[] z = assay(model);
++        // Past the crude records' 2 MPa data the network carries the state on their continuations (owner rule of
++        // 2026-10-16): no refusal, a notice.
++        var carried = assertDoesNotThrow(() -> model.flashTP(623, 9.1e6, z, () -> { }));
++        assertTrue(Double.isFinite(carried.enthalpy()) && carried.volume() > 0);
++        System.out.println("G3 F6 hydrotreating on the network: carried, vapour " + f("%.4f", java.util.Arrays.stream(carried.vaporView()).sum() / java.util.Arrays.stream(z).sum()));
++        var engine = researchEngine(networkEvaluator(), "tjl20-hydrotreating-probe");
++        var ws = engine.newWorkspace();
++        var table = new Table("G3 F6 hydrotreating", "T K", "P MPa", "Status", "Classification", "Phases (labels)", "Vapour fraction",
++                "Feed verdict", "Grade");
++        for (double p : new double[] {6.1e6, 9.1e6}) {
++            for (double t : new double[] {589, 623, 663, 713}) {
++                var result = engine.tp(EquilibriumRequest.tp(t, p, engine.contract().components(), java.util.Arrays.copyOf(z, engine.contract().components().size()),
++                        PhaseCompetition.FLUID_ONLY), ws);
++                assertTrue(result.converged(), t + " K " + p + " Pa: " + result.detail());
++                var labels = new StringBuilder();
++                double vapour = 0;
++                for (var phase : result.phases()) {
++                    labels.append(labels.isEmpty() ? "" : ", ").append(phase.kind());
++                    if (phase.kind() == PhaseKind.VAPOR) vapour += phase.total();
++                }
++                var verdict = result.diagnostics().feedVerdict();
++                assertTrue(verdict == TangentPlaneStability.Verdict.UNSTABLE ? result.phases().size() == 2 : result.phases().size() == 1);
++                assertEquals(EquilibriumResult.CoverageGrade.RESEARCH_ONLY, result.coverage().grade());
++                table.row(number(t), f("%.1f", p / 1e6), result.status(), result.classification(), result.phases().size() + " (" + labels + ")",
++                        f("%.4f", vapour / result.totalAmount()), verdict, result.coverage().grade());
++            }
++        }
++        table.print("the assay at hydrotreater temperatures and pressures on an open research contract (probe, no H2; the network refuses)");
++    }
++
++    @Test
++    void cutLiquidDensitiesAtThreeHundredKelvinToTenMegapascals() {
++        var model = network();
++        var table = new Table("G3 F6 liquid", "Component", "rho 0.1 MPa kg/m3", "2 MPa", "5 MPa", "10 MPa", "rho(10)/rho(0.1) - 1 %", "Roots liquid-like");
++        for (String component : new String[] {"N-butane", "N-pentane", "crude_pc01", "crude_pc03", "crude_pc06", "crude_pc09", "crude_pc12"}) {
++            double[] x = pure(model, component);
++            double mw = model.hydrocarbon.molecularWeight(model.hydrocarbon.components().indexOf(component));
++            double[] rho = new double[4];
++            double[] pressures = {1e5, 2e6, 5e6, 1e7};
++            boolean liquidLike = true;
++            for (int k = 0; k < 4; k++) {
++                var e = evaluate(model, 300, pressures[k], x, Root.LIQUID);
++                rho[k] = mw / e.molarVolume();
++                liquidLike &= e.roots() == 3 || e.pip() > 1;
++            }
++            table.row(component, f("%.1f", rho[0]), f("%.1f", rho[1]), f("%.1f", rho[2]), f("%.1f", rho[3]), f("%.2f", 100 * (rho[3] / rho[0] - 1)),
++                    liquidLike ? "yes" : "NO");
++            assertTrue(liquidLike, component + " liquid root");
++            assertTrue(rho[3] > rho[2] && rho[2] > rho[1] && rho[1] > rho[0], component + " compresses");
++        }
++        table.print("cut and light-end liquids at 300 K on the network's direct liquid path (probe; above 2 MPa these records are not qualified)");
++    }
++}
+diff --git a/src/test/java/com/wormzjl/icheme/science/thermo/qualification/G5F5ReportOnlyLiquidusTest.java b/src/test/java/com/wormzjl/icheme/science/thermo/qualification/G5F5ReportOnlyLiquidusTest.java
+new file mode 100644
+index 000000000..78435ff00
+--- /dev/null
++++ b/src/test/java/com/wormzjl/icheme/science/thermo/qualification/G5F5ReportOnlyLiquidusTest.java
+@@ -0,0 +1,47 @@
++package com.wormzjl.icheme.science.thermo.qualification;
++
++import static org.junit.jupiter.api.Assertions.assertEquals;
++import static org.junit.jupiter.api.Assertions.assertNotNull;
++import static org.junit.jupiter.api.Assertions.assertTrue;
++
++import java.util.Locale;
++import org.junit.jupiter.api.Test;
++
++/**
++ * G5 family 5 (P5, batch 2026-09-24-coolprop-low-temperature), report only, no bound on the deviations: Gao et al. 2012
++ * (CO2 in liquid CH4, Table 2, whose values are Shen 2012's binary at nearly the same temperatures, no pressure printed:
++ * the liquid at Davis's locus pressure; and Table 4 with 10 to 70 % N2 in the solvent, 83 to 123 K, partly below the
++ * pilot's 90 K CO2 floor), Sampson et al. 2023 (52 to 500 ppm CO2 in compressed liquid CH4 at 7 to 10 MPa, temperature
++ * uncertainty 1.7 to 2.4 K, k = 1; Maltby et al. 2025 report every model at 3 % of T or worse there) and Kurata and Im 1971
++ * Table VI (the three-phase x and y of Davis 1962, interpolated). Printed; the only checks are the counts and that every
++ * point is answered (above the 10 MPa envelope or below CO2's 90 K spine a point is extrapolated, counted apart: owner
++ * rule of 2026-10-16, out of domain before).
++ *
++ * <p>Measured 2026-09-25 (9019 J/mol): Gao binary 2.58 K MAD (bias -2.58 K, as Shen), 10 % N2 0.77 K, 30 % 2.80 K,
++ * 50 % 4.13 K (one point below 90 K), 70 % 6.13 K (bias +6.1 K: the N2-rich liquids freeze warm on this family);
++ * Sampson's three points inside 10 MPa -4.4 to -6.4 K (three above the ceiling).</p>
++ */
++class G5F5ReportOnlyLiquidusTest {
++    @Test
++    void gaoSampsonAndKurataImAreReported() {
++        var gao = G5Support.gao();
++        var sampson = G5Support.sampson();
++        assertEquals(9 + 32, gao.size());
++        assertEquals(6, sampson.size());
++        var points = new java.util.ArrayList<>(gao);
++        points.addAll(sampson);
++        var datasets = G5Support.summary("G5F5 report only", G5Support.score(G5Support.SERVICE, points, true), Double.NaN);
++        for (var s : datasets.values()) assertTrue(s.holds.isEmpty() && s.failures.isEmpty(), s.holds + " " + s.failures);
++        assertEquals(3, datasets.get("Sampson 2023").extrapolated.size(), "three of Sampson's points lie above 10 MPa");
++        // Kurata-Im Table VI: the three-phase x and y at their temperature.
++        var ws = G5Support.SERVICE.newWorkspace();
++        System.out.println("Kurata-Im Table VI | T K | P data MPa | P model MPa | x data | x model | y data | y model");
++        for (String[] c : G4F1CarbonDioxideFrostPointHoldoutTest.rows("kurata-im-1971-jced-16-295-table6.tsv")) {
++            double t = G5Support.number(c[1]);
++            double[] three = G5Support.threePhase(G5Support.SERVICE, t, 1, ws);
++            assertNotNull(three, t + " K");
++            System.out.printf(Locale.ROOT, "Kurata-Im | %.2f | %.4f | %.4f | %.4f | %.4f | %.4f | %.4f%n", t, G5Support.number(c[3]), three[0] / 1e6,
++                    G5Support.number(c[4]), three[1], G5Support.number(c[6]), three[2]);
++        }
++    }
++}
+diff --git a/src/test/java/com/wormzjl/icheme/science/thermo/qualification/G5Support.java b/src/test/java/com/wormzjl/icheme/science/thermo/qualification/G5Support.java
+index 8b1024b53..14cef782a 100644
+--- a/src/test/java/com/wormzjl/icheme/science/thermo/qualification/G5Support.java
++++ b/src/test/java/com/wormzjl/icheme/science/thermo/qualification/G5Support.java
+@@ -159,6 +159,35 @@ final class G5Support {
+         return points;
+     }
+ 
++    /**
++     * Gao et al. 2012 (report only): Table 2, CO2 in liquid CH4 (no pressure printed: the liquid at Davis's locus pressure,
++     * the liquidus being nearly pressure-independent), and Table 4 with 10 to 70 % N2 in the solvent at the printed pressure.
++     */
++    static List<Point> gao() {
++        List<Point> points = new ArrayList<>();
++        for (String[] c : G4F1CarbonDioxideFrostPointHoldoutTest.rows("gao-2012-iecr-51-9403.tsv")) {
++            double t = number(c[2]);
++            if (c[0].equals("BIN")) {
++                double x = number(c[4]) * 1e-3;
++                points.add(new Point("Gao 2012", "CH4", t, davisPressure(t), z(0, 1 - x, 0, x), false, "x " + x));
++            } else {
++                double n2 = Integer.parseInt(c[0].substring(3)) / 100.0, x = number(c[4]) * 1e-6;
++                points.add(new Point("Gao 2012", c[0], t, number(c[3]) * 1e3, z((1 - x) * n2, (1 - x) * (1 - n2), 0, x), false, "x " + x));
++            }
++        }
++        return points;
++    }
++
++    /** Sampson et al. 2023 Table 2 (report only): compressed liquid CH4 with 52 to 500 ppm CO2 at 7 to 10 MPa. */
++    static List<Point> sampson() {
++        List<Point> points = new ArrayList<>();
++        for (String[] c : G4F1CarbonDioxideFrostPointHoldoutTest.rows("sampson-2023-aiche-aic18001-table2.tsv")) {
++            double x = number(c[0]) * 1e-6;
++            points.add(new Point("Sampson 2023", "CH4", number(c[3]), number(c[2]) * 1e6, z(0, 1 - x, 0, x), false, "u(T) " + c[4] + " K"));
++        }
++        return points;
++    }
++
+     // Scoring.
+ 
+     /** Accumulated scores of one group. */
+diff --git a/src/test/java/com/wormzjl/icheme/science/thermo/reference/HelmholtzReferenceTest.java b/src/test/java/com/wormzjl/icheme/science/thermo/reference/HelmholtzReferenceTest.java
+new file mode 100644
+index 000000000..8b6b49c6a
+--- /dev/null
++++ b/src/test/java/com/wormzjl/icheme/science/thermo/reference/HelmholtzReferenceTest.java
+@@ -0,0 +1,125 @@
++package com.wormzjl.icheme.science.thermo.reference;
++
++import static org.junit.jupiter.api.Assertions.assertEquals;
++import static org.junit.jupiter.api.Assertions.assertThrows;
++import static org.junit.jupiter.api.Assertions.assertTrue;
++
++import com.google.gson.JsonArray;
++import com.google.gson.JsonObject;
++import com.google.gson.JsonParser;
++import java.util.ArrayList;
++import java.util.List;
++import java.util.Locale;
++import java.util.function.ToDoubleFunction;
++import org.junit.jupiter.api.Test;
++import org.junit.jupiter.params.ParameterizedTest;
++import org.junit.jupiter.params.provider.ValueSource;
++
++/** Internal consistency of the Helmholtz oracle: analytic alpha derivatives against central differences. */
++class HelmholtzReferenceTest {
++    private static final double TOLERANCE = 1.0e-7;
++    private static final double STEP = 1.0e-4;
++    /** (tau, delta) pairs: dilute gas, near-critical (inside the non-analytic terms' reach), dense liquid. */
++    private static final double[][] STATES = {
++            {0.6, 0.05}, {0.9, 0.4}, {1.02, 1.05}, {0.98, 0.93}, {1.3, 2.2}, {1.8, 2.6}};
++
++    @ParameterizedTest
++    @ValueSource(strings = {"Nitrogen", "CarbonDioxide", "Methane", "Ethane", "Hydrogen", "Water"})
++    void analyticDerivativesMatchCentralDifferences(String fluidName) {
++        HelmholtzFluid fluid = HelmholtzFluid.load(fluidName);
++        List<String> failures = new ArrayList<>();
++        for (double[] state : STATES) {
++            check(fluidName + " alpha0", state[0], state[1], fluid::idealDerivatives, failures);
++            check(fluidName + " alphar", state[0], state[1], fluid::residualDerivatives, failures);
++        }
++        assertTrue(failures.isEmpty(), String.join("\n", failures));
++    }
++
++    @ParameterizedTest
++    @ValueSource(strings = {"Nitrogen", "CarbonDioxide", "Methane", "Ethane", "Hydrogen", "Water"})
++    void saturationHasEqualPressureAndFugacity(String fluidName) {
++        HelmholtzFluid fluid = HelmholtzFluid.load(fluidName);
++        double tt = fluid.tripleTemperature();
++        double tc = fluid.criticalTemperature();
++        for (double fraction : new double[] {0.0, 0.2, 0.5, 0.8, 0.97}) {
++            double t = tt + fraction * (tc - tt);
++            SaturationState sat = fluid.saturation(t);
++            // The liquid-side pressure is a small difference of large terms: its relative rounding error is about
++            // 1e-15 / Z_L, so equality of pressure and of ln phi is checked to 1e-12 / Z_L.
++            double tolerance = 1.0e-12 / sat.liquid().compressibility();
++            assertEquals(0.0, sat.liquid().logFugacityCoefficient() - sat.vapour().logFugacityCoefficient(),
++                    tolerance, fluidName + " ln phi at " + t + " K");
++            assertEquals(1.0, sat.liquid().pressure() / sat.vapour().pressure(), tolerance,
++                    fluidName + " pressure at " + t + " K");
++            // At the coexistence pressure p(rho) = Psat has three roots; each root choice must find its own phase.
++            assertEquals(1.0, fluid.density(t, sat.pressure(), HelmholtzFluid.Root.LIQUID) / sat.liquid().density(),
++                    1.0e-12, fluidName + " liquid root at " + t + " K");
++            assertEquals(1.0, fluid.density(t, sat.pressure(), HelmholtzFluid.Root.VAPOUR) / sat.vapour().density(),
++                    1.0e-12, fluidName + " vapour root at " + t + " K");
++        }
++    }
++
++    @Test
++    void unknownTermFamilyIsRefused() {
++        JsonObject root = JsonFluidFiles.resource("Nitrogen.json");
++        JsonArray alphar = root.getAsJsonArray("EOS").get(0).getAsJsonObject().getAsJsonArray("alphar");
++        alphar.add(JsonParser.parseString("{\"type\": \"ResidualHelmholtzGaoB\", \"n\": [1.0]}"));
++        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
++                () -> HelmholtzFluid.parse(root));
++        assertTrue(error.getMessage().contains("ResidualHelmholtzGaoB"), error.getMessage());
++    }
++
++    @FunctionalInterface
++    private interface Evaluator {
++        void evaluate(double tau, double delta, AlphaDerivatives out);
++    }
++
++    /**
++     * Fourth-order central differences, f'(x) = [f(x - 2h) - 8 f(x - h) + 8 f(x + h) - f(x + 2h)] / (12 h), with
++     * h = 1e-4 x: the Gaussian and non-analytic terms vary on a scale of 1/sqrt(2 beta), 0.03 in tau for water's
++     * beta = 700 to 800, which a second-order stencil at an affordable step cannot resolve to 1e-7.
++     */
++    private static void check(String label, double tau, double delta, Evaluator evaluator, List<String> failures) {
++        AlphaDerivatives centre = new AlphaDerivatives();
++        evaluator.evaluate(tau, delta, centre);
++        double hd = STEP * delta;
++        double ht = STEP * tau;
++        AlphaDerivatives[] alongDelta = new AlphaDerivatives[4];
++        AlphaDerivatives[] alongTau = new AlphaDerivatives[4];
++        double[] offsets = {-2.0, -1.0, 1.0, 2.0};
++        for (int i = 0; i < 4; i++) {
++            alongDelta[i] = new AlphaDerivatives();
++            alongTau[i] = new AlphaDerivatives();
++            evaluator.evaluate(tau, delta + offsets[i] * hd, alongDelta[i]);
++            evaluator.evaluate(tau + offsets[i] * ht, delta, alongTau[i]);
++        }
++        String where = String.format(Locale.ROOT, "%s at tau=%.3f delta=%.3f", label, tau, delta);
++        compare(where + " dDelta", centre.dDelta, stencil(alongDelta, hd, d -> d.alpha), centre.alpha, failures);
++        compare(where + " dTau", centre.dTau, stencil(alongTau, ht, d -> d.alpha), centre.alpha, failures);
++        compare(where + " dDelta2", centre.dDelta2, stencil(alongDelta, hd, d -> d.dDelta), centre.dDelta, failures);
++        compare(where + " dTau2", centre.dTau2, stencil(alongTau, ht, d -> d.dTau), centre.dTau, failures);
++        compare(where + " dDeltaDTau (from dDelta)", centre.dDeltaDTau, stencil(alongTau, ht, d -> d.dDelta),
++                centre.dDelta, failures);
++        compare(where + " dDeltaDTau (from dTau)", centre.dDeltaDTau, stencil(alongDelta, hd, d -> d.dTau),
++                centre.dTau, failures);
++    }
++
++    private static double stencil(AlphaDerivatives[] points, double h,
++                                  ToDoubleFunction<AlphaDerivatives> value) {
++        return (value.applyAsDouble(points[0]) - 8.0 * value.applyAsDouble(points[1])
++                + 8.0 * value.applyAsDouble(points[2]) - value.applyAsDouble(points[3])) / (12.0 * h);
++    }
++
++    /**
++     * Relative comparison; a derivative that is zero or nearly so (the ideal part's mixed derivative, a residual
++     * derivative crossing zero) is measured against the magnitude of the function it was differentiated from.
++     */
++    private static void compare(String where, double analytic, double numeric, double parent, List<String> failures) {
++        double scale = Math.max(Math.abs(analytic), 1.0e-3 * Math.max(Math.abs(parent), 1.0));
++        double deviation = Math.abs(analytic - numeric) / scale;
++        if (!(deviation <= TOLERANCE)) {
++            failures.add(String.format(Locale.ROOT, "%s: analytic %.12g numeric %.12g (rel %.2e)", where, analytic,
++                    numeric, deviation));
++        }
++    }
++}
+diff --git a/src/test/resources/science/thermo/solid-co2-holdouts/gao-2012-iecr-51-9403.tsv b/src/test/resources/science/thermo/solid-co2-holdouts/gao-2012-iecr-51-9403.tsv
+new file mode 100644
+index 000000000..61070a6a2
+--- /dev/null
++++ b/src/test/resources/science/thermo/solid-co2-holdouts/gao-2012-iecr-51-9403.tsv
+@@ -0,0 +1,66 @@
++# Copied 2026-09-25 for the G5 gate (P5, batch 2026-09-24-coolprop-low-temperature) from the git-ignored
++# research/2026-09-24-coolprop-low-temperature/sources/solid-co2-holdouts/owner-provided/gao-2012-iecr-51-9403.tsv of the main checkout; digits and header verbatim.
++# Gao T., Shen T., Lin W., Gu A., Ju Y. (2012). Experimental Determination of CO2 Solubility in Liquid CH4/N2 Mixtures at
++# Cryogenic Temperatures. Ind. Eng. Chem. Res. 51, 9403-9408. doi:10.1021/ie3002815. ACS copyright, owner-provided.
++# Local copy: gao-2012-iecr-51-9403.pdf (sha256 44fc3130894ccd82f690f712e66c841398d3ed3a162fff73abe3be0df73d4c3f).
++# Tables 2 (p. 9406) and 4 (p. 9407), read from 170-200 dpi renders.
++# System: solid CO2 + saturated liquid (static-analytic SLE, GC analysis; the liquid is at its bubble point, so these are
++# three-phase points with vapour present, vapour not sampled). Solvent N2 fraction is the CO2-free feed composition.
++# block BIN = Table 2, CO2 solubility in pure liquid CH4: x in 10^3 ppm (as printed; x_CO2 = value x 1e-3), with Davis et al.
++#   1962 values xexp (10^3 ppm) and delta = 100 (x - xexp)/xexp at seven of the temperatures; MRD 4.39 %. NO PRESSURE printed
++#   (Maltby 2025 therefore lists only the 32 ternary points). 9 points, -160 to -103.3 C (113.2 to 169.9 K).
++#   NOTE: xexp are the Davis 1962 Table 4 crystal points (-226.3 to -153.9 F = -143.5 to -103.3 C; 0.16 mol % = 1.6 x 10^3
++#   ppm). At -103.3 C Gao prints 29.0 where Davis prints 2.94 mol % (29.4 x 10^3 ppm); not reconciled.
++# block N2_10/N2_30/N2_50/N2_70 = Table 4, CO2 solubility in CH4/N2 mixtures with 10, 30, 50, 70 % N2: p in kPa (equilibrium
++#   pressure as printed), x in ppm (mole fraction x 1e6), xcal = their PR EOS calculation (kij CH4/CO2 T-dependent, N2/CO2
++#   -0.02, CH4/N2 0.036, Table 3). MRD of xcal: 5.39, 10.39, 39.22, 67.40 %. 32 points, -150 to -190 C (123.15 to 83.15 K),
++#   124 to 2023 kPa, x 3 to 900 ppm.
++# Uncertainty (section 2): temperature accuracy +-0.05 C, pressure relative 0.1 %, GC total relative 1.1 % (TCD) and
++#   1.6 % (FID), repeatability of the ten samples per point within 3 %; standard-gas purity 1 % of label (1 ppm absolute
++#   for the lowest CO2 standards).
++# T_K is derived here (C + 273.15), not printed.
++# Sanity check: x falls monotonically as T falls in every block, and p falls with T.
++# Digits as printed, one sanity check, not re-verified (owner: not looking for 100 % correct data).
++# Role: G5 low-temperature liquidus in CH4 and the N2 domain. Transcribed 2026-09-25, batch 2026-09-24-coolprop-low-temperature.
++block	T_C	T_K	p_kPa	x	x_unit	xref	xref_meaning	delta_pct
++BIN	-160	113.15		0.172	1e3 ppm			
++BIN	-150	123.15		0.823	1e3 ppm			
++BIN	-143.5	129.65		1.413	1e3 ppm	1.6	xexp_Davis_1e3ppm	-11.69
++BIN	-137.9	135.25		2.479	1e3 ppm	2.5	xexp_Davis_1e3ppm	-0.84
++BIN	-133.7	139.45		3.678	1e3 ppm	3.7	xexp_Davis_1e3ppm	-0.59
++BIN	-128.6	144.55		5.665	1e3 ppm	5.8	xexp_Davis_1e3ppm	-2.33
++BIN	-122.8	150.35		8.225	1e3 ppm	9.3	xexp_Davis_1e3ppm	-11.56
++BIN	-111.1	162.05		17.64	1e3 ppm	18.3	xexp_Davis_1e3ppm	-3.61
++BIN	-103.3	169.85		28.96	1e3 ppm	29.0	xexp_Davis_1e3ppm	-0.14
++N2_10	-150	123.15	571	825	ppm	830	xcal_PR_ppm	
++N2_10	-155	118.15	452	505	ppm	493	xcal_PR_ppm	
++N2_10	-160	113.15	347	280	ppm	280	xcal_PR_ppm	
++N2_10	-165	108.15	241	170	ppm	151	xcal_PR_ppm	
++N2_10	-170	103.15	175	70	ppm	77	xcal_PR_ppm	
++N2_10	-175	98.15	139	40	ppm	37	xcal_PR_ppm	
++N2_30	-150	123.15	1115	900	ppm	930	xcal_PR_ppm	
++N2_30	-155	118.15	919	578	ppm	576	xcal_PR_ppm	
++N2_30	-160	113.15	715	330	ppm	342	xcal_PR_ppm	
++N2_30	-165	108.15	545	189	ppm	193	xcal_PR_ppm	
++N2_30	-170	103.15	413	84	ppm	104	xcal_PR_ppm	
++N2_30	-175	98.15	289	50	ppm	52	xcal_PR_ppm	
++N2_30	-180	93.15	200	29	ppm	24	xcal_PR_ppm	
++N2_30	-185	88.15	130	15	ppm	10	xcal_PR_ppm	
++N2_50	-150	123.15	1596	837	ppm	922	xcal_PR_ppm	
++N2_50	-155	118.15	1270	535	ppm	599	xcal_PR_ppm	
++N2_50	-160	113.15	1000	300	ppm	374	xcal_PR_ppm	
++N2_50	-165	108.15	760	185	ppm	222	xcal_PR_ppm	
++N2_50	-170	103.15	564	105	ppm	126	xcal_PR_ppm	
++N2_50	-175	98.15	419	50	ppm	67	xcal_PR_ppm	
++N2_50	-180	93.15	292	21	ppm	34	xcal_PR_ppm	
++N2_50	-185	88.15	196	10	ppm	15	xcal_PR_ppm	
++N2_50	-190	83.15	124	3	ppm	7	xcal_PR_ppm	
++N2_70	-150	123.15	2023	640	ppm	756	xcal_PR_ppm	
++N2_70	-155	118.15	1612	440	ppm	526	xcal_PR_ppm	
++N2_70	-160	113.15	1240	272	ppm	350	xcal_PR_ppm	
++N2_70	-165	108.15	945	150	ppm	222	xcal_PR_ppm	
++N2_70	-170	103.15	703	70	ppm	134	xcal_PR_ppm	
++N2_70	-175	98.15	505	40	ppm	76	xcal_PR_ppm	
++N2_70	-180	93.15	353	18	ppm	41	xcal_PR_ppm	
++N2_70	-185	88.15	240	9	ppm	20	xcal_PR_ppm	
++N2_70	-190	83.15	145	6	ppm	9	xcal_PR_ppm	
+diff --git a/src/test/resources/science/thermo/solid-co2-holdouts/kurata-im-1971-jced-16-295-table6.tsv b/src/test/resources/science/thermo/solid-co2-holdouts/kurata-im-1971-jced-16-295-table6.tsv
+new file mode 100644
+index 000000000..6ee71cbde
+--- /dev/null
++++ b/src/test/resources/science/thermo/solid-co2-holdouts/kurata-im-1971-jced-16-295-table6.tsv
+@@ -0,0 +1,31 @@
++# Copied 2026-09-25 for the G5 gate (P5, batch 2026-09-24-coolprop-low-temperature) from the git-ignored
++# research/2026-09-24-coolprop-low-temperature/sources/solid-co2-holdouts/owner-provided/kurata-im-1971-jced-16-295-table6.tsv of the main checkout; digits and header verbatim.
++# Kurata F., Im K.U. (1971). Phase Equilibrium of Carbon Dioxide and Light Paraffins in Presence of Solid Carbon Dioxide.
++# J. Chem. Eng. Data 16(3), 295-299. doi:10.1021/je60050a018. ACS copyright, owner-provided.
++# Local copy: kurata-im-1971-jced-16-295.pdf (sha256 ab8a75e7a27b19a446b41811e8383cc79558c978d0ab171c2cbc9fa385dde146).
++# Table VI, "Molal equilibrium ratios along S-V-L locus in carbon dioxide-methane system", p. 298, text layer checked against
++# a 110 dpi page render. Footnote: "Based on data of Davis et al. (2)", i.e. Davis, Rodewald, Kurata 1962 (see
++# davis-rodewald-kurata-1962-aiche-8-537.tsv); the pairing of liquid and vapour compositions at the same T is Kurata-Im's
++# (interpolated/smoothed from Davis's separate x and y tables), NOT an independent measurement.
++# Units as printed: T in deg F, p in psia, compositions in mole fraction, K = y/x. T_K and p_MPa derived here.
++# 10 points, -81.3 to -162.3 F (210.2 to 165.2 K), 275 to 703 psia (1.90 to 4.85 MPa), x_CO2 0.0183 to 0.7400.
++# Tables I to V (ternary and quaternary S-L-V data with ethane, propane, n-butane; Table I from Jensen) are NOT transcribed
++# (outside the CO2 + CH4 / CO2 + CH4 + N2 scope of this task). There is no N2 system in this paper.
++# Experimental uncertainty stated for Tables I to V (p. 296): T +-0.3 F (thermometer calibration better than +-0.1 F),
++# p +-0.5 psia, composition maximum relative uncertainty +-3.2 %.
++# Printed inconsistencies (not corrected): at -100.0 F the vapour sums to 1.0100 (K_CH4 1.150 implies y_CH4 0.9240); at
++# -117.3 F the liquid sums to 0.9750 and the vapour to 0.9633 (K_CH4 1.092 implies y_CH4 0.9587 with x_CH4 0.8780).
++# Sanity check: x_CO2 and y_CO2 decrease monotonically as T falls; p passes a maximum (703 psia) near -90 F, as in Davis.
++# Digits as printed, one sanity check, not re-verified (owner: not looking for 100 % correct data).
++# Role: G5 binary SLV phase compositions (derived from Davis 1962). Transcribed 2026-09-25, batch 2026-09-24-coolprop-low-temperature.
++T_F	T_K	p_psia	p_MPa	x_CO2	x_CH4	y_CO2	y_CH4	K_CO2	K_CH4
++-81.3	210.21	580.0	3.9990	0.7400	0.2600	0.1750	0.8250	0.236	3.170
++-84.9	208.21	655.0	4.5161	0.6500	0.3500	0.1500	0.8500	0.231	2.300
++-89.9	205.43	702.0	4.8401	0.4300	0.5700	0.1130	0.8870	0.263	1.560
++-90.3	205.21	703.0	4.8470	0.3450	0.6550	0.1110	0.8890	0.322	1.360
++-99.3	200.21	695.0	4.7919	0.2070	0.7930	0.0780	0.9220	0.383	1.160
++-100.0	199.82	690.0	4.7574	0.1970	0.8030	0.0760	0.9340	0.386	1.150
++-117.3	190.21	577.0	3.9783	0.0970	0.8780	0.0413	0.9220	0.426	1.092
++-126.3	185.21	510.0	3.5163	0.0710	0.9260	0.0300	0.9700	0.422	1.050
++-159.9	166.54	287.0	1.9788	0.0355	0.9665	0.0140	0.9860	0.418	1.020
++-162.3	165.21	275.0	1.8961	0.0183	0.9817	0.0060	0.9940	0.327	1.013
+diff --git a/src/test/resources/science/thermo/solid-co2-holdouts/sampson-2023-aiche-aic18001-table2.tsv b/src/test/resources/science/thermo/solid-co2-holdouts/sampson-2023-aiche-aic18001-table2.tsv
+new file mode 100644
+index 000000000..25b97d5ee
+--- /dev/null
++++ b/src/test/resources/science/thermo/solid-co2-holdouts/sampson-2023-aiche-aic18001-table2.tsv
+@@ -0,0 +1,29 @@
++# Copied 2026-09-25 for the G5 gate (P5, batch 2026-09-24-coolprop-low-temperature) from the git-ignored
++# research/2026-09-24-coolprop-low-temperature/sources/solid-co2-holdouts/owner-provided/sampson-2023-aiche-aic18001-table2.tsv of the main checkout; digits and header verbatim.
++# Sampson C.C., Metaxas P.J., Barwood M.T.J., Sinclair-Adamson R., Falloon P.E., Stanwix P.L., Johns M.L., May E.F. (2023).
++# Experimental solid-liquid equilibria and solid formation kinetics for carbon dioxide in methane for LNG processing.
++# AIChE J. 69(4), e18001. doi:10.1002/aic.18001. Open access: "Creative Commons Attribution License" (p. 1 of the PDF).
++# Local copy: sampson-2023-aiche-aic18001.pdf
++# (sha256 514139926c4abbb7b8afde409d492aac50d999f47eb1a7353053d4f78abb0c2a).
++# Table 2, "Measured solid-liquid equilibrium data for the carbon dioxide + methane binary system", p. 5, read from a
++# 200 dpi render; compositions and their uncertainties from Table 1 (p. 4, text layer).
++# Method: synthetic, stepped melting observed by microscope; x_CO2 is the loaded (overall) mixture composition, i.e. the
++# liquid composition at the melting (solubility) temperature. Solvent: pure CH4 (99.9995 mol %). Compressed liquid at 7 to
++# 10 MPa, no vapour: true SLE. Kinetics (Table 3) not transcribed.
++# Units as printed: x in ppm (mol), p in MPa, T in K. u_T_K = combined standard (k = 1) uncertainty as printed (+-);
++# u_x_ppm from Table 1 (500 +- 5.0, 100 +- 1.0, 65.8 +- 0.9, 52.2 +- 0.6 ppm). Standard uncertainty in pressure 0.08 MPa.
++# The 65.8 ppm value is the average of two melting experiments, the 52.2 ppm value the average of three.
++# steps = temperature step and minimum hold per step; range_K = temperature range of the steps, both as printed.
++# 6 points, 106.3 to 122.8 K, 6.98 to 10.10 MPa, 52.2 to 500 ppm.
++# Their PR (ThermoFAST) kij for CO2 + CH4 tuned to these points: 0.1580 (RMS 1.07 K); previous default 0.1105.
++# Sanity check: T_meas rises with x_CO2 (106.3 K at 52 ppm to 122.8 K at 500 ppm) and is nearly pressure-independent
++# (500 ppm: 122.8 K at 10.00 MPa, 121.4 K at 6.98 MPa).
++# Digits as printed, one sanity check, not re-verified (owner: not looking for 100 % correct data).
++# Role: G5 trace liquidus at LNG temperatures. Transcribed 2026-09-25, batch 2026-09-24-coolprop-low-temperature.
++x_CO2_ppm	u_x_ppm	p_MPa	T_K	u_T_K	steps	range_K
++500	5.0	10.00	122.8	1.8	1 K; >=2 h	114.2-123.3
++500	5.0	6.98	121.4	1.8	1 K; >=2 h	117-124
++100	1.0	10.09	111.3	1.9	1 K; >=1 h	100-117
++100	1.0	7.03	111.0	1.9	1 K; >=1 h	98.5-112.5
++65.8	0.9	10.10	108.4	2.4	1 K; >=1 h	100-116
++52.2	0.6	10.09	106.3	1.7	0.5 or 1 K; >=1 h	100-111

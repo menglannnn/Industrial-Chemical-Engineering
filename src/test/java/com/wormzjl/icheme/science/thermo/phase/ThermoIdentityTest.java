@@ -47,7 +47,7 @@ class ThermoIdentityTest {
         String network = PhaseTestSupport.NETWORK;
         var free = ThermoIdentity.of(catalog, network, CubicPhaseEvaluator.FAMILY, ThermoIdentity.NO_SPINE,
                 WaterParticipation.SEPARATE_FREE_WATER);
-        assertEquals(catalog.fluidThermoFingerprint(network), free.packageFingerprint());
+        assertEquals(catalog.fluidRevision(network), free.packageRevision());
         assertEquals(ThermoIdentity.SEPARATE_FREE_WATER_FORMULATION + ":" + catalog.requirePackage(network).water().revision(),
                 free.waterModelRevision());
         var none = ThermoIdentity.of(catalog, network, CubicPhaseEvaluator.FAMILY, ThermoIdentity.NO_SPINE, WaterParticipation.NONE);

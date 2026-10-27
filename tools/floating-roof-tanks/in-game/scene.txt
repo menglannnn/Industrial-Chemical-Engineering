@@ -1,0 +1,2 @@
+icheme equipment unit 0 -60 0 tank 4 4 0 north
+icheme equipment unit 20 -60 0 sphere 4 1 2 north

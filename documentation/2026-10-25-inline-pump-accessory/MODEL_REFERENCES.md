@@ -1,0 +1,20 @@
+# Inline pump and compressor model references
+
+Owner requested photos before implementation; selection complete2026-10-25. Both accessories are restricted to horizontal straight pipes. Implementation proceeds from the selected references. Branch codex/inline-pump-accessory from955d6618.
+
+Pump proposal: Grundfos TP vertical in-line centrifugal pump. Retain opposed, same-axis pipe flanges, compact rounded volute and upright ribbed motor. Manufacturer construction reference: https://api.grundfos.com/literature/Grundfosliterature-3652826.pdf . Representative product photo: https://www.anchorpumps.com/media/catalog/product/cache/b2657e97da08679d389cfe6aad615ee0/t/p/tp_flanged_3_11_2_7.jpg . Photo source listing: https://www.anchorpumps.com/tp-100-410-4-a-f-a-bqqe-22kw-single-stage-single-head-in-line-4-pole-415v . Manufacturer guide search extract confirms in-line opposed flanges/top-pullout; direct PDF retrieval failed in web tool.
+
+Compressor selection: owner explicitly chose https://www.sundyne.com/products/process-gas-compressors/lmc-compressors/ instead of Spencer. Official LMC311 photograph: https://www.sundyne.com/wp-content/uploads/Sundyne-LMC-311-Compressor.jpg (local inspection copy Sundyne-LMC-311-reference.jpg). Tall upright ribbed motor, open coupling stand, broad tapered geared casing with bolted horizontal split, and small side oil canister. Use this silhouette above a simplified pair of opposed horizontal axial flanges. The source's auxiliary ports are decorative reference details, not new simulated nozzles. Retain existing compressor0.05m3/s, ratio3 physics rather than importing source performance specifications. The previous Spencer barrel proposal is superseded.
+
+Both proposed models scale with pipe bore, use joint flanges and one body-owned flow arrow, and retain existing pump/compressor physics. Reference selection is incorporated; no further approval requested. Future verification uses focused tests/package and native software render sweeps; no migration/legacy-world checks.
+
+## Owner lower-assembly correction, 2026-10-25
+
+Owner supplied a blue vertical inline pump photo (local copy Owner-blue-inline-pump-reference.png). The exact maker/model is unverified. Its broad curved port casting, lower impeller chamber, four slender support columns and rectangular base supersede the earlier generic horizontal-barrel interpretation. Preserve the original photo; render output is generated from native geometry.
+
+- [CNP manufacturer TD pump page](https://www.cnppump.com/product/Vertical_Inline_Circulation_Pump_TD_TDG.html): coaxial horizontal inlet/outlet and top pull-out arrangement.
+- [CNP TD catalogue](https://www.hkcnppump.com/database/s01/hk/model/pdf/cnphk_td_pi_en_hk.pdf), local CNP-TD-reference.pdf: p13 product structure, pp15/16 section drawings. CNP-brochure-13/15/16.png are inspected renderings; curved passages descend into the impeller chamber below the port axis. Similar pump class, not evidence identifying the owner photo.
+- [Manufacturer TD gallery](https://www.yeschamp.com/product/industrial-centrifugal-pump/td-series-single-stage-vertical-pipeline-centrifugal-pump-253.html), [orthographic drawing](https://www.yeschamp.com/yes-champ/2021/08/27/ptd_09.jpg): front/side/plan views inspected locally as TD-orthographic-reference.jpg; TD-gallery-1.jpg gives another product view.
+- [Sundyne official compressor brochure](https://wpengine.blob.core.windows.net/sd-documents/sundyne/docs/Sundyne%20Compressors/Sundyne%20Compressor%20Brochure_US.pdf), local Sundyne-compressor-reference.pdf: p7 LMC cutaway inspected as Sundyne-brochure-07.png. Distinct lower gear barrel, broad horizontal split, upper tapered casing and oil canister are model cues; dimensions/performance are not operating limits.
+
+Native refinement8a910a20 uses these construction cues rather than reproducing a manufacturer's exact dimensional design. Model colors retain the mod's neutral casing/blue motor palette. Latest software views are in renders; renders-before-lower-detail preserves the earlier feature delivery.

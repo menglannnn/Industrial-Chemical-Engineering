@@ -1,0 +1,7 @@
+icheme equipment unit 0 -60 30 tank 4 4 0 north
+setblock 2 -60 27 icheme:fluid_pipe[facing=north,north=true,south=true]
+setblock 2 -60 26 icheme:fluid_pipe[facing=north,north=true,south=true]
+setblock 2 -60 25 icheme:fluid_generator[facing=south,south=true]
+setblock 1 -57 27 icheme:fluid_pipe[facing=north,north=true,south=true]
+setblock 1 -57 26 icheme:fluid_pipe[facing=north,north=true,south=true]
+setblock 1 -57 25 icheme:fluid_void[facing=south,south=true]

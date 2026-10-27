@@ -1,0 +1,90 @@
+From 3c6d6fa92a59dc25da473f87d693f2e6cc693228 Mon Sep 17 00:00:00 2001
+From: wormzjl <wormzjl@gmail.com>
+Date: Tue, 20 Oct 2026 18:14:49 +0800
+Subject: [PATCH] WIP balanced vapour at arrival too
+
+---
+ .../fluid/network/PassiveStepSolver.java      | 50 ++++++++++++-------
+ 1 file changed, 32 insertions(+), 18 deletions(-)
+
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+index 687f64b6..973cab4c 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+@@ -575,7 +575,7 @@ public final class PassiveStepSolver {
+             // read the same phases.
+             if(recordFolds(graph,states,projection.states(),foldedPhases)){SolverDiagnostics.count(SolverDiagnostics.traceFoldPasses);seeds=projection.states();continue;}
+             var changedSeeds=phaseCorrection(graph,projection.states(),checkpoint,equations.cachedPrepared,foldedPhases);
+-            if(changedSeeds!=null){changedSeeds=balancedProposal(graph,modes,boundaryClosed,projection.states(),changedSeeds,checkpoint);proposal=Proposal.of(projection.states(),changedSeeds);seeds=changedSeeds;continue;}
++            if(changedSeeds!=null){changedSeeds=balancedVapour(graph,modes,boundaryClosed,projection.states(),changedSeeds,checkpoint);proposal=Proposal.of(projection.states(),changedSeeds);seeds=changedSeeds;continue;}
+             var reconstructed=x.clone();
+             for(int node=0;node<projection.states().size();node++)if(equations.layout[node]!=null){var encoded=equations.layout[node].encode(projection.states().get(node));System.arraycopy(encoded,0,reconstructed,equations.offsets[node],encoded.length);}
+             SolverDiagnostics.count(SolverDiagnostics.verificationResiduals);
+@@ -1122,7 +1122,7 @@ public final class PassiveStepSolver {
+             }
+             if(!changed)break;
+         }
+-        return result==null?seeds:result;
++        return result==null?seeds:balancedVapour(graph,modes,boundaryClosed,seeds,result,checkpoint);
+     }
+     /**
+      * Decisions D54 and D26: an empty bag's own split of what arrives over a step, the amounts {@code n} with the enthalpy
+@@ -1641,25 +1641,39 @@ public final class PassiveStepSolver {
+      * the outflow heavier, and the point's own pressure is the better start. On cold fuzz seed 118 the balance moved 4 of
+      * 98 such proposals, cost 127 ms each, and the island ran out of its wall budget.
+      */
+-    private List<FluidThermodynamics.State> balancedProposal(PassiveNetwork graph,List<FlowControl.Mode> modes,boolean[] boundaryClosed,
+-                                                             List<FluidThermodynamics.State> point,List<FluidThermodynamics.State> corrected,Runnable checkpoint) {
+-        var proposal=Proposal.of(point,corrected);
+-        if(proposal==null||!graph.reservoirs().get(proposal.node()).junction()||(proposal.phases()&VAPOUR_BITS)==0
+-                ||(FluidThermodynamics.phaseBits(point.get(proposal.node()))&VAPOUR_BITS)!=0)return corrected;
+-        int j=proposal.node();var seed=corrected.get(j);
++    private List<FluidThermodynamics.State> balancedVapour(PassiveNetwork graph,List<FlowControl.Mode> modes,boolean[] boundaryClosed,
++                                                           List<FluidThermodynamics.State> point,List<FluidThermodynamics.State> corrected,Runnable checkpoint) {
++        boolean any=false;
++        for(int j=0;j<corrected.size()&&!any;j++)any=flashes(graph,point,corrected,j);
++        if(!any)return corrected;
+         var reservoirs=new ArrayList<PassiveNetwork.Reservoir>(graph.reservoirs().size());
+         for(int i=0;i<graph.reservoirs().size();i++){var r=graph.reservoirs().get(i);reservoirs.add(r.fixed()?r:new PassiveNetwork.Reservoir(r.id(),r.elevation(),corrected.get(i),r.kind(),r.inventory()));}
+         var balanced=balanceStart(new PassiveNetwork(reservoirs,graph.pipes(),graph.scheduledTransfers()),new ArrayList<>(modes),boundaryClosed.clone(),null,checkpoint,graph);
+-        double p=balanced.graph().reservoirs().get(j).state().pressure();
+-        if(!balanced.converged()||!(p>0)||p==seed.pressure())return corrected;
+-        double[] n=PhaseLayout.totalAmounts(seed);FluidThermodynamics.State own;
+-        try{var engine=model.equilibriumPH(seed.temperature(),p,seed.enthalpy()-seed.solidMoments().enthalpy(seed.temperature(),seed.pressure()),n,false,checkpoint);
+-            own=engine==null?null:model.junctionSplit(n,seed.enthalpy(),seed.mass(),p,engine.withSolidState(seed.solids(),seed.solidMoments()),checkpoint);}
+-        catch(com.wormzjl.createcheme.science.fluid.thermo.ThermoHold outside){return corrected;}
+-        if(own==null)return corrected;
+-        var restated=model.folded(own.withSolidState(seed.solids(),seed.solidMoments()),true);
+-        if((FluidThermodynamics.phaseBits(restated)&~FluidThermodynamics.phaseBits(point.get(j)))!=proposal.phases())return corrected;
+-        var result=new ArrayList<>(corrected);result.set(j,restated);return result;
++        if(!balanced.converged())return corrected;
++        List<FluidThermodynamics.State> result=null;
++        for(int j=0;j<corrected.size();j++) {
++            if(!flashes(graph,point,corrected,j))continue;
++            var seed=corrected.get(j);double p=balanced.graph().reservoirs().get(j).state().pressure();
++            if(!(p>0)||p==seed.pressure())continue;
++            double[] n=PhaseLayout.totalAmounts(seed);FluidThermodynamics.State own;
++            try{var engine=model.equilibriumPH(seed.temperature(),p,seed.enthalpy()-seed.solidMoments().enthalpy(seed.temperature(),seed.pressure()),n,false,checkpoint);
++                own=engine==null?null:model.junctionSplit(n,seed.enthalpy(),seed.mass(),p,engine.withSolidState(seed.solids(),seed.solidMoments()),checkpoint);}
++            catch(com.wormzjl.createcheme.science.fluid.thermo.ThermoHold outside){continue;}
++            if(own==null)continue;
++            var restated=model.folded(own.withSolidState(seed.solids(),seed.solidMoments()),true);
++            int before=FluidThermodynamics.phaseBits(point.get(j));
++            if((FluidThermodynamics.phaseBits(restated)&~before)!=(FluidThermodynamics.phaseBits(seed)&~before))continue;
++            if(result==null)result=new ArrayList<>(corrected);
++            result.set(j,restated);
++        }
++        return result==null?corrected:result;
++    }
++    /** Whether {@code corrected} gives junction {@code j} a vapour ({@link #VAPOUR_BITS}) that {@code point} holds none of. */
++    private static boolean flashes(PassiveNetwork graph,List<FluidThermodynamics.State> point,List<FluidThermodynamics.State> corrected,int j) {
++        var node=graph.reservoirs().get(j);
++        if(!node.junction()||node.fixed()||corrected.get(j)==point.get(j))return false;
++        int before=FluidThermodynamics.phaseBits(point.get(j));
++        return (before&VAPOUR_BITS)==0&&(FluidThermodynamics.phaseBits(corrected.get(j))&~before&VAPOUR_BITS)!=0;
+     }
+     /**
+      * The check of a failed pass's last iterate, node by node (owner decisions D28 A' and D39): the iterate with the
+-- 
+2.45.1.windows.1
+

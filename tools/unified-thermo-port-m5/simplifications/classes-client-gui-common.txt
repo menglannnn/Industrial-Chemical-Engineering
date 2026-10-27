@@ -1,0 +1,3 @@
+com.wormzjl.createcheme.client.gui.common.ComponentSearchTest
+com.wormzjl.createcheme.client.gui.common.ProcessPresentationTest
+com.wormzjl.createcheme.client.gui.common.TextInputPriorityTest

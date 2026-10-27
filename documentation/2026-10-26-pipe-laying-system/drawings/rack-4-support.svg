@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="560" viewBox="0 0 1000 560" font-family="Segoe UI, Arial, sans-serif">
+  <title>Layered pipe rack, option A: the tier support with mixed line sizes, two forms</title>
+  <rect width="1000" height="560" fill="#ffffff"/>
+
+  <text x="80" y="58" font-size="16" fill="#2C2C2A">P1. Centre lines fixed (recommended)</text>
+  <text x="80" y="80" font-size="12" fill="#5F5E5A">Mixed tier: 2" at 0, 6" at 1, 14" on 2+3</text>
+  <rect x="80" y="100" width="280" height="280" fill="none" stroke="#B4B2A9" stroke-dasharray="5 4"/>
+  <g stroke="#BA7517" stroke-width="1.4" stroke-dasharray="7 5">
+    <line x1="60" y1="152.5" x2="380" y2="152.5"/><line x1="60" y1="327.5" x2="380" y2="327.5"/>
+  </g>
+  <g fill="#B4B2A9" stroke="#5F5E5A" stroke-width="0.8">
+    <rect x="88.75" y="290.3" width="17.5" height="89.7"/><rect x="333.75" y="290.3" width="17.5" height="89.7"/>
+    <rect x="88.75" y="290.3" width="262.5" height="17.5"/>
+  </g>
+  <g fill="#D3D1C7" stroke="#888780" stroke-width="0.8">
+    <rect x="134.25" y="248.75" width="14" height="41.55"/><rect x="186.75" y="264.1" width="14" height="26.2"/>
+  </g>
+  <g fill="#85B7EB" stroke="#185FA5" stroke-width="1.2">
+    <circle cx="141.25" cy="240" r="8.75"/><circle cx="193.75" cy="240" r="24.1"/><circle cx="272.5" cy="240" r="50.3"/>
+  </g>
+  <g font-size="12" fill="#042C53" text-anchor="middle" dominant-baseline="central">
+    <text x="141.25" y="225">0</text><text x="193.75" y="240">1</text><text x="272.5" y="240">2+3</text>
+  </g>
+  <g font-size="12" fill="#2C2C2A">
+    <text x="392" y="156">Above: clear over the 14" line</text>
+    <text x="392" y="236">Centres stay at y 0.5</text>
+    <text x="392" y="294">Beam just beneath the largest line</text>
+    <text x="392" y="311">Short shoes under the smaller lines</text>
+    <text x="392" y="337">Below: clear under the tier</text>
+  </g>
+  <g font-size="12" fill="#444441">
+    <text x="80" y="430">The tier's beam sits just beneath its largest line;</text>
+    <text x="80" y="448">with no line there, just beneath a 6" line.</text>
+    <text x="80" y="472">Smaller lines on that bent stand on shoes:</text>
+    <text x="80" y="490">here 2" on 0.15 m, 6" on 0.09 m. Equal lines: no shoes.</text>
+    <text x="80" y="514">Every line meets plain pipes at y 0.5; all of today's</text>
+    <text x="80" y="532">sizes fit (to 28"); crossings pass lines up to 14".</text>
+  </g>
+
+  <text x="640" y="58" font-size="16" fill="#2C2C2A">P2. Bottom of pipe on the beam</text>
+  <text x="640" y="80" font-size="12" fill="#5F5E5A">Same tier, every line resting on the beam</text>
+  <rect x="640" y="100" width="280" height="280" fill="none" stroke="#B4B2A9" stroke-dasharray="5 4"/>
+  <g stroke="#BA7517" stroke-width="1.4" stroke-dasharray="7 5">
+    <line x1="620" y1="152.5" x2="940" y2="152.5"/><line x1="620" y1="327.5" x2="940" y2="327.5"/>
+  </g>
+  <g fill="#B4B2A9" stroke="#5F5E5A" stroke-width="0.8">
+    <rect x="648.75" y="266.25" width="17.5" height="113.75"/><rect x="893.75" y="266.25" width="17.5" height="113.75"/>
+    <rect x="648.75" y="266.25" width="262.5" height="17.5"/>
+  </g>
+  <g fill="#85B7EB" stroke="#185FA5" stroke-width="1.2">
+    <circle cx="701.25" cy="257.5" r="8.75"/><circle cx="753.75" cy="240" r="24.1"/><circle cx="832.5" cy="213.75" r="50.3"/>
+  </g>
+  <g font-size="12" fill="#042C53" text-anchor="middle" dominant-baseline="central">
+    <text x="701.25" y="241">0</text><text x="753.75" y="240">1</text><text x="832.5" y="213.75">2+3</text>
+  </g>
+  <g stroke="#A32D2D" stroke-width="2">
+    <line x1="824" y1="144" x2="841" y2="161"/><line x1="841" y1="144" x2="824" y2="161"/>
+  </g>
+  <g font-size="12" fill="#444441">
+    <text x="640" y="430">All lines rest on the beam, as on a real rack.</text>
+    <text x="640" y="448">Centres rise with size: 2" at 14/32, 6" at 16/32,</text>
+    <text x="640" y="466">14" at 19/32 (rounded up to the 1/32 grid).</text>
+    <text x="640" y="490">Joins and exits of every size but 6" need a</text>
+    <text x="640" y="508">vertical offset. Lines up to 20" fit.</text>
+    <text x="640" y="532" fill="#A32D2D">No crossing over the 14" line (red cross).</text>
+  </g>
+</svg>

@@ -1,0 +1,3 @@
+clear @s
+give @s createcheme:fluid_debugger
+tp @s 200.5 -60 16.7 180 0

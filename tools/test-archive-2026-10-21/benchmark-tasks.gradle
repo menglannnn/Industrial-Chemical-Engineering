@@ -1,0 +1,18 @@
+// The property and network benchmark fixtures. A missing fixture fails instead of reporting an empty benchmark.
+['fluidPropertyBenchmark': 'FluidPropertyBenchmarkTest',
+ 'fluidNetworkBenchmark': 'FluidNetworkBenchmarkTest'].each { taskName, fixture ->
+    tasks.register(taskName, Test) {
+        group = 'verification'
+        description = "Runs ${fixture}; no matching fixture is a failure."
+        testClassesDirs = sourceSets.test.output.classesDirs
+        classpath = sourceSets.test.runtimeClasspath
+        filter {
+            includeTestsMatching "com.wormzjl.icheme.fluid.benchmark.${fixture}"
+            failOnNoMatchingTests = true
+        }
+        outputs.upToDateWhen { false }
+        if (taskName == 'fluidNetworkBenchmark' && providers.gradleProperty('fluidProfile').getOrElse('false').toBoolean()) {
+            jvmArgs "-XX:StartFlightRecording=filename=${layout.buildDirectory.file('reports/fluid/network-profile.jfr').get().asFile.absolutePath},settings=profile,dumponexit=true"
+        }
+    }
+}

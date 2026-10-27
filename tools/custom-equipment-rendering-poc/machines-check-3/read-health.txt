@@ -1,0 +1,2 @@
+data get entity @s Health
+data get entity @s Pos

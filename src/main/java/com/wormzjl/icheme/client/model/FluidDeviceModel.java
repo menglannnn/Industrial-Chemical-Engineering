@@ -2,6 +2,7 @@ package com.wormzjl.icheme.client.model;
 
 import com.wormzjl.icheme.IChemE;
 import com.wormzjl.icheme.science.equipment.LineGeometry;
+import com.wormzjl.icheme.science.equipment.Paint;
 import com.wormzjl.icheme.science.equipment.PipeSizes;
 import com.wormzjl.icheme.science.equipment.SightGlassGeometry;
 import com.wormzjl.icheme.science.equipment.ValveGeometry;
@@ -58,13 +59,20 @@ public final class FluidDeviceModel implements IDynamicBakedModel {
     private final boolean pressureAccessory;
     private final boolean moverAccessory;
     private final TextureAtlasSprite[] sprites;
+    /** {@link #sprites} with the neutral pipe and flange sprites a painted line's tint colours, per painted mask. */
+    private final TextureAtlasSprite[][] paintedSprites;
     private final TextureAtlasSprite particle;
     private final ItemTransforms transforms;
-    private record Look(SightGlassGeometry.Key geometry,boolean sightGlass,FluidDeviceBlock.Shutoff shutoff,boolean pressureValve,boolean filter,TopologyCompiler.Kind mover){}
+    /**
+     * The cache key; {@code painted}: a bit per paint a laid line has ({@link Paint#BODY}, its pipe; {@link Paint#STRUCTURE},
+     * its flanges), whose colours the block tint gives, so one bake serves every colour.
+     */
+    private record Look(SightGlassGeometry.Key geometry,boolean sightGlass,FluidDeviceBlock.Shutoff shutoff,boolean pressureValve,boolean filter,TopologyCompiler.Kind mover,int painted){}
     private record Baked(List<BakedQuad> solid,List<BakedQuad> glass){}
     private final Map<Look,Baked> quads = new ConcurrentHashMap<>();
 
-    private FluidDeviceModel(TopologyCompiler.Kind kind,boolean accessory,boolean shutoffAccessory,boolean checkAccessory,boolean pressureAccessory,boolean moverAccessory, TextureAtlasSprite[] sprites, TextureAtlasSprite particle, ItemTransforms transforms) {
+    private FluidDeviceModel(TopologyCompiler.Kind kind,boolean accessory,boolean shutoffAccessory,boolean checkAccessory,boolean pressureAccessory,boolean moverAccessory, TextureAtlasSprite[] sprites, TextureAtlasSprite[][] paintedSprites, TextureAtlasSprite particle, ItemTransforms transforms) {
+        this.paintedSprites = paintedSprites;
         this.kind = kind;
         this.accessory=accessory;
         this.shutoffAccessory=shutoffAccessory;
@@ -81,7 +89,8 @@ public final class FluidDeviceModel implements IDynamicBakedModel {
         if (side != null) return List.of();
         var geometry=state!=null&&state.getBlock() instanceof FluidDeviceBlock?sightGlassKey(state,data):new SightGlassGeometry.Key(LineGeometry.Key.item(kind));
         var shutoff=checkAccessory?FluidDeviceBlock.Shutoff.CHECK:shutoffAccessory?FluidDeviceBlock.Shutoff.OPEN:state!=null&&FluidDeviceBlock.hasPipeValve(state)?state.getValue(FluidDeviceBlock.SHUTOFF):FluidDeviceBlock.Shutoff.NONE;
-        var key = new Look(geometry,accessory||state!=null&&FluidDeviceBlock.hasSightGlass(state),shutoff,pressureAccessory||state!=null&&FluidDeviceBlock.hasPressureValve(state),state!=null&&FluidDeviceBlock.hasFilter(state),state!=null&&FluidDeviceBlock.hasMover(state)?state.getValue(FluidDeviceBlock.INLINE_MOVER).kind():moverAccessory?kind:TopologyCompiler.Kind.PIPE);
+        var key = new Look(geometry,accessory||state!=null&&FluidDeviceBlock.hasSightGlass(state),shutoff,pressureAccessory||state!=null&&FluidDeviceBlock.hasPressureValve(state),state!=null&&FluidDeviceBlock.hasFilter(state),state!=null&&FluidDeviceBlock.hasMover(state)?state.getValue(FluidDeviceBlock.INLINE_MOVER).kind():moverAccessory?kind:TopologyCompiler.Kind.PIPE,
+                state!=null&&data.get(FluidDeviceBlockEntity.DRAWN) instanceof FluidDeviceBlockEntity.Drawn drawn?EquipmentShellModel.painted(drawn.paint(),drawn.secondary()):0);
         var cached = quads.get(key);
         if(cached==null){if(quads.size()>=CACHE)quads.clear();cached=quads.computeIfAbsent(key,this::bake);}
         if(renderType==RenderType.translucent())return cached.glass;
@@ -90,14 +99,19 @@ public final class FluidDeviceModel implements IDynamicBakedModel {
     }
 
     private Baked bake(Look look) {
-        if(look.mover!=TopologyCompiler.Kind.PIPE)return new Baked(EquipmentShellModel.bake(com.wormzjl.icheme.science.equipment.InlineMoverGeometry.polygons(look.geometry.pipe(),look.mover==TopologyCompiler.Kind.COMPRESSOR,moverAccessory),sprites,false),List.of());
-        if(look.filter)return new Baked(EquipmentShellModel.bake(LineGeometry.filterPolygons(look.geometry.pipe()),sprites,false),List.of());
-        if(look.pressureValve)return new Baked(EquipmentShellModel.bake(ValveGeometry.pressure(look.geometry.pipe(),pressureAccessory),sprites,false),List.of());
-        if(look.shutoff==FluidDeviceBlock.Shutoff.CHECK)return new Baked(EquipmentShellModel.bake(ValveGeometry.check(look.geometry.pipe(),checkAccessory),sprites,false),List.of());
-        if(look.shutoff!=FluidDeviceBlock.Shutoff.NONE)return new Baked(EquipmentShellModel.bake(ValveGeometry.shutoff(look.geometry.pipe(),look.shutoff==FluidDeviceBlock.Shutoff.OPEN,shutoffAccessory),sprites,false),List.of());
-        if(!look.sightGlass)return new Baked(EquipmentShellModel.bake(LineGeometry.polygons(look.geometry.pipe()),sprites,false),List.of());
+        if(look.mover!=TopologyCompiler.Kind.PIPE)return new Baked(quads(look,com.wormzjl.icheme.science.equipment.InlineMoverGeometry.polygons(look.geometry.pipe(),look.mover==TopologyCompiler.Kind.COMPRESSOR,moverAccessory)),List.of());
+        if(look.filter)return new Baked(quads(look,LineGeometry.filterPolygons(look.geometry.pipe())),List.of());
+        if(look.pressureValve)return new Baked(quads(look,ValveGeometry.pressure(look.geometry.pipe(),pressureAccessory)),List.of());
+        if(look.shutoff==FluidDeviceBlock.Shutoff.CHECK)return new Baked(quads(look,ValveGeometry.check(look.geometry.pipe(),checkAccessory)),List.of());
+        if(look.shutoff!=FluidDeviceBlock.Shutoff.NONE)return new Baked(quads(look,ValveGeometry.shutoff(look.geometry.pipe(),look.shutoff==FluidDeviceBlock.Shutoff.OPEN,shutoffAccessory)),List.of());
+        if(!look.sightGlass)return new Baked(quads(look,LineGeometry.polygons(look.geometry.pipe())),List.of());
         var geometry=SightGlassGeometry.build(look.geometry,accessory);
-        return new Baked(EquipmentShellModel.bake(geometry.metal(),sprites,false),EquipmentShellModel.bake(geometry.glass(),sprites,false));
+        return new Baked(quads(look,geometry.metal()),EquipmentShellModel.bake(geometry.glass(),sprites,false));
+    }
+
+    /** A pipeline device is never painted, but a painted line's pipe and flanges take its paints through the block tint (tint index: the paint's channel). */
+    private List<BakedQuad> quads(Look look,List<com.wormzjl.icheme.science.equipment.Mesh.Polygon> polygons) {
+        return EquipmentShellModel.bake(polygons,paintedSprites[look.painted],EquipmentShellModel.lineTints(look.painted,0));
     }
 
     /** Installation orientation is part of both the chunk-model and liquid-surface cache key. */
@@ -112,7 +126,7 @@ public final class FluidDeviceModel implements IDynamicBakedModel {
         int facing = state.getValue(FluidDeviceBlock.FACING).ordinal();
         var drawn = data.get(FluidDeviceBlockEntity.DRAWN);
         if (drawn == null) return new LineGeometry.Key(block.kind(), facing, connections, PipeSizes.code(PipeSizes.outside(.05)), 0, 0, false);
-        return new LineGeometry.Key(block.kind(), facing, connections, PipeSizes.code(PipeSizes.outside(drawn.bore())), drawn.faces(), drawn.flanged(), drawn.spool());
+        return new LineGeometry.Key(block.kind(), facing, connections, PipeSizes.code(PipeSizes.outside(drawn.bore())), drawn.faces(), drawn.flanged(), drawn.spool(), drawn.offsets());
     }
 
     @Override
@@ -158,7 +172,8 @@ public final class FluidDeviceModel implements IDynamicBakedModel {
     public record Geometry(TopologyCompiler.Kind kind,boolean accessory,boolean shutoffAccessory,boolean checkAccessory,boolean pressureAccessory,boolean moverAccessory) implements IUnbakedGeometry<Geometry> {
         @Override
         public BakedModel bake(IGeometryBakingContext context, ModelBaker baker, Function<Material, TextureAtlasSprite> sprites, ModelState state, ItemOverrides overrides) {
-            return new FluidDeviceModel(kind,accessory,shutoffAccessory,checkAccessory,pressureAccessory,moverAccessory, EquipmentShellModel.sprites(context, sprites), sprites.apply(context.getMaterial("particle")), context.getTransforms());
+            var bare=EquipmentShellModel.sprites(context, sprites);
+            return new FluidDeviceModel(kind,accessory,shutoffAccessory,checkAccessory,pressureAccessory,moverAccessory, bare, EquipmentShellModel.paintedLines(context, sprites, bare), sprites.apply(context.getMaterial("particle")), context.getTransforms());
         }
     }
 }

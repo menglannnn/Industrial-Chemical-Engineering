@@ -49,6 +49,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -94,6 +95,9 @@ public final class EquipmentStructure {
             return new Retired(kind, min(low, other.low), max(high, other.high));
         }
     }
+
+    /** Loaded vessels whose interior cells are brought to the current state ({@link #restate}), by level and origin. */
+    private static final Map<ServerLevel, Map<BlockPos, EquipmentShape>> RESTATE = new WeakHashMap<>();
 
     private EquipmentStructure() {
     }
@@ -147,6 +151,7 @@ public final class EquipmentStructure {
         if (shape.fluidDevice() && rows >= shape.sizeY()) register(level, vessel);
         reconnect(level, vessel);
         refreshNozzles(level, vessel);
+        com.wormzjl.icheme.runtime.assembly.AssemblyService.placed(level, vessel);
         return placed;
     }
 
@@ -171,7 +176,7 @@ public final class EquipmentStructure {
             return;
         }
         FluidWorldAuthority.find(level.getServer()).ifPresent(world -> {
-            var record = world.placeVessel(position(level, node), ports(level, vessel), vessel.shape().volume(), vessel.shape().levelHeight(), open(vessel));
+            var record = world.placeVessel(position(level, node), ports(level, vessel), vessel.shape().volume(), vessel.shape().levelHeight(), open(vessel), vessel.shape().fluidGeometry());
             if (level.getBlockEntity(node) instanceof EquipmentShellBlockEntity entity) entity.bindIdentity(record.device().id());
         });
     }
@@ -189,6 +194,7 @@ public final class EquipmentStructure {
         if(record!=null) {
             if(level.hasChunkAt(node)&&record.device().position().equals(held)&&!record.device().ports().isEmpty()
                     &&level.getBlockEntity(node) instanceof EquipmentShellBlockEntity shell&&ours(shell,vessel.origin(),vessel.shape())) {
+                if(vessel.shape().reservoir()&&!record.spec().geometry().equals(vessel.shape().fluidGeometry()))reregister(level,vessel,node);
                 if(shell.fluidIdentity()!=record.device().id())shell.bindIdentity(record.device().id());else world.deviceLoaded(record.device().id());
             }
             return true;
@@ -242,6 +248,7 @@ public final class EquipmentStructure {
                 case BULK -> PassiveNetwork.PhasePort.BULK;
                 case OVERFLOW -> PassiveNetwork.PhasePort.OVERFLOW;
             };
+            if(vessel.shape().boot())phase=switch(nozzles.get(port.nozzle()).role()){case BOOT_DRAIN->PassiveNetwork.PhasePort.BOOT_WATER;case LIQUID_OUTLET->PassiveNetwork.PhasePort.BOOT_HC;default->phase;};
             ports.add(new PhysicalFluidTopology.Port(position(level, cell), face, phase, role));
         }
         return ports;
@@ -319,9 +326,58 @@ public final class EquipmentStructure {
     /** The longest walk over interior cells: across the widest body, a column's or a floating-roof tank's. */
     private static final int FIND_STEPS = (int) Math.ceil(Math.max(EquipmentShape.MAX_COLUMN_DIAMETER, UnitDesign.of(EquipmentShape.Kind.TANK).maxSize())) + 2;
 
-    /** The interior cell of {@code shape}: a floating-roof tank's passes light (its roof shows from above). */
+    /**
+     * The interior cell of {@code shape}: a floating-roof tank's is open (its roof shows from above); a vessel's whose
+     * skirt shows its inside lets skylight through ({@link ShapeRasterizer#skylight}).
+     */
     private static net.minecraft.world.level.block.state.BlockState interior(EquipmentShape shape) {
-        return ModBlocks.EQUIPMENT_INTERIOR.get().defaultBlockState().setValue(EquipmentInteriorBlock.OPEN, shape.kind() == EquipmentShape.Kind.TANK);
+        return ModBlocks.EQUIPMENT_INTERIOR.get().defaultBlockState().setValue(EquipmentInteriorBlock.OPEN, shape.kind() == EquipmentShape.Kind.TANK)
+                .setValue(EquipmentInteriorBlock.SKYLIGHT, ShapeRasterizer.skylight(shape));
+    }
+
+    /**
+     * Server, from the load of a vessel's controller cell when its layout is current: its interior cells are brought to
+     * the state the code gives them ({@link #restate}) on a later tick, once its chunks are loaded and block-ticking. An
+     * interior cell's state follows the code as a shell cell's drawing does; no cell is added or removed.
+     */
+    public static void restateLater(ServerLevel level, BlockPos origin, EquipmentShape shape) {
+        RESTATE.computeIfAbsent(level, k -> new LinkedHashMap<>()).putIfAbsent(origin.immutable(), shape);
+    }
+
+    /**
+     * Sets every interior cell of the vessel at {@code origin} that holds another state than {@link #interior} gives
+     * (a save from before {@link EquipmentInteriorBlock#SKYLIGHT}) to it, and lets its chunks wait for their light. Only a
+     * vessel whose controller cell is its own and current: a stale one is refreshed instead, which restates it too.
+     */
+    static void restate(ServerLevel level, BlockPos origin, EquipmentShape shape) {
+        var controller = ShapeRasterizer.layout(shape).controller();
+        if (!(level.getBlockEntity(origin.offset(controller.x(), controller.y(), controller.z())) instanceof EquipmentShellBlockEntity shell)
+                || !ours(shell, origin, shape) || shell.stale()) return;
+        int changed = restateCells(level, origin, shape, Set.of(), Block.UPDATE_CLIENTS | Block.UPDATE_KNOWN_SHAPE);
+        if (changed == 0) return;
+        var high = origin.offset(shape.sizeX() - 1, shape.sizeY() - 1, shape.sizeZ() - 1);
+        for (int x = origin.getX() >> 4; x <= high.getX() >> 4; x++)
+            for (int z = origin.getZ() >> 4; z <= high.getZ() >> 4; z++) level.getChunkSource().chunkMap.waitForLightBeforeSending(new ChunkPos(x, z), 0);
+        IChemE.LOGGER.info("equipment_restate kind={} origin={} interior={}", shape.kind().name().toLowerCase(Locale.ROOT), origin.toShortString(), changed);
+    }
+
+    /**
+     * Sets each of the layout's interior cells at {@code origin}, but those in {@code skip}, that holds an interior block of
+     * another state to {@link #interior}; how many.
+     */
+    private static int restateCells(ServerLevel level, BlockPos origin, EquipmentShape shape, Set<ShapeRasterizer.Cell> skip, int flags) {
+        var state = interior(shape);
+        int changed = 0;
+        for (var cell : ShapeRasterizer.layout(shape).interior()) {
+            if (skip.contains(cell)) continue;
+            var at = origin.offset(cell.x(), cell.y(), cell.z());
+            var held = level.getBlockState(at);
+            if (held.is(ModBlocks.EQUIPMENT_INTERIOR.get()) && held != state) {
+                level.setBlock(at, state, flags);
+                changed++;
+            }
+        }
+        return changed;
     }
 
     /** The first bound shell cell a walk east, or else south, over interior cells reaches from {@code position}, or null. */
@@ -342,6 +398,7 @@ public final class EquipmentStructure {
         if (dismantling || level.isClientSide()) return;
         dismantling = true;
         try {
+            if (level instanceof ServerLevel server) com.wormzjl.icheme.runtime.assembly.AssemblyService.removed(server, vessel);
             if (level instanceof ServerLevel server && vessel.shape().fluidDevice()) unregister(server, vessel);
             var layout = ShapeRasterizer.layout(vessel.shape());
             for (var list : java.util.List.of(layout.shell(), layout.interior()))
@@ -437,7 +494,7 @@ public final class EquipmentStructure {
         return false;
     }
 
-    /** At most one stale or retired vessel a tick, the first whose region is ready; on most ticks there is none. */
+    /** At most one retired, stale or restated vessel a tick, the first whose region is ready; on most ticks there is none. */
     @SubscribeEvent
     public static void onLevelTick(LevelTickEvent.Post event) {
         if (!(event.getLevel() instanceof ServerLevel level)) return;
@@ -455,20 +512,34 @@ public final class EquipmentStructure {
                 return;
             }
         var pending = STALE.get(level);
-        if (pending == null || pending.isEmpty()) return;
-        for (var it = pending.entrySet().iterator(); it.hasNext(); ) {
-            var entry = it.next();
-            var stale = entry.getValue();
-            if (!ready(level, stale.low(), stale.high())) continue;
-            it.remove();
-            try {
-                refresh(level, entry.getKey(), stale.shape(), stale.low(), stale.high());
-            } catch (RuntimeException failed) {
-                // A vessel that cannot be refreshed keeps its cells as they stand; the world goes on.
-                IChemE.LOGGER.error("equipment_refresh failed at {}", entry.getKey().toShortString(), failed);
+        if (pending != null)
+            for (var it = pending.entrySet().iterator(); it.hasNext(); ) {
+                var entry = it.next();
+                var stale = entry.getValue();
+                if (!ready(level, stale.low(), stale.high())) continue;
+                it.remove();
+                try {
+                    refresh(level, entry.getKey(), stale.shape(), stale.low(), stale.high());
+                } catch (RuntimeException failed) {
+                    // A vessel that cannot be refreshed keeps its cells as they stand; the world goes on.
+                    IChemE.LOGGER.error("equipment_refresh failed at {}", entry.getKey().toShortString(), failed);
+                }
+                return;
             }
-            return;
-        }
+        var restating = RESTATE.get(level);
+        if (restating != null)
+            for (var it = restating.entrySet().iterator(); it.hasNext(); ) {
+                var entry = it.next();
+                var shape = entry.getValue();
+                if (!ready(level, entry.getKey(), entry.getKey().offset(shape.sizeX() - 1, shape.sizeY() - 1, shape.sizeZ() - 1))) continue;
+                it.remove();
+                try {
+                    restate(level, entry.getKey(), shape);
+                } catch (RuntimeException failed) {
+                    IChemE.LOGGER.error("equipment_restate failed at {}", entry.getKey().toShortString(), failed);
+                }
+                return;
+            }
     }
 
     /**
@@ -511,6 +582,8 @@ public final class EquipmentStructure {
             else if (!state.canBeReplaced()) world.put(cell, EquipmentRefresh.Holding.OTHER);
         }
         if (paint == null) return;
+        // A rebuilt structure is a structural change to every assembly report that relied on it.
+        com.wormzjl.icheme.runtime.assembly.AssemblyService.removed(level, new Vessel(origin, shape));
         var layout = ShapeRasterizer.layout(shape);
         var plan = EquipmentRefresh.plan(layout, world);
         var placed = origin.offset(plan.shift().x(), 0, plan.shift().z());
@@ -544,6 +617,8 @@ public final class EquipmentStructure {
                 }
             }
             for (var cell : plan.interior()) level.setBlock(placed.offset(cell.x(), cell.y(), cell.z()), interior(shape), flags);
+            // The interior cells it kept take the current state too (restate); a blocked cell is another owner's.
+            restateCells(level, placed, shape, blocked, flags);
             // Cells left out where other blocks stand: the cells written keep no stamp, so the next load tries again.
             if (!blocked.isEmpty())
                 for (var cell : layout.shell())
@@ -564,6 +639,7 @@ public final class EquipmentStructure {
             }
         reconnect(level, vessel);
         refreshNozzles(level, vessel);
+        com.wormzjl.icheme.runtime.assembly.AssemblyService.placed(level, vessel);
         IChemE.LOGGER.info("equipment_refresh kind={} origin={} shift={},{} cleared={} placed={} blocked={}", shape.kind().name().toLowerCase(Locale.ROOT),
                 origin.toShortString(), plan.shift().x(), plan.shift().z(), plan.clear().size(), plan.shell().size() + plan.interior().size(), plan.blocked().size());
         if (!plan.blocked().isEmpty()) {
@@ -596,7 +672,7 @@ public final class EquipmentStructure {
         var device = record.device();
         var spec = record.spec();
         world.edit(device.id(), record.revision(), device.withPlacement(position(level, node), ports(level, vessel)),
-                vessel.shape().kind().mover() ? spec : new FluidDeviceSpec(vessel.shape().volume(), spec.temperature(), spec.pressure(), spec.composition(), spec.solids(), vessel.shape().levelHeight(), open(vessel)));
+                vessel.shape().kind().mover() ? spec : new FluidDeviceSpec(vessel.shape().volume(), spec.temperature(), spec.pressure(), spec.composition(), spec.solids(), vessel.shape().levelHeight(), open(vessel), vessel.shape().fluidGeometry()));
         if (oldNode != null && !oldNode.equals(node) && level.getBlockEntity(oldNode) instanceof EquipmentShellBlockEntity old && old.fluidIdentity() == device.id()) old.releaseIdentity();
         if (level.getBlockEntity(node) instanceof EquipmentShellBlockEntity entity && entity.fluidIdentity() != device.id()) entity.bindIdentity(device.id());
     }

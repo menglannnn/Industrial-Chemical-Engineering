@@ -31,6 +31,10 @@ public final class LineGeometry {
     public static final int[][] STEPS = {{0, -1, 0}, {0, 1, 0}, {0, 0, -1}, {0, 0, 1}, {-1, 0, 0}, {1, 0, 0}};
     /** A line nozzle with no pipe met and no size of its own: 0.1 m, a 3" line. */
     public static final double NOZZLE = .1;
+    /** The step of a face point's offset from the face's centre: 1/32 m, so a rack slot's centre is a whole number of steps. */
+    public static final double OFFSET = 1 / 32.0;
+    /** Pipes are welded in spools of this many blocks; the block at each spool end carries a flange pair (a rack lane's, staggered by its position). */
+    public static final int SPOOL = 12;
     private static final double[] CENTRE = {.5, .5, .5};
     private static final int UP = 1, NORTH = 2, SOUTH = 3;
 
@@ -38,9 +42,32 @@ public final class LineGeometry {
      * What a device block draws. {@code facing} and the six faces follow {@link #STEPS}; {@code connections} has a bit per
      * connected face; {@code outside} is the device's own outside diameter as a {@link PipeSizes#code}; {@code faces}
      * holds, seven bits per face, the outside diameter of the line met there (0: none); {@code flanged} has a bit per face
-     * whose joint is flanged; {@code spool} marks a straight pipe at a spool end.
+     * whose joint is flanged; {@code spool} marks a straight pipe at a spool end. {@code offsets} holds, ten bits per face,
+     * where the line met there leaves the face's centre (batch 2026-10-26-pipe-laying-system, plan 6): two signed five-bit
+     * steps of {@link #OFFSET} along the face's in-plane axes, (axis + 1) % 3 then (axis + 2) % 3; 0 is centred.
      */
-    public record Key(Kind kind, int facing, int connections, int outside, long faces, int flanged, boolean spool) {
+    public record Key(Kind kind, int facing, int connections, int outside, long faces, int flanged, boolean spool, long offsets) {
+        /** A key whose every face point is centred. */
+        public Key(Kind kind, int facing, int connections, int outside, long faces, int flanged, boolean spool) {
+            this(kind, facing, connections, outside, faces, flanged, spool, 0);
+        }
+
+        /** Face {@code face}'s point off its centre along its in-plane axis {@code k} (0 or 1), in {@link #OFFSET} steps. */
+        public int offset(int face, int k) {
+            int v = (int) (offsets >>> (10 * face + 5 * k) & 31);
+            return v >= 16 ? v - 32 : v;
+        }
+
+        public boolean centred(int face) {
+            return (offsets >>> 10 * face & 1023) == 0;
+        }
+
+        /** The {@link #offsets} bits of face {@code face} at steps {@code u} and {@code v} (each -16 to 15). */
+        public static long offsets(int face, int u, int v) {
+            if (u < -16 || u > 15 || v < -16 || v > 15) throw new IllegalArgumentException("Face offset " + u + ", " + v + " out of range");
+            return ((long) (u & 31) | (long) (v & 31) << 5) << 10 * face;
+        }
+
         public boolean connected(int face) {
             return (connections >> face & 1) != 0;
         }
@@ -74,7 +101,7 @@ public final class LineGeometry {
     }
 
     /** Native Y-strainer, sized from its host pipe and retaining overhanging screen geometry. */
-    public static List<Polygon> filterPolygons(Key pipe){return overhanging(mesh(new Key(Kind.FILTER,pipe.facing,pipe.connections,pipe.outside,pipe.faces,pipe.flanged,pipe.spool)));}
+    public static List<Polygon> filterPolygons(Key pipe){return overhanging(mesh(new Key(Kind.FILTER,pipe.facing,pipe.connections,pipe.outside,pipe.faces,pipe.flanged,pipe.spool,pipe.offsets)));}
 
     /** Keep decorative overhangs in their owning block model, with UV/cell clipping intact. */
     static List<Polygon> overhanging(Mesh mesh) {
@@ -120,8 +147,10 @@ public final class LineGeometry {
     static End end(Key key, int i, double od) {
         if (!key.connected(i)) return End.flanged(od, false);
         int code = key.face(i);
-        double met = code == 0 ? od : Math.min(od, PipeSizes.outsideOf(code));
-        double reducer = met < od - EPS ? reducerLength(od) : 0;
+        double met = code == 0 ? od : PipeSizes.outsideOf(code);
+        // Only an off-centre point widens to a larger line met there: a rack lane draws no reducer of its own.
+        if (key.centred(i)) met = Math.min(od, met);
+        double reducer = Math.abs(met - od) > EPS ? reducerLength(Math.max(od, met)) : 0;
         double tail = reducer + (key.flanged(i) ? PipeSizes.flangeThickness(met) + PipeSizes.hub(met) : 0);
         return new End(met, key.flanged(i), reducer, tail, true);
     }
@@ -142,6 +171,10 @@ public final class LineGeometry {
         int sides = PipeSizes.sides(od);
         var arms = new ArrayList<Integer>();
         for (int i = 0; i < 6; i++) if (key.connected(i)) arms.add(i);
+        if (transition(key)) {
+            transition(m, key, arms, od, sides);
+            return;
+        }
         if (arms.size() <= 1) {
             // Unconnected, a length along its facing; a dead end, straight on from its connection: blind flanges where
             // the line ends.
@@ -174,24 +207,28 @@ public final class LineGeometry {
 
     /** A straight length through faces {@code i} and its opposite, with a flange pair in the middle at a spool end. */
     private static void run(Mesh m, Key key, int i, double od, int sides, boolean spool) {
-        double from = 0;
-        if (spool) {
-            double t = PipeSizes.flangeThickness(od), hub = PipeSizes.hub(od);
-            var f = frame(i, ref(i));
-            double flange = PipeSizes.flange(od) / 2, hubR = PipeSizes.hubOutside(od) / 2;
-            double halfSeam = PipeSizes.FLANGE_SEAM / 2;
-            m.prism(f, flange, -t, -halfSeam, sides, Material.FLANGE);
-            m.prism(f, flange, -halfSeam, halfSeam, sides, Material.OPENING);
-            m.prism(f, flange, halfSeam, t, sides, Material.FLANGE);
-            for (int side = -1; side <= 1; side += 2) {
-                m.annulus(f, hubR, flange, side * t, sides, side, Material.FLANGE);
-                m.bolts(f, od, hubR, flange, side * t, side, Material.BOLT);
-                m.frustum(f, hubR, od / 2, side * t, side * (t + hub), sides, Material.PIPE);
-            }
-            from = t + hub;
-        }
+        double from = spool ? spoolPair(m, frame(i, ref(i)), od, sides) : 0;
         arm(m, i, from, od, end(key, i, od), ref(i), sides, false);
         arm(m, i ^ 1, from, od, end(key, i ^ 1, od), ref(i ^ 1), sides, false);
+    }
+
+    /**
+     * The flange pair between two spools, its seam at {@code f}'s origin square to its axis, and the necks either side;
+     * returns how far along the axis each side reaches, where the pipe goes on.
+     */
+    static double spoolPair(Mesh m, Frame f, double od, int sides) {
+        double t = PipeSizes.flangeThickness(od), hub = PipeSizes.hub(od);
+        double flange = PipeSizes.flange(od) / 2, hubR = PipeSizes.hubOutside(od) / 2;
+        double halfSeam = PipeSizes.FLANGE_SEAM / 2;
+        m.prism(f, flange, -t, -halfSeam, sides, Material.FLANGE);
+        m.prism(f, flange, -halfSeam, halfSeam, sides, Material.OPENING);
+        m.prism(f, flange, halfSeam, t, sides, Material.FLANGE);
+        for (int side = -1; side <= 1; side += 2) {
+            m.annulus(f, hubR, flange, side * t, sides, side, Material.FLANGE);
+            m.bolts(f, od, hubR, flange, side * t, side, Material.BOLT);
+            m.frustum(f, hubR, od / 2, side * t, side * (t + hub), sides, Material.PIPE);
+        }
+        return t + hub;
     }
 
     /**
@@ -240,7 +277,12 @@ public final class LineGeometry {
      * flange alone, closed by the flange's own back.
      */
     static void arm(Mesh m, int i, double from, double od, End end, double[] ref, int sides, boolean closed) {
-        var f = frame(i, ref);
+        arm(m, CENTRE, i, from, od, end, ref, sides, closed);
+    }
+
+    /** {@link #arm} along the line through {@code origin}, a point half a block in from face {@code i}. */
+    static void arm(Mesh m, double[] origin, int i, double from, double od, End end, double[] ref, int sides, boolean closed) {
+        var f = new Frame(origin, step(i), ref);
         double r = od / 2, z = Math.max(from, .5 - end.tail());
         double body = end.flange() ? .5 - PipeSizes.flangeThickness(end.outside()) : .5;
         if (closed && from < body - EPS) m.annulus(f, 0, r, from, sides, -1, Material.PIPE);
@@ -251,6 +293,8 @@ public final class LineGeometry {
             z = z1;
         }
         if (end.flange()) flange(m, f, end.outside(), z, sides, end.joined());
+        // A bare end meeting nothing (a rack lane's) is capped.
+        else if (!end.joined()) m.annulus(f, 0, r, z, sides, 1, Material.PIPE);
     }
 
     /**
@@ -269,6 +313,225 @@ public final class LineGeometry {
         m.prism(f, flange, .5 - t, .5 - seam, sides, Material.FLANGE);
         if (joined) m.prism(f, flange, .5 - seam, .5, sides, Material.OPENING);
         m.annulus(f, 0, flange, .5, sides, 1, Material.FLANGE);
+    }
+
+    // ---- Transition pipes ------------------------------------------------------------------------------------------
+
+    /** Face {@code face}'s point: its centre, moved by the key's offset along the face's in-plane axes. */
+    static double[] point(Key key, int face) {
+        var p = new double[]{.5, .5, .5};
+        int axis = axis(face);
+        p[axis] = face & 1;
+        p[(axis + 1) % 3] += key.offset(face, 0) * OFFSET;
+        p[(axis + 2) % 3] += key.offset(face, 1) * OFFSET;
+        return p;
+    }
+
+    /**
+     * A transition pipe (plan 6): at most two joints, one at an off-centre point (a rack lane's). To the opposite face it
+     * offsets in two equal bends a quarter block in from each face. To an adjacent face it turns once, in the plane of the
+     * two faces: where their lines meet, with an offset along the third axis on the way in or on the way out, or at the
+     * block's centre with an offset on each leg, whichever leaves the largest bends. A dead end runs on to its opposite
+     * face's centre, closed by a blind flange there.
+     */
+    private static void transition(Mesh m, Key key, List<Integer> arms, double od, int sides) {
+        int a = arms.getFirst(), b = arms.size() == 2 ? arms.get(1) : a ^ 1;
+        double[] pa = point(key, a), pb = point(key, b);
+        End ea = end(key, a, od), eb = end(key, b, od);
+        double r = od / 2;
+        if ((a ^ 1) == b) {
+            var across = step(b);
+            var lateral = sub(sub(pb, pa), across);
+            if (dot(lateral, lateral) < EPS) {
+                // In line: straight through, off the block's centre.
+                var origin = lerp(pa, pb, .5);
+                arm(m, origin, a, 0, od, ea, ref(a), sides, false);
+                arm(m, origin, b, 0, od, eb, ref(b), sides, false);
+                return;
+            }
+            // A quarter block in from each face gives the largest bends (the straights and the slant are then equally tight).
+            double in = Math.min(.4, Math.max(.25, Math.max(ea.tail(), eb.tail()) + .15));
+            line(m, fitted(List.of(pa, plus(pa, scale(across, in)), sub(pb, scale(across, in)), pb), ea, eb, od), a, b, od, sides);
+            return;
+        }
+        int axisA = axis(a), axisB = axis(b), third = 3 - axisA - axisB;
+        double[] inA = neg(step(a)), outB = step(b);
+        // Turning where the faces' lines meet in the plane of the turn, the offset along the third axis after the turn or before it.
+        var meet = new double[3];
+        meet[axisA] = pb[axisA];
+        meet[axisB] = pa[axisB];
+        meet[third] = pa[third];
+        double legA = Math.abs(meet[axisA] - pa[axisA]), legB = Math.abs(pb[axisB] - meet[axisB]);
+        var after = new ArrayList<double[]>(List.of(pa, meet));
+        offset(after, meet, outB, legB, sub(pb, plus(meet, scale(outB, legB))), eb.tail(), false, r);
+        after.add(pb);
+        var turn = meet.clone();
+        turn[third] = pb[third];
+        var before = new ArrayList<double[]>(List.of(pa));
+        offset(before, pa, inA, legA, sub(turn, plus(pa, scale(inA, legA))), ea.tail(), true, r);
+        before.add(turn);
+        before.add(pb);
+        // Turning at the block's centre, an offset on each leg.
+        var centre = new double[3];
+        centre[axisA] = .5;
+        centre[axisB] = .5;
+        centre[third] = (pa[third] + pb[third]) / 2;
+        var middle = new ArrayList<double[]>(List.of(pa));
+        offset(middle, pa, inA, .5, sub(centre, plus(pa, scale(inA, .5))), ea.tail(), true, r);
+        middle.add(centre);
+        offset(middle, centre, outB, .5, sub(pb, plus(centre, scale(outB, .5))), eb.tail(), false, r);
+        middle.add(pb);
+        Fitted best = null;
+        for (var path : List.of(after, before, middle)) {
+            var fitted = fitted(path, ea, eb, od);
+            if (best == null || fitted.bend() > best.bend() + EPS) best = fitted;
+        }
+        if (best.bend() >= 1.05 * r) {
+            line(m, best, a, b, od, sides);
+            return;
+        }
+        // No room for bends (a wide lane): ball corners, the fewest the turn needs, where each face's line meets the other's
+        // plane of the turn, kept a ball clear of the faces. A ball joins straights of any direction, so the offset needs none.
+        var first = pa.clone();
+        first[axisA] = inside(pb[axisA], a, ea.tail(), r);
+        var second = pb.clone();
+        second[axisB] = inside(pa[axisB], b, eb.tail(), r);
+        var balls = fitted(List.of(pa, first, second, pb), ea, eb, od);
+        line(m, new Fitted(balls.points(), balls.dirs(), balls.lengths(), balls.tans(), balls.ea(), balls.eb(), 0), a, b, od, sides);
+    }
+
+    /** {@code at} along face {@code face}'s axis, kept a ball's radius (a tenth over {@code r}) inside the block, and {@code tail} more from that face. */
+    private static double inside(double at, int face, double tail, double r) {
+        double ball = 1.1 * r, near = face & 1;
+        double low = near == 0 ? tail + ball : ball, high = near == 0 ? 1 - ball : 1 - tail - ball;
+        return low > high ? .5 : Math.max(low, Math.min(high, at));
+    }
+
+    /**
+     * Adds an offset by {@code shift} (square to {@code along}) on a leg of {@code length} from {@code start}: two bends, at
+     * 45° where the leg is twice the shift, steeper where it is shorter, the rest of the leg shared between its ends as
+     * their bends need it. The face end (the leg's start where {@code faceFirst}, else its end) keeps its fittings'
+     * {@code tail} and a ball corner's radius (a tenth over {@code r}) clear.
+     */
+    private static void offset(List<double[]> path, double[] start, double[] along, double length, double[] shift, double tail, boolean faceFirst, double r) {
+        double size = Math.sqrt(dot(shift, shift));
+        if (size < EPS) return;
+        double clear = tail + 1.1 * r, slant = Math.min(size, Math.max(EPS, (length - clear) / 2));
+        double half = size / (Math.sqrt(size * size + slant * slant) + slant); // tan of half each bend
+        double free = Math.max(0, length - clear - slant), atFace = half, atTurn = half + 1; // the turn's own bend: tan 45° = 1
+        double first = faceFirst ? clear + free * atFace / (atFace + atTurn) : free * atTurn / (atFace + atTurn);
+        path.add(plus(start, scale(along, first)));
+        path.add(plus(plus(start, scale(along, first + slant)), shift));
+    }
+
+    /**
+     * A transition's centre line from face to face: its corners, its legs' directions and lengths, the tangent of half
+     * each corner's turn (a bend of radius R takes R tan from each leg beside it), its end fittings shortened to fit, and
+     * the one bend radius all its corners take: 1.5 OD, less where the legs between corners are short.
+     */
+    record Fitted(List<double[]> points, double[][] dirs, double[] lengths, double[] tans, End ea, End eb, double bend) {
+    }
+
+    static Fitted fitted(List<double[]> path, End ea, End eb, double od) {
+        return fitted(path, ea, eb, od, Double.MAX_VALUE);
+    }
+
+    /** As {@link #fitted(List, End, End, double)}, with bends of radius {@code most} at most. */
+    static Fitted fitted(List<double[]> path, End ea, End eb, double od, double most) {
+        var points = new ArrayList<>(path);
+        // A stop on a straight, or on the stop before it, is no corner.
+        for (int k = points.size() - 2; k >= 1; k--) {
+            var before = sub(points.get(k), points.get(k - 1));
+            var after = sub(points.get(k + 1), points.get(k));
+            var c = cross(before, after);
+            if (dot(after, after) < EPS || dot(before, before) < EPS || dot(c, c) < EPS * dot(before, before) * dot(after, after)) points.remove(k);
+        }
+        int legs = points.size() - 1;
+        double r = od / 2;
+        var dirs = new double[legs][];
+        var lengths = new double[legs];
+        for (int k = 0; k < legs; k++) {
+            var d = sub(points.get(k + 1), points.get(k));
+            lengths[k] = Math.sqrt(dot(d, d));
+            dirs[k] = scale(d, 1 / lengths[k]);
+        }
+        var tans = new double[legs + 1];
+        for (int k = 1; k < legs; k++) {
+            var c = cross(dirs[k - 1], dirs[k]);
+            tans[k] = Math.sqrt(dot(c, c)) / (1 + dot(dirs[k - 1], dirs[k]));
+        }
+        ea = fit(ea, Math.max(0, lengths[0] - 1.05 * r * tans[1]));
+        eb = fit(eb, Math.max(0, lengths[legs - 1] - 1.05 * r * tans[legs - 1]));
+        double bend = Math.min(1.5 * od, most);
+        for (int k = 0; k < legs; k++) {
+            double need = tans[k] + tans[k + 1], room = lengths[k] - (k == 0 ? ea.tail() : 0) - (k == legs - 1 ? eb.tail() : 0);
+            if (need > 0) bend = Math.min(bend, room / need);
+        }
+        return new Fitted(points, dirs, lengths, tans, ea, eb, Math.max(0, bend));
+    }
+
+    /**
+     * A pipe along a fitted centre line from face {@code a}'s point to face {@code b}'s. The facets are carried round each
+     * bend, so every straight meets its bends vertex to vertex, and bends in one plane, or in planes square to the faces,
+     * leave the facets at each face where a centred pipe or a lane has them. Where not even a bend of about one radius
+     * fits, the corners are balls.
+     */
+    static void line(Mesh m, Fitted line, int a, int b, double od, int sides) {
+        var points = line.points();
+        double[][] dirs = line.dirs();
+        double[] lengths = line.lengths(), tans = line.tans();
+        int legs = lengths.length;
+        double r = od / 2, bend = line.bend();
+        var originA = sub(points.getFirst(), scale(step(a), .5));
+        var originB = sub(points.getLast(), scale(step(b), .5));
+        if (bend < 1.05 * r) {
+            // Ball corners, closed straights between them, as an elbow without room for its bend.
+            for (int k = 1; k < legs; k++) {
+                var p = points.get(k);
+                double wall = Math.min(Math.min(Math.min(p[0], 1 - p[0]), Math.min(p[1], 1 - p[1])), Math.min(p[2], 1 - p[2]));
+                m.sphere(p, Math.min(wall, r / DeterministicMath.cos(Math.PI / sides)), sides, Material.PIPE);
+            }
+            arm(m, originA, a, .5 - lengths[0], od, line.ea(), ref(a), sides, true);
+            for (int k = 1; k < legs - 1; k++) {
+                var f = new Frame(points.get(k), dirs[k], perpendicular(dirs[k]));
+                m.annulus(f, 0, r, 0, sides, -1, Material.PIPE);
+                m.prism(f, r, 0, lengths[k], sides, Material.PIPE);
+                m.annulus(f, 0, r, lengths[k], sides, 1, Material.PIPE);
+            }
+            arm(m, originB, b, .5 - lengths[legs - 1], od, line.eb(), ref(b), sides, true);
+            return;
+        }
+        double[] facets = ref(a);
+        arm(m, originA, a, .5 - lengths[0] + bend * tans[1], od, line.ea(), facets, sides, false);
+        for (int k = 1; k < legs; k++) {
+            double[] u = dirs[k - 1], w = dirs[k];
+            var inward = unit(sub(w, scale(u, dot(w, u))));
+            var radial = neg(inward);
+            var axis = cross(u, inward);
+            var centre = plus(sub(points.get(k), scale(u, bend * tans[k])), scale(inward, bend));
+            var c = cross(u, w);
+            double turn = DeterministicMath.atan2(Math.sqrt(dot(c, c)), dot(u, w));
+            double phase = DeterministicMath.atan2(dot(facets, axis), dot(facets, radial));
+            m.torus(new Frame(centre, axis, radial), bend, r, 0, turn, Math.max(3, (int) Math.ceil(turn * bend / .08)), sides, phase, Material.PIPE);
+            // The facet reference carried round the bend: at the same angle from the outward radial at its end.
+            var out = plus(scale(radial, DeterministicMath.cos(turn)), scale(u, DeterministicMath.sin(turn)));
+            facets = plus(scale(out, DeterministicMath.cos(phase)), scale(axis, DeterministicMath.sin(phase)));
+            double from = bend * tans[k], to = lengths[k] - bend * tans[k + 1];
+            if (k < legs - 1 && to > from + EPS) m.prism(new Frame(points.get(k), w, facets), r, from, to, sides, Material.PIPE);
+        }
+        arm(m, originB, b, .5 - lengths[legs - 1] + bend * tans[legs - 1], od, line.eb(), facets, sides, false);
+    }
+
+    /** A unit vector square to {@code d}. */
+    private static double[] perpendicular(double[] d) {
+        return unit(cross(d, Math.abs(d[0]) < .9 ? new double[]{1, 0, 0} : new double[]{0, 1, 0}));
+    }
+
+    /** True where the key draws a transition pipe: a pipe of at most two joints, one of them off its face's centre. */
+    public static boolean transition(Key key) {
+        if (key.kind() != Kind.PIPE || Integer.bitCount(key.connections()) > 2) return false;
+        for (int i = 0; i < 6; i++) if (key.connected(i) && !key.centred(i)) return true;
+        return false;
     }
 
     // ---- Pipeline devices ------------------------------------------------------------------------------------------

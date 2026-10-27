@@ -15,23 +15,43 @@ import java.util.concurrent.ConcurrentHashMap;
 /** Loaded host index and shared mount selection. Does not load chunks or inspect process contents. */
 public final class InstrumentHosts {
     private InstrumentHosts(){}
-    private static final Map<Level,Set<BlockPos>> LOADED=new WeakHashMap<>();
-    private static final Map<Level,Set<BlockPos>> INSTALLED=new WeakHashMap<>();
+    private static final Map<Level,Map<BlockPos,Double>> LOADED=new WeakHashMap<>();
+    private static final Map<Level,Map<BlockPos,Double>> INSTALLED=new WeakHashMap<>();
     public record Host(long identity,BlockEntity entity,List<Instrument.Mount> mounts,boolean pipe) {
         public Host{mounts=List.copyOf(mounts);}
         public Instrument.Metadata metadata(){return ((Instrument.Holder)entity).instruments();}
         public Instrument.Mount mount(String id){return mounts.stream().filter(m->m.id().equals(id)).findFirst().orElse(null);}
-        public boolean occupied(Instrument.Mount mount){return pipe?legacy(entity.getBlockState())!=null||!metadata().installed().isEmpty():metadata().installed().stream().anyMatch(i->i.key().mount().equals(mount.id()));}
+        public boolean occupied(Instrument.Mount mount){return pipe?legacy(entity.getBlockState())!=null||!metadata().installed().isEmpty()||!metadata().sensors().isEmpty():metadata().installed().stream().anyMatch(i->i.key().mount().equals(mount.id()))||metadata().sensors().stream().anyMatch(i->i.key().mount().equals(mount.id()));}
     }
     public record Selection(Host host,Instrument.Mount mount,double distance) {}
     private static final Object INDEX_LOCK=new Object();
-    public static void loaded(BlockEntity be){if(be.getLevel()==null||!(be instanceof FluidDeviceBlockEntity pipe&&pipe.getBlockState().getBlock() instanceof FluidDeviceBlock block&&block.kind()==TopologyCompiler.Kind.PIPE||be instanceof EquipmentShellBlockEntity shell&&shell.shape()!=null&&shell.fluidIdentity()>0))return;synchronized(INDEX_LOCK){LOADED.computeIfAbsent(be.getLevel(),l->new HashSet<>()).add(be.getBlockPos().immutable());var set=INSTALLED.computeIfAbsent(be.getLevel(),l->new HashSet<>());if(be instanceof Instrument.Holder h&&!h.instruments().installed().isEmpty())set.add(be.getBlockPos().immutable());else set.remove(be.getBlockPos());}}
-    private static List<BlockPos> loaded(Level level,boolean installed){synchronized(INDEX_LOCK){return List.copyOf((installed?INSTALLED:LOADED).getOrDefault(level,Set.of()));}}
+    public static void loaded(BlockEntity be){
+        if(be.getLevel()==null||!(be instanceof FluidDeviceBlockEntity pipe&&pipe.getBlockState().getBlock() instanceof FluidDeviceBlock block&&block.kind()==TopologyCompiler.Kind.PIPE||be instanceof EquipmentShellBlockEntity shell&&shell.shape()!=null&&shell.fluidIdentity()>0))return;
+        double extent=2;
+        if(be instanceof EquipmentShellBlockEntity shell){var s=shell.shape();extent=Math.sqrt((double)s.sizeX()*s.sizeX()+(double)s.sizeY()*s.sizeY()+(double)s.sizeZ()*s.sizeZ())+2;}
+        // The index and its equipped subset are published together; callers inspect hosts outside the lock.
+        synchronized(INDEX_LOCK){
+            LOADED.computeIfAbsent(be.getLevel(),l->new HashMap<>()).put(be.getBlockPos().immutable(),extent);
+            var equipped=INSTALLED.computeIfAbsent(be.getLevel(),l->new HashMap<>());
+            if(be instanceof Instrument.Holder h&&(!h.instruments().installed().isEmpty()||!h.instruments().sensors().isEmpty()))equipped.put(be.getBlockPos().immutable(),extent);else equipped.remove(be.getBlockPos());
+        }
+    }
+    private static Map<BlockPos,Double> loaded(Level level,boolean installed){synchronized(INDEX_LOCK){return Map.copyOf((installed?INSTALLED:LOADED).getOrDefault(level,Map.of()));}}
     public static void unloaded(BlockEntity be){synchronized(INDEX_LOCK){var set=LOADED.get(be.getLevel());if(set!=null)set.remove(be.getBlockPos());var equipped=INSTALLED.get(be.getLevel());if(equipped!=null)equipped.remove(be.getBlockPos());}}
     public static List<Host> nearby(Level level,Vec3 centre,double radius){return nearby(level,centre,radius,false);}
-    public static List<Host> nearby(Level level,Vec3 centre,double radius,boolean installedOnly){var result=new ArrayList<Host>();for(var pos:loaded(level,installedOnly)){if(pos.getCenter().distanceToSqr(centre)>(radius+20)*(radius+20)||!level.hasChunkAt(pos))continue;var h=at(level,pos);if(h!=null&&h.mounts.stream().anyMatch(m->m.centre().distanceToSqr(centre)<=radius*radius))result.add(h);}return result.stream().collect(java.util.stream.Collectors.toMap(Host::identity,h->h,(a,b)->a,LinkedHashMap::new)).values().stream().toList();}
+    public static List<Host> nearby(Level level,Vec3 centre,double radius,boolean installedOnly){
+        var result=new LinkedHashMap<Long,Host>();
+        for(var entry:loaded(level,installedOnly).entrySet()){
+            var pos=entry.getKey();double reach=radius+entry.getValue();
+            if(pos.getCenter().distanceToSqr(centre)>reach*reach||!level.hasChunkAt(pos))continue;
+            var h=at(level,pos);if(h==null)continue;
+            var mounts=new ArrayList<>(h.mounts());mounts.addAll(Sensor.mounts(h,Sensor.Kind.LEVEL));mounts.addAll(Sensor.mounts(h,Sensor.Kind.FLOW));
+            if(mounts.stream().anyMatch(m->m.centre().distanceToSqr(centre)<=radius*radius))result.putIfAbsent(h.identity(),h);
+        }
+        return List.copyOf(result.values());
+    }
     public static Host at(Level level,BlockPos position){if(!level.hasChunkAt(position))return null;var be=level.getBlockEntity(position);
-        if(be instanceof FluidDeviceBlockEntity pipe&&pipe.getBlockState().getBlock() instanceof FluidDeviceBlock block&&block.kind()==TopologyCompiler.Kind.PIPE&&pipe.fluidIdentity()>0)return new Host(pipe.fluidIdentity(),pipe,pipeMounts(position,pipe.bore(),pipe.getBlockState()),true);
+        if(be instanceof FluidDeviceBlockEntity pipe&&pipe.getBlockState().getBlock() instanceof FluidDeviceBlock block&&block.kind()==TopologyCompiler.Kind.PIPE&&pipe.fluidIdentity()>0)return new Host(pipe.fluidIdentity(),pipe,pipe.transition()?List.of():pipeMounts(position,pipe.bore(),pipe.getBlockState()),true);
         if(be instanceof EquipmentShellBlockEntity shell&&shell.shape()!=null){var shape=shell.shape();var c=ShapeRasterizer.fluidCell(shape);if(c==null)return null;var root=shell.origin().offset(c.x(),c.y(),c.z());if(!root.equals(position))return at(level,root);if(shell.fluidIdentity()>0)return new Host(shell.fluidIdentity(),shell,reservoirMounts(shape,shell.origin()),false);}
         return null;
     }
@@ -57,7 +77,8 @@ public final class InstrumentHosts {
         return mount==null?null:new Selection(host,mount,hit.getLocation().distanceTo(player.getEyePosition()));
     }
     public static boolean pipeReachable(net.minecraft.world.entity.player.Player player,Host host){var hit=player.pick(player.blockInteractionRange(),0,false);return hit instanceof BlockHitResult b&&hit.getType()==HitResult.Type.BLOCK&&b.getBlockPos().equals(host.entity().getBlockPos());}
-    public static List<Instrument.Mount> reservoirMounts(EquipmentShape shape,BlockPos origin){return com.wormzjl.icheme.science.equipment.InstrumentGeometry.sockets(shape).stream().map(t->new Instrument.Mount(t.id(),new Vec3(origin.getX()+t.x(),origin.getY()+t.y(),origin.getZ()+t.z()),Direction.valueOf(shape.front().name()),Set.of(t.pressure()?GaugeSettings.Kind.PRESSURE:GaugeSettings.Kind.TEMPERATURE),t.top())).toList();}
+    public static List<Instrument.Mount> reservoirMounts(EquipmentShape shape,BlockPos origin){return com.wormzjl.icheme.science.equipment.InstrumentGeometry.sockets(shape).stream().map(t->new Instrument.Mount(t.id(),new Vec3(origin.getX()+t.x(),origin.getY()+t.y(),origin.getZ()+t.z()),reservoirFace(shape),Set.of(t.pressure()?GaugeSettings.Kind.PRESSURE:GaugeSettings.Kind.TEMPERATURE),t.top())).toList();}
+    private static Direction reservoirFace(EquipmentShape shape){if(!shape.saddles())return Direction.valueOf(shape.front().name());var n=shape.transform().direction(new double[]{0,0,-1});return Direction.getNearest(n[0],n[1],n[2]);}
     public static Selection select(Collection<Host> hosts,Vec3 eye,Vec3 direction,double reach,GaugeSettings.Kind kind,boolean installedOnly){Selection best=null;Vec3 end=eye.add(direction.scale(reach));for(var h:hosts)for(var m:h.mounts){if(kind!=null&&!m.kinds().contains(kind))continue;if(installedOnly&&h.metadata().installed().stream().noneMatch(i->i.key().mount().equals(m.id())))continue;var hit=m.bounds().clip(eye,end);if(hit.isEmpty())continue;double d=hit.get().distanceTo(eye);if(best==null||d<best.distance)best=new Selection(h,m,d);}return best;}
     public static boolean reachable(net.minecraft.world.entity.player.Player player,Host host,Instrument.Selectable mount){var eye=player.getEyePosition();if(mount.bounds().distanceToSqr(eye)>player.blockInteractionRange()*player.blockInteractionRange())return false;var point=mount.bounds().clip(eye,mount.bounds().getCenter()).orElse(mount.bounds().getCenter());var hit=player.level().clip(new net.minecraft.world.level.ClipContext(eye,point,net.minecraft.world.level.ClipContext.Block.COLLIDER,net.minecraft.world.level.ClipContext.Fluid.NONE,player));return hit.getType()==HitResult.Type.MISS||hit.getLocation().distanceTo(eye)+.025>=point.distanceTo(eye);}
     public static boolean clear(Level level,Host host,Instrument.Mount mount){for(var pos:BlockPos.betweenClosedStream(mount.bounds()).toList()){if(!level.hasChunkAt(pos))return false;if(pos.equals(host.entity().getBlockPos())||level.getBlockState(pos).canBeReplaced())continue;var owner=at(level,pos);if(owner==null||owner.identity()!=host.identity())return false;}return true;}

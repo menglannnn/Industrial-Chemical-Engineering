@@ -1,0 +1,45 @@
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+index b252f9d0..440028fe 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+@@ -3655,7 +3655,7 @@ public final class PassiveStepSolver {
+                 if(!chordHolds(1,DeterministicMath.exp(now[at]-built[at])))return false;
+             }
+             // Decision A423: a vessel whose wall changed branch since the build is on slopes the Jacobian does not state.
+-            if(builtWall!=null)for(int node=0;node<layout.length;node++)if(builtWall[node]!=null
++            if(builtWall!=null&&!PhaseLayout.CLOSE_OFF_A423)for(int node=0;node<layout.length;node++)if(builtWall[node]!=null
+                     &&!builtWall[node].equals(PhaseLayout.wall(cachedStates[node],graph.reservoirs().get(node).inventory().volume())))return false;
+             return true;
+         }
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/solver/PhaseLayout.java b/src/main/java/com/wormzjl/createcheme/science/fluid/solver/PhaseLayout.java
+index 9f2893c5..73c74d11 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/solver/PhaseLayout.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/solver/PhaseLayout.java
+@@ -269,7 +269,10 @@ public final class PhaseLayout {
+      */
+     public static double wallRow(FluidThermodynamics.State state,double capacity){return wallRow(state,capacity,null);}
+     /** {@link #wallRow} stated on {@code branch}'s branch ({@link Wall#taut}); on the state's own when it is null. */
++    /** SCRATCH t32 (never commit): -Dcloseoff=a423 restores the code before A423. */
++    public static final boolean CLOSE_OFF_A423="a423".equals(System.getProperty("closeoff"));
+     public static double wallRow(FluidThermodynamics.State state,double capacity,Wall branch) {
++        if(CLOSE_OFF_A423)branch=null;
+         double taut=(state.volume()-capacity)/capacity,slack=2*(AMBIENT_PRESSURE-state.pressure())/AMBIENT_PRESSURE;
+         return (branch==null?taut>=slack:branch.taut())?taut:slack;
+     }
+@@ -310,6 +313,7 @@ public final class PhaseLayout {
+     public static double bagVolume(FluidThermodynamics.State state,double capacity){return bagVolume(state,capacity,null);}
+     /** {@link #bagVolume} stated on {@code branch}'s branch ({@link Wall#full}); on the state's own when it is null. */
+     public static double bagVolume(FluidThermodynamics.State state,double capacity,Wall branch) {
++        if(CLOSE_OFF_A423)branch=null;
+         double volume=state.volume();
+         return (branch==null?taut(state,capacity)||volume>=capacity*(1-1e-12):branch.full())?capacity:volume;
+     }
+@@ -563,7 +567,7 @@ public final class PhaseLayout {
+             public int[][] columnRows(){int[][] rows=new int[size()][size()];for(int[] column:rows)for(int i=0;i<column.length;i++)column[i]=i;return rows;}
+             public void linearising(double[] x){built=sweeping=wall(decode(x,0,prepare(x)),capacity);}
+             public void linearised(){sweeping=null;}
+-            public boolean linearisationHolds(double[] builtAt,double[] now){return built==null||built.equals(wall(decode(now,0,prepare(now)),capacity));}
++            public boolean linearisationHolds(double[] builtAt,double[] now){return built==null||CLOSE_OFF_A423||built.equals(wall(decode(now,0,prepare(now)),capacity));}
+             public double[] residual(double[] x){
+                 var local=prepare(x);
+                 double[] f=new double[size()];PhaseLayout.this.residual(decode(x,0,local),target,energy,capacity,workFrom,f,0,x,local,sweeping);return f;

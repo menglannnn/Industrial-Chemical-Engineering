@@ -1,0 +1,15 @@
+com.wormzjl.createcheme.science.material.Cdu17TestCatalogTest
+com.wormzjl.createcheme.science.material.CrystalReferenceTest
+com.wormzjl.createcheme.science.material.FluidAppearanceTest
+com.wormzjl.createcheme.science.material.GroupContributionInteractionsTest
+com.wormzjl.createcheme.science.material.JaegerSpanGibbsFunctionTest
+com.wormzjl.createcheme.science.material.LiquidMixtureCorrectionTest
+com.wormzjl.createcheme.science.material.MaterialAuthoringTest
+com.wormzjl.createcheme.science.material.MaterialCatalogTest
+com.wormzjl.createcheme.science.material.MaterialFluidDataTest
+com.wormzjl.createcheme.science.material.MaterialPresetsTest
+com.wormzjl.createcheme.science.material.MethaneSpineTest
+com.wormzjl.createcheme.science.material.PilotCryogenicCatalogTest
+com.wormzjl.createcheme.science.material.PilotVolumeAnchorTest
+com.wormzjl.createcheme.science.material.ReferenceSpineTest
+com.wormzjl.createcheme.science.material.ViscosityTest

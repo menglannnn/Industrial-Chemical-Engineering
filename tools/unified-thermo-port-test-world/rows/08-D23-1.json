@@ -1,0 +1,28 @@
+{
+  "id": "D23-1",
+  "title": "Liquid CO2 let down into a 1 bar tank: 250 K and 2.5 MPa through a pressure valve (1.5 MPa) and a 4 mm pipe into a tank with a top vent (MAIN_ADAPTATION_PLAN, D23 row 1)",
+  "blocks": {
+    "G":  {"at": [20, 101, 76], "block": "generator"},
+    "P1": {"at": [21, 101, 76], "block": "pipe"},
+    "Q":  {"at": [22, 101, 76], "block": "valve", "facing": "east"},
+    "P2": {"at": [23, 101, 76], "block": "pipe"},
+    "T":  {"at": [24, 101, 76], "block": "reservoir", "aim": {"stand": [24, 100, 78]}},
+    "Pt": {"at": [24, 102, 76], "block": "pipe"},
+    "Vt": {"at": [24, 103, 76], "block": "void"}
+  },
+  "steps": [
+    {"op": "mark"},
+    {"op": "note", "text": "the 4 mm pipe P2 after the valve is the let-down (a 5 cm pipe would pass about 80 kg/s of liquid)"},
+    {"op": "place", "ids": ["G", "Q", "P2"]},
+    {"op": "set", "id": "G", "mixture": "Pilot: liquid CO2 (let-down)", "pressure": 2500000, "temperatureK": 250},
+    {"op": "set", "id": "Q", "pressure": 1500000},
+    {"op": "set", "id": "P2", "diameter": 0.004},
+    {"op": "place", "ids": ["Vt", "Pt", "T", "P1"]},
+    {"op": "wait", "s": 6},
+    {"op": "read", "ids": ["T"], "views": ["overview", "solids"], "tag": "first-bucket"},
+    {"op": "wait", "s": 20},
+    {"op": "read", "ids": ["Q"], "views": ["overview"], "tag": "open"},
+    {"op": "read", "ids": ["T"], "views": ["overview", "vapor", "solids", "outlets"], "tag": "steady"},
+    {"op": "log", "grep": "fluid_island=|status=PHASE_HOLD", "tag": "D23-1"}
+  ]
+}

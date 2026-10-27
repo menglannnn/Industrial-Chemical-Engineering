@@ -113,7 +113,8 @@ public final class NetworkReduction {
      * and grows or melts only in a vessel's refresh, which runs before this test. At an interval start every transport
      * closure is read as open (owner decision D33), since that interval re-decides them ({@link #reopened}); a filter
      * stopped at its capacity stays closed. A pressure valve drives forward by the smaller of its static drive and its
-     * excess over the set point, never back; the rest interval reports it CLOSED. An empty vessel stands at the ambient
+     * excess over the set point, never back; a flow valve only throttles, so it drives forward by its static drive (nothing
+     * at a zero target), never back; the rest interval reports either CLOSED. An empty vessel stands at the ambient
      * and gives nothing (decision D54).</li>
      * <li>A vessel whose wall moved is not at rest: a layout refresh rebuilt it to another capacity (batch
      * 2026-10-26-backward-compat), and its contents still stand at the old one, its state missing its wall row
@@ -159,9 +160,11 @@ public final class NetworkReduction {
         for(int i=0;i<drives.length;i++) {
             // A closed mover carries nothing either way.
             if(closed[i]){drives[i][0]=drives[i][1]=Double.NEGATIVE_INFINITY;continue;}
-            // A pressure valve passes only from its first end, and only while that end stands above its set point (A211).
-            if(graph.pipes().get(i).control() instanceof FlowControl.PressureValve valve) {
-                drives[i][0]=Math.min(drives[i][0],graph.reservoirs().get(graph.pipes().get(i).first()).state().pressure()-valve.targetPressure());
+            // A configured valve passes only from its first end (A211). A pressure valve passes only while that end stands
+            // above its set point; a flow valve only throttles, so it passes the static drive, and nothing at a zero target.
+            if(graph.pipes().get(i).control() instanceof FlowControl.Valve valve&&!valve.bare()) {
+                if(valve.pressureControl())drives[i][0]=Math.min(drives[i][0],graph.reservoirs().get(graph.pipes().get(i).first()).state().pressure()-valve.targetPressure());
+                else if(!(valve.targetMassFlow(1)>0))drives[i][0]=Double.NEGATIVE_INFINITY;
                 drives[i][1]=Double.NEGATIVE_INFINITY;
             }
         }
@@ -225,8 +228,8 @@ public final class NetworkReduction {
         var pipe=graph.pipes().get(edge);double flow=Double.POSITIVE_INFINITY;
         for(int node:new int[]{pipe.first(),pipe.second()}) {
             var s=graph.reservoirs().get(node).state();var port=pipe.portAt(node);
-            double density=PassiveStepSolver.endDensity(model,s,port);int phase=PhaseDraw.leading(model,s,port);
-            double viscosity=phase<0?viscosity(model,s,scratch):model.phaseViscosity(s,phase,scratch,null);
+            double density=PassiveStepSolver.endDensity(model,s,port,pipe.volume());int phase=PhaseDraw.leading(model,s,port);
+            double viscosity=PhaseDraw.mixedLiquids(s,port)?PassiveStepSolver.mixedViscosity(model,s,pipe.volume(),scratch):phase<0?viscosity(model,s,scratch):model.phaseViscosity(s,phase,scratch,null);
             double slope;
             if(pipe.filter()==null)slope=pipe.loss(0,density,viscosity).massFlowDerivative();
             else{double loading=pipe.filter().loading();slope=pipe.filter().cleanResistance()*(viscosity/.001)*(1+99*loading*loading)/density;}

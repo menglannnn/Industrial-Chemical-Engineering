@@ -1,0 +1,2 @@
+[{"from": "                if(result.detail().startsWith(EquilibriumResult.UNSTABLE_PRODUCT))throw new UnsupportedPhases(domain.packageId(),t,p,",
+  "to": "                if(result.detail().startsWith(EquilibriumResult.UNSTABLE_PRODUCT))System.err.println(\"M2PROBE THREE \"+t+\" \"+p+\" \"+java.util.Arrays.toString(overall)+\" \"+result.detail());\n                if(result.detail().startsWith(EquilibriumResult.UNSTABLE_PRODUCT))throw new UnsupportedPhases(domain.packageId(),t,p,"}]

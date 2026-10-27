@@ -1,0 +1,23 @@
+{
+  "branch": "codex/floating-roof-indicator-ports",
+  "base": "35bad9b8",
+  "implementations": [
+    "08c7127e",
+    "031380ad"
+  ],
+  "jar": "C:\\Users\\wormz\\.codex\\worktrees\\pipeline-tool\\CreateChemE\\build\\libs\\icheme-0.11.2.jar",
+  "jar_sha256": "023ad9653387478b3f719a2b5e37709b6650e4f077d3f93262764e2c55708aa6",
+  "plans": 3108,
+  "compiled_layouts": 60,
+  "reframed_with_native_anchor": 6,
+  "world_binding_preserved": true,
+  "six_outward_faces": true,
+  "render_scenes": 24,
+  "colour_fixture": "TankDisplay.mix WTI-composition liquid / catalog water; no flash",
+  "junit_executed": false,
+  "client_left_running": 35128,
+  "protocol": "fluid-14",
+  "checkpoint": 18,
+  "unit": 11,
+  "baseline_source_sha256": "da9aee0035db51f8fe93b499fcd4aa3505323f323194984bf02233b66259fb8e"
+}

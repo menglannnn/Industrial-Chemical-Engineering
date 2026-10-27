@@ -1,0 +1,10 @@
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/JunctionCrystals.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/JunctionCrystals.java
+@@ -34,6 +34,7 @@
+     /** The junctions of {@code graph} above the melting point of a crystal the island holds; null where none is. */
+     @SuppressWarnings("unchecked")
+     static JunctionCrystals of(PassiveNetwork graph,FluidThermodynamics model) {
++        if(true)return null; // rule off: no junction melts a crystal (D61 off)
+         TreeMap<String,SolidMaterial> materials=null;
+         for(var node:graph.reservoirs()){materials=crystals(node.inventory().solids(),materials);materials=crystals(node.state().solids(),materials);}
+         for(var transfer:graph.scheduledTransfers())if(transfer instanceof ScheduledTransfer.Injection in)materials=crystals(in.solidsPerSecond(),materials);

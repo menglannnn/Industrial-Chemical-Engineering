@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "kind": "mixture",
+  "name": "Pilot: liquid CO2 (let-down)",
+  "translation_key": "",
+  "package": "icheme:pilot_cryogenic",
+  "basis": "mole",
+  "components": [
+    {"id": "CarbonDioxide", "amount": 1}
+  ]
+}

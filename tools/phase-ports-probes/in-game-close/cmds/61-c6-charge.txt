@@ -1,0 +1,11 @@
+/setblock 0 -57 40 createcheme:fluid_reservoir
+/setblock 4 -57 40 createcheme:fluid_reservoir
+/setblock 0 -57 41 createcheme:fluid_pipe
+/setblock 0 -57 42 createcheme:fluid_pipe
+/setblock 1 -57 42 createcheme:fluid_pipe
+/setblock 3 -57 42 createcheme:fluid_pipe
+/setblock 4 -57 42 createcheme:fluid_pipe
+/setblock 4 -57 41 createcheme:fluid_pipe
+/setblock 0 -59 37 minecraft:stone
+/setblock 2 -59 37 minecraft:stone
+/setblock 4 -59 37 minecraft:stone

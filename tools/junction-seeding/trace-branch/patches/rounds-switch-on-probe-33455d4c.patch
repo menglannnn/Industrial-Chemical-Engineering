@@ -1,0 +1,11 @@
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+@@ -1850,7 +1850,7 @@
+      * densities and caps, so the balance is solved once more on them; a round that moves no junction pressure by more than
+      * 1e-6 of itself ends the rounds early.
+      */
+-    static final int BALANCE_ROUNDS=2;
++    static final int BALANCE_ROUNDS=Integer.getInteger("t45.rounds",2);
+     /** The balance's law flows for the solve in progress; null where none was run (the static estimate stands in). */
+     private double[] balanceLawFlows;
+     /** The last balance and the input graph it was computed for: every attempt of one step starts from the same graph. */

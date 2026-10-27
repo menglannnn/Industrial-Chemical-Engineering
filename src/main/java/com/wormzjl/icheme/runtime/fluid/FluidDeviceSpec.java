@@ -12,7 +12,9 @@ import java.util.*;
  * whether it is open to the atmosphere under a floating roof ({@code PassiveNetwork.Inventory#open}, batch
  * 2026-10-21-floating-roof-tanks).
  */
-public record FluidDeviceSpec(double volume,double temperature,double pressure,double[] composition,SlurryFeed solids,double levelHeight,boolean open) {
+public record FluidDeviceSpec(double volume,double temperature,double pressure,double[] composition,SlurryFeed solids,double levelHeight,boolean open,com.wormzjl.icheme.science.fluid.network.VesselGeometry geometry) {
+    public FluidDeviceSpec(double volume,double temperature,double pressure,double[] composition,SlurryFeed solids,double levelHeight,boolean open){this(volume,temperature,pressure,composition,solids,levelHeight,open,com.wormzjl.icheme.science.fluid.network.VesselGeometry.prism(volume,levelHeight));}
+    public FluidDeviceSpec withGeometry(com.wormzjl.icheme.science.fluid.network.VesselGeometry geometry){return new FluidDeviceSpec(volume,temperature,pressure,composition,solids,levelHeight,open,geometry);}
     /** The largest vessel volume, m³ (a floating-roof tank 40 m across with 23 m of fill holds about 28,900 m³, owner
      * decision FR6), and the tallest level height, m. */
     public static final double MAX_VOLUME=30_000,MAX_LEVEL_HEIGHT=128;
@@ -20,7 +22,7 @@ public record FluidDeviceSpec(double volume,double temperature,double pressure,d
     public FluidDeviceSpec(double volume,double temperature,double pressure,double[] composition){this(volume,temperature,pressure,composition,SlurryFeed.NONE);}
     public FluidDeviceSpec(double volume,double temperature,double pressure,double[] composition,SlurryFeed solids){this(volume,temperature,pressure,composition,solids,com.wormzjl.icheme.science.fluid.network.PassiveStepSolver.LEVEL_HEAD_HEIGHT);}
     public FluidDeviceSpec {
-        Objects.requireNonNull(solids);composition=composition.clone();
+        Objects.requireNonNull(solids);Objects.requireNonNull(geometry);if(Math.abs(geometry.capacity()-volume)>volume*1e-8||Math.abs(geometry.height()-levelHeight)>levelHeight*1e-8)throw new IllegalArgumentException("Geometry differs from vessel capacity");composition=composition.clone();
         // Structural bounds only. The input box a setting must lie in is the property package's envelope, so it is checked
         // against the model (validate, initialize), not against constants here.
         if(!Double.isFinite(volume)||volume<=0||volume>MAX_VOLUME||!Double.isFinite(levelHeight)||levelHeight<=0||levelHeight>MAX_LEVEL_HEIGHT||!Double.isFinite(temperature)||!(temperature>0)||!Double.isFinite(pressure)||!(pressure>0)||(composition.length<1||composition.length>com.wormzjl.icheme.science.material.MaterialAxis.MAX_CONSERVED_COMPONENTS))throw new IllegalArgumentException("Device settings outside the fluid model's bounds");
@@ -64,7 +66,7 @@ public record FluidDeviceSpec(double volume,double temperature,double pressure,d
         validate(model,device.kind());
         var kind=switch(device.kind()) {case RESERVOIR->PassiveNetwork.NodeKind.RESERVOIR;case GENERATOR->PassiveNetwork.NodeKind.GENERATOR;case VOID->PassiveNetwork.NodeKind.VOID;default->throw new IllegalArgumentException("Pipes and actuators have no owned reservoir");};
         // Decision D54: a placed reservoir holds nothing; it fills from what its connections deliver.
-        if(kind==PassiveNetwork.NodeKind.RESERVOIR)return PassiveNetwork.emptyVessel(device.id(),device.position().y(),volume,levelHeight,open,model);
+        if(kind==PassiveNetwork.NodeKind.RESERVOIR){var n=PassiveNetwork.emptyVessel(device.id(),device.position().y(),volume,levelHeight,open,model);return new PassiveNetwork.Reservoir(n.id(),n.elevation(),n.state(),n.kind(),new PassiveNetwork.Inventory(volume,n.inventory().moles(),0,n.inventory().solids(),levelHeight,open,geometry));}
         FluidThermodynamics.State state;
         if(kind==PassiveNetwork.NodeKind.VOID)state=model.initialNitrogenCharge(volume,temperature,pressure,checkpoint);
         else {
@@ -77,6 +79,6 @@ public record FluidDeviceSpec(double volume,double temperature,double pressure,d
         }
         return new PassiveNetwork.Reservoir(device.id(),device.position().y(),state,kind,new PassiveNetwork.Inventory(volume,com.wormzjl.icheme.science.fluid.solver.PhaseLayout.totalAmounts(state),state.internalEnergy(),state.solids()));
     }
-    @Override public boolean equals(Object value){return value instanceof FluidDeviceSpec other&&volume==other.volume&&levelHeight==other.levelHeight&&open==other.open&&temperature==other.temperature&&pressure==other.pressure&&Arrays.equals(composition,other.composition)&&solids.equals(other.solids);}
-    @Override public int hashCode(){return 31*Objects.hash(volume,levelHeight,open,temperature,pressure,solids)+Arrays.hashCode(composition);}
+    @Override public boolean equals(Object value){return value instanceof FluidDeviceSpec other&&geometry.equals(other.geometry)&&volume==other.volume&&levelHeight==other.levelHeight&&open==other.open&&temperature==other.temperature&&pressure==other.pressure&&Arrays.equals(composition,other.composition)&&solids.equals(other.solids);}
+    @Override public int hashCode(){return 31*Objects.hash(volume,levelHeight,open,temperature,pressure,solids,geometry)+Arrays.hashCode(composition);}
 }

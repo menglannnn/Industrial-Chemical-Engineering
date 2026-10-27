@@ -1,0 +1,6 @@
+gamemode creative
+time set 6000
+weather clear
+setblock 540 -60 -40 createcheme:equipment_constructor[facing=south]
+gamemode spectator
+tp @s 536.5 -56 -46 -25 22

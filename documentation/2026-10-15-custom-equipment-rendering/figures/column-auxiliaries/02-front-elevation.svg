@@ -1,0 +1,129 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="820" height="510" viewBox="0 125 820 510" font-family="Segoe UI, Arial, sans-serif">
+<title>Column with side structure: front elevation, D 3 m reference</title>
+<style>
+.ts{font-size:12px;fill:#444441}
+.steel{fill:#D3D1C7;stroke:#5F5E5A;stroke-width:1}
+.clad{fill:#ECEAE3;stroke:#888780;stroke-width:1}
+.deck{fill:#B4B2A9;stroke:none}
+.opt{stroke-dasharray:4 3}
+.frame{fill:none;stroke:#5F5E5A;stroke-width:2.2}
+.rail{fill:none;stroke:#9C9A92;stroke-width:1}
+.vap{fill:none;stroke:#D85A30;stroke-opacity:.9}
+.liq{fill:none;stroke:#185FA5;stroke-width:3;stroke-linejoin:round}
+.utl{fill:none;stroke:#0F6E56;stroke-width:2;stroke-dasharray:6 3}
+.lead{fill:none;stroke:#888780;stroke-width:.8;stroke-dasharray:3 2}
+.dark{fill:#888780}
+</style>
+<rect width="820" height="640" fill="#fff"/>
+<line x1="20" y1="570" x2="480" y2="570" stroke="#5F5E5A" stroke-width="2"/>
+<path class="rail" d="M293 478.7H455M293 406.7H455M295.7 498L374 426M374 498L452.3 426"/>
+<path class="frame" d="M295.7 570V372M374 570V372M452.3 570V372M293 498H455M293 426H455M293 372H455"/>
+<path class="frame opt" d="M293.5 372V150M322 372V150M293.5 150H322M293.5 300L322 260M293.5 230L322 190" stroke-width="1.5"/>
+<rect class="steel" x="203" y="534" width="54" height="36"/>
+<circle class="dark" cx="230" cy="552" r="5.4"/>
+<rect class="clad" x="201.2" y="210" width="57.6" height="324"/>
+<path class="clad" d="M201.2 210A28.8 15.3 0 0 1 258.8 210Z"/>
+<path class="rail" d="M201.2 471H258.8M201.2 417H258.8M201.2 363H258.8M201.2 309H258.8M201.2 255H258.8"/>
+<rect class="steel" x="221" y="192" width="18" height="4"/>
+<rect class="deck" x="174.2" y="531.75" width="27" height="2.25"/>
+<path class="rail" d="M175 531.75V512.5M200 531.75V512.5M174.2 512.5H201.2M174.2 522.1H201.2"/>
+<rect class="deck" x="258.8" y="369.75" width="20.5" height="2.25"/>
+<path class="rail" d="M278.5 369.75V350.5M258.8 350.5H279.3M258.8 360.1H279.3"/>
+<rect class="deck" x="174.2" y="243.75" width="27" height="2.25"/>
+<rect class="deck" x="258.8" y="243.75" width="27" height="2.25"/>
+<path class="rail" d="M175 243.75V224.5M285 243.75V224.5M174.2 224.5H201.2M258.8 224.5H285.8M174.2 234.1H201.2M258.8 234.1H285.8"/>
+<path d="M199.6 243.75V147M201 147H173.9" fill="none" stroke="#5F5E5A" stroke-width="2.5"/>
+<path d="M174.5 147V160" fill="none" stroke="#5F5E5A" stroke-width="1"/>
+<rect class="steel" x="172" y="160" width="5" height="4"/>
+<circle class="steel" cx="230" cy="237" r="5.4"/><circle class="dark" cx="230" cy="237" r="3.2"/>
+<circle class="steel" cx="230" cy="345" r="7.6"/><circle class="dark" cx="230" cy="345" r="5"/>
+<circle class="steel" cx="230" cy="525" r="6.3"/><circle class="dark" cx="230" cy="525" r="4"/>
+<rect class="steel" x="258.8" y="286.5" width="16.2" height="9"/>
+<rect class="steel" x="258.8" y="268.5" width="16.2" height="9"/>
+<rect class="steel" x="258.8" y="394.5" width="16.2" height="9"/>
+<rect class="steel" x="258.8" y="376.5" width="16.2" height="9"/>
+<rect class="steel" x="185" y="499.8" width="16.2" height="14.4"/>
+<path class="utl" d="M289 570V154.2H303.35"/>
+<path class="utl" d="M447.5 390V384H466V570M447.5 421.5V423.5H460V570M454 523H466M454 534H460M454 550H466M454 561H460"/>
+<path class="utl" d="M127.4 546.6H112V570"/>
+<path class="liq" d="M338 421V447"/>
+<path class="liq" d="M328 491.5V500H310V549"/>
+<path class="liq" d="M303 556H239V237H236"/>
+<path class="liq" d="M275 291H281V545H330V549"/>
+<path class="liq" d="M337 556H340V541H364V537.6"/>
+<path class="liq" d="M372 516V510H285V273H275"/>
+<path class="liq" d="M230 525H175V556H163.4"/>
+<path class="vap" d="M230 194.7V174H296.6" stroke-width="18"/>
+<path class="vap" d="M307.4 294.6V378H384.8V386.6" stroke-width="13.5"/>
+<path class="vap" d="M145.4 528.6V507H185" stroke-width="14.4"/>
+<g class="steel opt">
+<rect x="303.35" y="147" width="8.1" height="14.4"/>
+<rect x="296.6" y="161.4" width="21.6" height="25.2"/>
+<polygon points="296.6,186.6 318.2,186.6 310.55,226.2 304.25,226.2"/>
+<rect x="304.25" y="226.2" width="6.3" height="14.4"/>
+<polygon points="304.25,240.6 310.55,240.6 314.15,294.6 300.65,294.6"/>
+</g>
+<path class="steel" d="M329 394.5A10.8 11.25 0 0 0 329 417Z"/>
+<rect class="steel" x="329" y="394.5" width="106.2" height="22.5"/>
+<rect class="steel" x="327.5" y="392.75" width="3" height="26"/>
+<rect class="steel" x="433.7" y="392.75" width="4.3" height="26"/>
+<rect class="steel" x="438" y="394.5" width="10.7" height="22.5"/>
+<rect class="steel" x="448.7" y="392.75" width="2.5" height="26"/>
+<path d="M333 400H433M333 405.75H433M333 411.5H433" stroke="#B4B2A9" stroke-width=".7"/>
+<path d="M438 405.75H448.7" stroke="#5F5E5A" stroke-width=".7" stroke-dasharray="2 2"/>
+<rect class="steel" x="379.4" y="389.1" width="10.8" height="5.4"/><rect class="steel" x="377.4" y="386.6" width="14.8" height="2.5"/>
+<rect class="steel" x="335.8" y="417" width="4.4" height="4"/>
+<rect class="steel" x="445" y="390" width="5" height="4.5"/><rect class="steel" x="445" y="417" width="5" height="4.5"/>
+<polygon class="steel" points="342,417 352,417 354,426 340,426"/>
+<polygon class="steel" points="410,417 420,417 422,426 408,426"/>
+<path class="steel" d="M324.5 451.2H432.5A9 18 0 0 1 432.5 487.2H324.5A9 18 0 0 1 324.5 451.2Z"/>
+<path d="M324.5 451.2V487.2M432.5 451.2V487.2" stroke="#9C9A92" stroke-width=".7"/>
+<rect class="steel" x="335.8" y="447" width="4.4" height="4.2"/>
+<rect class="steel" x="325.8" y="487.2" width="4.4" height="4.3"/>
+<rect class="steel opt" x="388" y="487.2" width="9" height="8.8"/>
+<polygon class="steel" points="337,487.2 347,487.2 349,498 335,498"/>
+<polygon class="steel" points="409,487.2 419,487.2 421,498 407,498"/>
+<g class="steel">
+<path d="M354 546.6A10 9 0 0 0 354 564.6Z"/><rect x="354" y="546.6" width="87" height="18"/>
+<rect x="439.5" y="545" width="5" height="21.2"/><rect x="444.5" y="546.6" width="7.5" height="18"/><rect x="452" y="545" width="2" height="21.2"/>
+<path d="M354 519.6A10 9 0 0 0 354 537.6Z"/><rect x="354" y="519.6" width="87" height="18"/>
+<rect x="439.5" y="518" width="5" height="21.2"/><rect x="444.5" y="519.6" width="7.5" height="18"/><rect x="452" y="518" width="2" height="21.2"/>
+<rect x="373" y="537.6" width="10" height="9"/><rect x="421" y="537.6" width="10" height="9"/>
+<rect x="373" y="564.6" width="10" height="5.4"/><rect x="421" y="564.6" width="10" height="5.4"/>
+<rect x="361.8" y="537.6" width="4.4" height="3.4"/><rect x="369.8" y="516" width="4.4" height="3.6"/>
+<rect x="301" y="564" width="18" height="6"/><rect x="321" y="564" width="18" height="6"/>
+<circle cx="310" cy="556" r="7"/><circle cx="330" cy="556" r="7"/>
+</g>
+<g class="steel">
+<circle cx="145.4" cy="546.6" r="18"/>
+<polygon points="133,564.6 158,564.6 160,570 131,570"/>
+<rect x="141.8" y="524.6" width="7.2" height="4"/>
+</g>
+<circle cx="145.4" cy="552.45" r="11.25" fill="none" stroke="#5F5E5A" stroke-width=".8" stroke-dasharray="2 2"/>
+<path class="lead" d="M486 166L285 174M486 196L319 205M486 224L323 232M486 254L290 258M486 286L286 290M486 318L240 322M486 380L452 392M486 408L466 414M486 446L442 462M486 472L397 490M486 498L455 498M486 524L455 530M486 552L338 556M104 156L172 150M100 474L138 534"/>
+<g class="ts">
+<text x="490" y="170">Overhead vapour line, 1.0 m</text>
+<text x="490" y="200">Steam ejector (optional): 1.0 m suction, 8.2 m long</text>
+<text x="490" y="228">Ejector support frame, only with the ejector</text>
+<text x="490" y="258">Motive steam</text>
+<text x="490" y="290">PA draw and return, moved to the structure side</text>
+<text x="490" y="322">Reflux riser up the column front to tray 1</text>
+<text x="490" y="384">Water-cooled condenser, 1.25 m × 6 m tubes</text>
+<text x="490" y="412">Cooling water to the channels</text>
+<text x="490" y="450">Reflux drum 2 m × 6 m, comes with the condenser</text>
+<text x="490" y="476">Water boot, only with the ejector</text>
+<text x="490" y="502">Structure floors at 4, 8 and 11 m</text>
+<text x="490" y="528">PA coolers 1 m × 5 m, stacked, two-pass shell</text>
+<text x="490" y="556">Reflux and PA pumps, seen end-on (proposed)</text>
+<text x="24" y="160">Lifting davit</text>
+<text x="24" y="300">Column D 3 m, 25 trays</text>
+<text x="24" y="316">top 20.9 m, skirt 2 m</text>
+<text x="24" y="332">decks at 2, 11, 18 m</text>
+<text x="24" y="452">Kettle reboiler (optional)</text>
+<text x="24" y="468">2 m shell, 1.25 m bundle</text>
+<text x="75" y="618" text-anchor="middle">5 m</text>
+<text x="150" y="602">Front elevation from the constructor; to scale (1 m = 18 px) except liquid and utility lines.</text>
+<text x="150" y="618">Dashed outlines: optional parts. The second pumparound's lines, behind the first, are left out.</text>
+</g>
+<path d="M30 600H120M30 595V605M120 595V605" fill="none" stroke="#444441" stroke-width="1.2"/>
+</svg>

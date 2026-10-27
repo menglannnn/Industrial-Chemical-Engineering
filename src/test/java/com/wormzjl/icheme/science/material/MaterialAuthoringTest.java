@@ -7,19 +7,19 @@ class MaterialAuthoringTest {
  private static final String ROOT="data/icheme/materials/",ID="icheme:tjl20_methane";
  @Test void physicsIdentityIgnoresAssaysButTracksActualSelectedProperties() {
   var c=MaterialCatalog.bundled();var axis=c.requirePackage(ID).components();
-  assertEquals(c.physicsFingerprint(ID,axis),c.physicsFingerprint("icheme:bonga_tjl20",axis));
-  assertEquals(c.physicsFingerprint(ID,axis),c.physicsFingerprint("icheme:tjl20_methane_nitrogen",axis));
+  assertTrue(c.samePhysics(ID,"icheme:bonga_tjl20",axis));
+  assertTrue(c.samePhysics(ID,"icheme:tjl20_methane_nitrogen",axis));
   var resources=new HashMap<>(c.resources());var a=JsonParser.parseString(resources.get(ROOT+"assays/tjl20.json")).getAsJsonObject();
   a.getAsJsonObject("amounts_by_component").addProperty("crude_pc01",.8);resources.put(ROOT+"assays/tjl20.json",a.toString());
   var changed=MaterialCatalog.parse(resources);
-  assertNotEquals(c.requirePackage(ID).fingerprint(),changed.requirePackage(ID).fingerprint());
-  assertEquals(c.physicsFingerprint(ID,axis),changed.physicsFingerprint(ID,axis));
+  assertNotEquals(c.requirePackage(ID).assays(),changed.requirePackage(ID).assays());
+  assertEquals(c.physicsContent(ID,axis),changed.physicsContent(ID,axis));
   var p=JsonParser.parseString(resources.get(ROOT+"properties/crude_pc08.json")).getAsJsonObject();
   p.addProperty("standard_liquid_density_kg_per_m3",913);resources.put(ROOT+"properties/crude_pc08.json",p.toString());
   changed=MaterialCatalog.parse(resources);
-  assertNotEquals(c.physicsFingerprint(ID,axis),changed.physicsFingerprint(ID,axis));
-  assertEquals(c.physicsFingerprint(ID,List.of("crude_pc07")),changed.physicsFingerprint(ID,List.of("crude_pc07")));
-  assertNotEquals(c.physicsFingerprint(ID,List.of("crude_pc08")),changed.physicsFingerprint(ID,List.of("crude_pc08")));
+  assertNotEquals(c.physicsContent(ID,axis),changed.physicsContent(ID,axis));
+  assertEquals(c.physicsContent(ID,List.of("crude_pc07")),changed.physicsContent(ID,List.of("crude_pc07")));
+  assertNotEquals(c.physicsContent(ID,List.of("crude_pc08")),changed.physicsContent(ID,List.of("crude_pc08")));
  }
  @Test void basisCyclesAndUnusedBadReferencesFailWithResourceContext() {
   var records=new HashMap<>(MaterialCatalog.bundled().resources());String path=ROOT+"bases/bad.json";

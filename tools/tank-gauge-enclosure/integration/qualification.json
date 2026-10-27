@@ -1,0 +1,25 @@
+{
+  "candidate": "8b2112cf8123c0276b8dc41a2650c52e05f518a5",
+  "date": "2026-10-25",
+  "build": "success",
+  "full_suites": {
+    "test": {
+      "counts": {
+        "tests": 1419,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "failures": []
+    },
+    "slowGates": {
+      "counts": {
+        "tests": 187,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "failures": []
+    }
+  }
+}

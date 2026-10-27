@@ -1,0 +1,45 @@
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+index c44fe4e9..9d341728 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+@@ -2419,6 +2419,10 @@ public final class PassiveStepSolver {
+             if(filterR[e][dir]>0)return saturated(driving/filterR[e][dir],cap);
+             var pipe=graph.pipes().get(e);
+             // Newton on the law from the last flow found on this end (a bracket grows from it), bisection where a step leaves the bracket.
++            // The loss rises strictly with the flow, so the root is unique and the start only saves iterations. The bracket ends
++            // the search only once it is closed: while it is open above, 1e-14 of an infinite bracket is no width, and the test
++            // ended every search started under its root after one laminar step (a 1 cm line under 2.57 MPa read 1 484 kg/s where
++            // its law gives 1.536, so the balance's residual at fixed pressures moved with the history of starts, cold seed 743).
+             double lo=0,hi=Double.POSITIVE_INFINITY,q=lastQ[e][dir]>0?lastQ[e][dir]:cap;
+             for(int k=0;k<60;k++) {
+                 var loss=pipe.loss(q,rho,mu);double f=loss.pressureDrop()-driving;
+@@ -2426,7 +2430,7 @@ public final class PassiveStepSolver {
+                 if(f>0)hi=q;else lo=q;
+                 double next=q-f/loss.massFlowDerivative();
+                 if(hi==Double.POSITIVE_INFINITY)q=next>lo?next:2*q;else q=next>lo&&next<hi?next:.5*(lo+hi);
+-                if(hi-lo<=1e-14*hi)break;
++                if(hi<Double.POSITIVE_INFINITY&&hi-lo<=1e-14*hi)break;
+             }
+             lastQ[e][dir]=q;
+             return saturated(q,cap);
+@@ -2442,7 +2446,10 @@ public final class PassiveStepSolver {
+                 if(jacobian==null)continue;
+                 for(int end=0;end<2;end++) {
+                     int node=end==0?a:b,col=unknown[node];if(col<0)continue;
+-                    double at=end==0?pa:pb,delta=1e-7*Math.max(1,Math.abs(at));
++                    // The slope over 1e-9 of the end pressure: over 1e-7 (0.32 Pa at 3.16 MPa) a line between neighbouring junctions carrying
++                    // 2 g/s on a 6 mPa drive was crossed through its zero flow, so its slope was a secant across the column's dead band and no
++                    // Newton step descended (cold seed 729: 124 balances ended on the sweep budget). The inversion resolves 1e-12 of a drive.
++                    double at=end==0?pa:pb,delta=1e-9*Math.max(1,Math.abs(at));
+                     double dq=((end==0?flow(e,pa+delta,pb):flow(e,pa,pb+delta))-q)/delta;
+                     if(unknown[a]>=0)jacobian[unknown[a]][col-unknown[a]+band]-=dq;
+                     if(unknown[b]>=0)jacobian[unknown[b]][col-unknown[b]+band]+=dq;
+@@ -2528,7 +2535,7 @@ public final class PassiveStepSolver {
+             if(count==0||Double.isNaN(low)){converged=true;return p;}
+             for(int i=0;i<nodes;i++)if(unknown[i]>=0)p[i]=Math.clamp(p[i],low,high);
+             double[] residual=new double[count];double merit=residual(p,residual,null);
+-            // 1e-6 of the island's largest cap flow: a start, and the floor of a Newton on finite-difference slopes (1e-7 relative).
++            // 1e-6 of the island's largest cap flow: a start, above the floor of a Newton on finite-difference slopes (1e-9 relative).
+             double tolerance=1e-6*Math.max(1,scale);
+             for(int iteration=0;iteration<30;iteration++) {
+                 checkpoint.run();finalResidual=maximum(residual);

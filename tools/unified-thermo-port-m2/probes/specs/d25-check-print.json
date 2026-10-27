@@ -1,0 +1,4 @@
+[
+ {"from": "        return added==0?kept:nucleated(kept,equilibrium,added,prepared);\n", "to": "        var m2r=added==0?kept:nucleated(kept,equilibrium,added,prepared);\n        if(M2P){var st=new Throwable().getStackTrace();System.out.printf(java.util.Locale.ROOT,\"M2PROBE check at=%d/%d j=%s kept=%d tp=%d excl=%d T=%.5f P=%.2f wl=%.6e wv=%.6e -> added=%d seedT=%.5f seedP=%.2f seedWl=%.6e seedWv=%.6e%n\",st[1].getLineNumber(),st.length>2?st[2].getLineNumber():0,junction,phaseBits(kept),phaseBits(equilibrium),excluded,kept.temperature(),kept.pressure(),kept.waterLiquid(),kept.waterVapor(),added,m2r.temperature(),m2r.pressure(),m2r.waterLiquid(),m2r.waterVapor());}\n        return m2r;\n"},
+ {"from": "    public static int phaseBits(State state) {\n", "to": "    public static volatile boolean M2P=true;\n    public static int phaseBits(State state) {\n"}
+]

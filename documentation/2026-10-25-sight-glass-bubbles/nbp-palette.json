@@ -1,0 +1,98 @@
+{
+  "anchors_celsius": [
+    [
+      60,
+      "F8E8B0"
+    ],
+    [
+      180,
+      "C79A47"
+    ],
+    [
+      320,
+      "75451E"
+    ],
+    [
+      500,
+      "2A1C13"
+    ],
+    [
+      825,
+      "0C0A09"
+    ]
+  ],
+  "fractions": [
+    {
+      "component": "crude_pc01",
+      "nbp_kelvin": 331.43910761154854,
+      "colour": "#F8E8B0",
+      "transparency": 0.7
+    },
+    {
+      "component": "crude_pc02",
+      "nbp_kelvin": 383.48574529667144,
+      "colour": "#E3C784",
+      "transparency": 0.649
+    },
+    {
+      "component": "crude_pc03",
+      "nbp_kelvin": 431.8286802030456,
+      "colour": "#D0A85A",
+      "transparency": 0.549
+    },
+    {
+      "component": "crude_pc04",
+      "nbp_kelvin": 480.19999999999993,
+      "colour": "#B78A3F",
+      "transparency": 0.46
+    },
+    {
+      "component": "crude_pc05",
+      "nbp_kelvin": 529.0849693251533,
+      "colour": "#9B6C31",
+      "transparency": 0.379
+    },
+    {
+      "component": "crude_pc06",
+      "nbp_kelvin": 577.9047589616811,
+      "colour": "#7E4E22",
+      "transparency": 0.306
+    },
+    {
+      "component": "crude_pc07",
+      "nbp_kelvin": 626.6932873274781,
+      "colour": "#673D1C",
+      "transparency": 0.24
+    },
+    {
+      "component": "crude_pc08",
+      "nbp_kelvin": 686.9673852357632,
+      "colour": "#4E3018",
+      "transparency": 0.183
+    },
+    {
+      "component": "crude_pc09",
+      "nbp_kelvin": 765.9661458209969,
+      "colour": "#2D1E13",
+      "transparency": 0.125
+    },
+    {
+      "component": "crude_pc10",
+      "nbp_kelvin": 868.2392767667543,
+      "colour": "#211710",
+      "transparency": 0.064
+    },
+    {
+      "component": "crude_pc11",
+      "nbp_kelvin": 964.9774351207947,
+      "colour": "#18110D",
+      "transparency": 0.017
+    },
+    {
+      "component": "crude_pc12",
+      "nbp_kelvin": 1095.0698779143104,
+      "colour": "#0C0A09",
+      "transparency": 0.0
+    }
+  ]
+}

@@ -1,0 +1,1 @@
+[{"from":"duration>0&&!converted&&NetworkReduction.atRest(initial,model,null,refused)","to":"duration>0&&NetworkReduction.atRest(initial,model,null,refused)"}]

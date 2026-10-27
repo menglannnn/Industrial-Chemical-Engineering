@@ -1,0 +1,3 @@
+difficulty easy
+gamerule naturalRegeneration false
+gamemode survival

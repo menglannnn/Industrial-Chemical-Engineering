@@ -1,0 +1,2 @@
+tp @s 460 -50 -30 0 0
+createcheme equipment column 460 -60 0 1 20 2 north water ejector none

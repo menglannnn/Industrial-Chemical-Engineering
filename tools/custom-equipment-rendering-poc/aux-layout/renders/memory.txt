@@ -1,0 +1,5 @@
+max heap 536.870912 MB
+D 3: 11010 aux facets, 19067 geometry facets, 1916 shell cells, heap +14.2 MB
+D 3: 11417 aux facets, 19474 geometry facets, 2211 shell cells, heap +14.4 MB
+D 15: 17180 aux facets, 47627 geometry facets, 8759 shell cells, heap +36.5 MB
+D 15: 17683 aux facets, 48130 geometry facets, 9079 shell cells, heap +36.8 MB

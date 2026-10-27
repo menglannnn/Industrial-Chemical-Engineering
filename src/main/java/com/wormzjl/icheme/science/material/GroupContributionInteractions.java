@@ -34,9 +34,10 @@ import java.util.TreeMap;
  * weight present in the matrix ("unresolved group pair" otherwise). A group pair with A_kl = 0 and B_kl != 0, for which
  * the formula is undefined, is refused; A_kl = B_kl = 0 is a zero term and is dropped.</p>
  *
- * <p>Fingerprints: {@link #science} (rule, scheme, and per resolved pair the component ids and every term's groups,
- * A, B and weight, in MPa as the record carries them) is hashed into the package's {@code fingerprint} and
- * {@code physicsFingerprint}, only for a package that has a rule, so every package without one keeps its pins.</p>
+ * <p>Identity: the group matrix declares its own revision, which the identity of every package that resolves its
+ * interactions from it carries ({@link MaterialCatalog.Package#scientificRevision}). {@link #science} (rule,
+ * scheme, and per resolved pair the component ids and every term's groups, A, B and weight, in MPa as the record
+ * carries them) is the content {@link MaterialCatalog#samePhysics} compares, only for a package that has a rule.</p>
  */
 public final class GroupContributionInteractions {
     /** The one rule type in P3. */
@@ -127,9 +128,9 @@ public final class GroupContributionInteractions {
     public String rule() { return rule; }
     /** The group scheme shared by the matrix and the spines, {@value Eppr78Groups#SCHEME} for the bundled record. */
     public String scheme() { return scheme; }
-    /** Id of the {@code group_interactions} record (not hashed). */
+    /** Id of the {@code group_interactions} record (not compared). */
     public String matrixId() { return matrixId; }
-    /** Revision of the {@code group_interactions} record (not hashed). */
+    /** Revision of the {@code group_interactions} record (not compared). */
     public String matrixRevision() { return matrixRevision; }
     /** The rule-resolved pairs, ordered by (first, second). A component pair not listed carries its constant kij. */
     public List<Pair> pairs() { return pairs; }
@@ -139,17 +140,17 @@ public final class GroupContributionInteractions {
         return Optional.ofNullable(byComponents[i][j]);
     }
 
-    /** The hashed content restricted to pairs of {@code axis} (component ids), for the physics fingerprints. */
+    /** The numeric content restricted to pairs of {@code axis} (component ids), for {@link MaterialCatalog#samePhysics}. */
     Object science(List<String> components, Collection<String> axis) {
-        var hashed = new ArrayList<Object>();
+        var resolved = new ArrayList<Object>();
         for (Pair pair : pairs) {
             String a = components.get(pair.first), b = components.get(pair.second);
             if (!axis.contains(a) || !axis.contains(b)) continue;
             var terms = new ArrayList<Object>();
             for (Term term : pair.terms) terms.add(List.of(term.firstGroup(), term.secondGroup(), term.aMegapascal(), term.bMegapascal(), term.weight()));
-            hashed.add(List.of(a, b, terms));
+            resolved.add(List.of(a, b, terms));
         }
-        return List.of(rule, scheme, hashed);
+        return List.of(rule, scheme, resolved);
     }
 
     private static double requireTemperature(double t) {

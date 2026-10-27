@@ -1,0 +1,1 @@
+F  budget (wall deadline / soft budget)                      seeds=   1 smallest=  157 list= 157

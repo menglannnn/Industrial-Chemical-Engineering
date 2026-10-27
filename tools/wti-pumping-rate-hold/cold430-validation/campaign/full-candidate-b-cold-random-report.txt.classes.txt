@@ -1,0 +1,5 @@
+B  trace underflow (T1)                                      seeds=   1 smallest=  833 list= 833
+E1 interval-start rate pass does not converge                seeds=   1 smallest=  988 list= 988
+E5 step line search stalls                                   seeds=   4 smallest=  555 list= 555 752 792 803
+E6 step Newton iteration limit                               seeds=   4 smallest=  788 list= 788 919 957 994
+F  budget (wall deadline / soft budget)                      seeds=   4 smallest=  651 list= 651 683 855 907

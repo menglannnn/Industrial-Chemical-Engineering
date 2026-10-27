@@ -1,0 +1,12 @@
+--- a/hold-fuzz-bundled/src/HoldFuzzTest.java
++++ b/hold-fuzz-bundled/src/HoldFuzzTest.java
+@@ -44,6 +44,9 @@
+     static final int COMPONENTS=MaterialTestBasis.NETWORK+1,WATER=MaterialTestBasis.NETWORK,NITROGEN=MaterialTestBasis.NITROGEN;
+     static final int METHANE=CATALOG.requirePackage("icheme:tjl20_methane_nitrogen").components().indexOf("Methane");
+     static final double[] CRUDE=Arrays.copyOf(V3PengRobinsonThermo.fromRegisteredPackage("icheme:tjl20_methane_nitrogen").crudeFeed("icheme:tia_juana_light_methane").moleFractions(),COMPONENTS);
++    // Probe (batch 2026-10-21-floating-roof-tanks): holdFuzz.deadCrude=true takes the methane out of the crude feed (a stabilised
++    // crude); no draw changes.
++    static{if(Boolean.getBoolean("holdFuzz.deadCrude"))CRUDE[METHANE]=0;}
+     static final ThreadLocal<FluidThermodynamics> MODELS=ThreadLocal.withInitial(FluidTestSupport::networkModel);
+ 
+     record Block(int x,int y,int z,Kind kind,PhysicalFluidTopology.Direction facing,double bore,FlowControl control,FluidDeviceSpec spec,String fluid) {

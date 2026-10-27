@@ -1,0 +1,13 @@
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveNetwork.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveNetwork.java
+index ca9d710..22092d2 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveNetwork.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveNetwork.java
+@@ -110,7 +110,7 @@ public record PassiveNetwork(List<Reservoir> reservoirs,List<Pipe> pipes,List<Sc
+         for(int i=0;i<graph.reservoirs.size();i++) {
+             var node=graph.reservoirs.get(i);if(!node.junction())continue;var old=from.reservoirs.get(i);
+             if(nodes==null)nodes=new ArrayList<>(graph.reservoirs);
+-            nodes.set(i,new Reservoir(node.id(),node.elevation(),old.state(),node.kind()));
++            nodes.set(i,new Reservoir(node.id(),node.elevation(),old.state(),node.kind(),old.inventory())); // RULE OFF: the carry keeps the old buffer
+         }
+         return nodes==null?graph:sizeJunctionHoldups(new PassiveNetwork(nodes,graph.pipes,graph.scheduledTransfers),model);
+     }

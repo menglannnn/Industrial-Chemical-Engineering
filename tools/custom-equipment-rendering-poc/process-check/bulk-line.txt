@@ -1,0 +1,2 @@
+setblock 197 -54 12 createcheme:fluid_pipe[facing=west,east=true,west=true]
+setblock 196 -54 12 createcheme:fluid_void[facing=west,east=true]

@@ -1,0 +1,13 @@
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+index ffd01091..a3c7bd30 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+@@ -496,7 +496,7 @@ public final class PassiveStepSolver {
+                 // What the first (suction) end draws at this flow: its bulk at a BULK end, the priority stream at a phase port.
+                 var pipe=graph.pipes().get(i);var up=states.get(pipe.first());var suction=equations.drawn(i,0,equations.cachedTransport[pipe.first()],flows[i]);
+                 double rho=suction.density;var mode=modes.get(i);var next=mode;
+-                if(!boundaryAllowed(graph,pipe,flows[i])&&Math.abs(flows[i])>1e-10){if(illegalDirection<0)illegalDirection=i;continue;}
++                if(!boundaryAllowed(graph,pipe,flows[i])&&(Boolean.getBoolean("p2strict")&&(graph.reservoirs().get(pipe.first()).fixed()||graph.reservoirs().get(pipe.second()).fixed())?flows[i]!=0:Math.abs(flows[i])>1e-10)){if(illegalDirection<0)illegalDirection=i;continue;}
+                 if(boundaryClosed[i])continue;
+                 next=nextMode(equations,i,mode,flows[i],heads[i],states,up,suction,tolerance,atShutoff[i]);
+                 if(next!=mode&&!changed) {

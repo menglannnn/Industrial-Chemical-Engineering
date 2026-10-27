@@ -1,0 +1,4 @@
+                double od4h=(heldMass*node.state().enthalpy()/node.state().mass()+heat)*seed.mass()/mass;
+                for(int c=0;c<n.length;c++)n[c]*=seed.mass()/mass;
+                FluidThermodynamics.State mixture;
+                try{var od4ph=Boolean.getBoolean("od4.ph")?model.equilibriumPH(weighted/mass,seed.pressure(),od4h,n,checkpoint):null;mixture=model.folded(od4ph!=null?od4ph:model.flashTP(weighted/mass,seed.pressure(),n,checkpoint),true);if(OD4T)System.out.println("OD4 ARRIVE node "+j+" T="+mixture.temperature()+" P="+mixture.pressure()+" wl="+mixture.waterLiquid()+" wv="+mixture.waterVapor()+" ph="+(od4ph!=null)+" seedcode="+phaseCode(seed)+" mixcode="+phaseCode(mixture));}

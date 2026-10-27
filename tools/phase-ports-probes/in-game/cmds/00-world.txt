@@ -1,0 +1,4 @@
+/gamerule doDaylightCycle false
+/gamerule doMobSpawning false
+/difficulty peaceful
+/gamemode creative

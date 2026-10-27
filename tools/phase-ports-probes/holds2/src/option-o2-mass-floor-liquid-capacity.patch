@@ -1,0 +1,22 @@
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveIntervalSolver.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveIntervalSolver.java
+index 31760678..6481a863 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveIntervalSolver.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveIntervalSolver.java
+@@ -360,6 +360,8 @@ public final class PassiveIntervalSolver {
+     private double[] carriedFlows(PassiveNetwork graph) {
+         return carriedFlows!=null&&carriedModes!=null&&carriedKey.equals(flowKey(graph))?carriedFlows:null;
+     }
++    /** Option O2 prototype (F7): a vessel's mass change measured against at least its liquid capacity. */
++    static final double OPTION_O2_LIQUID_DENSITY=1000;
+     /** The largest relative pressure or mass change of a vessel (a RESERVOIR node). */
+     private static double stateChange(PassiveNetwork before,List<FluidThermodynamics.State> after) {
+         double change=0;
+@@ -367,7 +369,7 @@ public final class PassiveIntervalSolver {
+             var node=before.reservoirs().get(i);if(node.kind()!=PassiveNetwork.NodeKind.RESERVOIR)continue;
+             var a=node.state();var b=after.get(i);
+             change=Math.max(change,Math.abs(b.pressure()-a.pressure())/Math.max(100,a.pressure()));
+-            change=Math.max(change,Math.abs(b.mass()-a.mass())/Math.max(1e-12,a.mass()));
++            change=Math.max(change,Math.abs(b.mass()-a.mass())/Math.max(1e-12,Math.max(a.mass(),OPTION_O2_LIQUID_DENSITY*a.volume())));
+         }
+         return change;
+     }

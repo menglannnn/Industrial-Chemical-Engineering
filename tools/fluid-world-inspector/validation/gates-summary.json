@@ -1,0 +1,52 @@
+{
+  "test": {
+    "tests": 1360,
+    "failures": 4,
+    "errors": 0,
+    "skipped": 0
+  },
+  "slowGates": {
+    "tests": 185,
+    "failures": 1,
+    "errors": 0,
+    "skipped": 0
+  },
+  "fluidSolverRegression": {
+    "tests": 1,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "failures": [
+    {
+      "lane": "test",
+      "classname": "com.wormzjl.icheme.runtime.fluid.FluidCheckpointCodecTest",
+      "method": "portsACompressorAndARefusedMoverRoundTripExactly()",
+      "message": "org.opentest4j.AssertionFailedError: expected: <13> but was: <16>"
+    },
+    {
+      "lane": "test",
+      "classname": "com.wormzjl.icheme.runtime.fluid.FluidPacketCodecTest",
+      "method": "theProtocolIsFluidSixWithDistinctStaticAndLivePayloads()",
+      "message": "org.opentest4j.AssertionFailedError: expected: <fluid-11> but was: <fluid-13>"
+    },
+    {
+      "lane": "test",
+      "classname": "com.wormzjl.icheme.science.equipment.ShapeRasterizerTest",
+      "method": "aDrumsFluidNodeIsAShellCell()",
+      "message": "org.opentest4j.AssertionFailedError: EquipmentShape[kind=PUMP, diameter=0.05, tangentLength=1.0, orientation=HORIZONTAL, front=NORTH, support=0, trays=null, connections=[], bank=Bank[parallel=1, series=1], boot=false] ==> expected: <null> but was: <Cell[x=0, y=1, z=0]>"
+    },
+    {
+      "lane": "test",
+      "classname": "com.wormzjl.icheme.science.fluid.DeterministicMathSourceTest",
+      "method": "fluidSourcesCallNoNonCorrectlyRoundedMathFunction()",
+      "message": "org.opentest4j.AssertionFailedError: use DeterministicMath (bitwise identical on every JVM) instead of:\nsrc\\main\\java\\com\\wormzjl\\icheme\\runtime\\fluid\\SightGlassDisplay.java:25: Math.pow(\nsrc\\main\\java\\com\\wormzjl\\icheme\\runtime\\fluid\\SightGlassDisplay.java:26: Math.pow( ==> expected: <true> but was"
+    },
+    {
+      "lane": "slowGates",
+      "classname": "com.wormzjl.icheme.science.equipment.ProcessUnitTest",
+      "method": "everyNozzleNeckAtItsLargestStandsClear()",
+      "message": "org.opentest4j.AssertionFailedError: expected: <[]> but was: <[EquipmentShape[kind=EXCHANGER, diameter=0.75, tangentLength=3.0, orientation=HORIZONTAL, front=NORTH, support=2, trays=null, connections=[], bank=Bank[parallel=1, series=1], boot=false] TUBE_OUTLET, EquipmentShape[kind=EXCHANGER, diamete"
+    }
+  ]
+}

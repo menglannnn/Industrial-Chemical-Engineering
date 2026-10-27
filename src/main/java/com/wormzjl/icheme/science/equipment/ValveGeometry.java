@@ -36,7 +36,7 @@ public final class ValveGeometry {
         if(!accessory)arms(mesh,key,half,od,sides);
         var out=new ArrayList<>(mesh.cell(0,0,0));
         boolean positive=(key.facing()&1)!=0;
-        out.addAll(MoverPortMarkings.fitting(out,key.facing(),(positive?-.45:-.62)*half,(positive?.62:.45)*half));
+        out.addAll(PortMarkings.fitting(out,key.facing(),(positive?-.45:-.62)*half,(positive?.62:.45)*half));
         return List.copyOf(out);
     }
 
@@ -82,7 +82,7 @@ public final class ValveGeometry {
     public static List<Polygon> pressure(LineGeometry.Key key,boolean accessory) {
         var mesh=new Mesh();pressureBody(mesh,key,accessory);
         double half=pressureHalf(PipeSizes.outsideOf(key.outside()));
-        var arrows=MoverPortMarkings.fitting(mesh.cell(0,0,0),key.facing(),-.42*half,.42*half,Math.PI/4);
+        var arrows=PortMarkings.fitting(mesh.cell(0,0,0),key.facing(),-.42*half,.42*half,Math.PI/4);
         pressureTop(mesh,key,accessory);var out=new ArrayList<>(LineGeometry.overhanging(mesh));out.addAll(arrows);
         return List.copyOf(out);
     }

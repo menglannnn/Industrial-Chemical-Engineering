@@ -1,0 +1,118 @@
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+@@ -3174,16 +3174,16 @@ public final class PassiveStepSolver {
+             if(pinned.length==1&&marginal<0)return start[pinned[0]];
+             double total=segment.pinnedTotal(),basis=marginal<0?total:Math.max(Math.abs(q),total);
+             var rates=segment.rates(marginal,basis);
+-            double[] moles=new double[node.moles.length];double volume=0,viscous=0,heat=0,limit=Double.POSITIVE_INFINITY,solidMass=0,solidVolume=0,solidCapacity=0;
++            double[] moles=new double[node.moles.length];double volume=0,viscous=0,heat=0,throat=0,slowest=Double.POSITIVE_INFINITY,solidMass=0,solidVolume=0,solidCapacity=0;
+             for(int k=0;k<6;k++) {
+                 if(!(rates[k]>0)&&!(k<3&&k==marginal))continue;
+                 var stream=k<3?node.phases[k]:start[k-3];double rate=rates[k],perMass=rate/stream.mass;
+                 for(int c=0;c<moles.length;c++)moles[c]+=perMass*stream.moles[c];
+                 double flowVolume=perMass*stream.volume;volume+=flowVolume;viscous+=flowVolume*stream.viscosity;heat+=rate*stream.specificEnthalpy;
+-                limit=Math.min(limit,stream.velocityLimit);
++                throat+=flowVolume/stream.velocityLimit;slowest=Math.min(slowest,stream.velocityLimit);
+                 solidMass+=perMass*stream.solids.mass();solidVolume+=perMass*stream.solids.volume();solidCapacity+=perMass*stream.solids.heatCapacity();
+             }
+-            return new Transport(moles,basis,volume,basis/volume,viscous/volume,heat/basis,limit,new SolidInventory.Moments(solidMass,solidVolume,solidCapacity),null);
++            return new Transport(moles,basis,volume,basis/volume,viscous/volume,heat/basis,throat>0?volume/throat:slowest,new SolidInventory.Moments(solidMass,solidVolume,solidCapacity),null);
+         }
+         /**
+          * The velocity cap (kg/s) of the direction leaving end {@code end} of {@code edge}, on that end's node transport: the
+@@ -3220,10 +3220,12 @@ public final class PassiveStepSolver {
+             int marginal=segment.marginalAt(node.held());var pinned=segment.pinned();
+             if(pinned.length==0){var stream=marginal<0?node:node.phases[marginal];return stream.density*pipe.minimumArea()*stream.velocityLimit;}
+             var start=startPhases[end==0?pipe.first():pipe.second()];
+-            double velocity=marginal<0?Double.POSITIVE_INFINITY:node.phases[marginal].velocityLimit,total=segment.pinnedTotal(),pinnedVolume=0;
+-            for(int phase:pinned){velocity=Math.min(velocity,start[phase].velocityLimit);pinnedVolume+=segment.capacity()[phase]/start[phase].density;}
+-            double room=pipe.minimumArea()*velocity;
+-            return marginal>=0&&pinnedVolume<=room?total+node.phases[marginal].density*(room-pinnedVolume):total*(room/pinnedVolume);
++            // Form D3c (t42): each pinned phase takes the throat area its capacity needs at its own velocity limit, and the marginal
++            // phase fills the rest at its own (not the smallest limit of them all, which let a trace liquid set a gas stream's cap).
++            double area=pipe.minimumArea(),total=segment.pinnedTotal(),pinnedArea=0;
++            for(int phase:pinned)pinnedArea+=segment.capacity()[phase]/(start[phase].density*start[phase].velocityLimit);
++            if(marginal>=0&&pinnedArea<=area){var stream=node.phases[marginal];return total+stream.density*stream.velocityLimit*(area-pinnedArea);}
++            return total*(area/pinnedArea);
+         }
+         /** The carrier viscosity of what {@code edge} draws out of end {@code end} (an inline filter's cake resistance scales
+          * with it): the bulk's at a BULK end, the phase's own where one phase is drawn at the end state, and the phases'
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/FluidThermodynamics.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/FluidThermodynamics.java
+@@ -4,6 +4,7 @@ import com.wormzjl.createcheme.science.column.v3.thermo.V3WaterProperties;
+ import com.wormzjl.createcheme.science.fluid.diagnostics.SolverDiagnostics;
+ import com.wormzjl.createcheme.science.fluid.solver.PhaseLayout;
+ import com.wormzjl.createcheme.science.fluid.transport.MixtureViscosity;
++import com.wormzjl.createcheme.science.math.DeterministicMath;
+ import com.wormzjl.createcheme.science.material.MaterialCatalog;
+ import com.wormzjl.createcheme.science.material.SolidMaterialCatalog;
+ import com.wormzjl.createcheme.science.thermo.NumericalBox;
+@@ -382,8 +383,23 @@ public final class FluidThermodynamics {
+     public double maximumVelocityMetresPerSecond(){return maximumVelocity;}
+     /** The per-node phase support the step solver freezes its Newton unknowns with. */
+     public TraceTruncationPolicy traceTruncation(){return tracePolicy;}
+-    /** A hydraulic rate bound only; temperature and phase allocation still come from the EOS/energy equations. */
+-    public double velocityLimit(State state){return Math.min(maximumVelocity,isothermalAcousticBound(state));}
++    /**
++     * A hydraulic rate bound only; temperature and phase allocation still come from the EOS/energy equations. Form D3c (t42):
++     * the throat is shared by the phases, each at its own limit ({@link #throatShare}: the gas at its choke, the liquids, the
++     * free water and the solids they carry at the configured maximum), bounded by the mixture's isothermal acoustic bound
++     * (the two-phase mixture's far lower one where both phases hold a share). Continuous in every phase amount: a trace
++     * moves the limit by its own share, never by the ratio of the two limits.
++     */
++    public double velocityLimit(State state){return Math.min(throatShare(state),isothermalAcousticBound(state));}
++    /** {@code V / (V_gas/v_gas + V_condensed/v_max)}: the velocity at which the phases of {@code state}, moving together, fill
++     * the throat, each phase taking the area its own volume flow needs at its own limit; the gas alone {@link #vaporVelocityLimit},
++     * a state holding no gas the configured maximum. */
++    double throatShare(State state) {
++        double gas=state.vaporVolume(),condensed=state.liquidVolume()+state.waterVolume()+state.solidMoments().volume();
++        if(!(gas>0))return maximumVelocity;
++        double vapor=vaporVelocityLimit(state);
++        return condensed>0?(gas+condensed)/(gas/vapor+condensed/maximumVelocity):vapor;
++    }
+     /**
+      * Frozen-phase isothermal acoustic bound used by the configured hydraulic velocity clamp: the node's compliance is
+      * {@code sum_phases V_phase kappa_phase}, the hydrocarbon liquid's and the free water's own isothermal
+@@ -453,11 +469,22 @@ public final class FluidThermodynamics {
+         if(state.waterVapor()>0)h+=state.waterVapor()*(prepared==null?vaporWaterEnthalpy(state.temperature()):match(prepared,state.temperature()).vaporEnthalpy());
+         return h/vaporMass(state);
+     }
+-    /** The vapour stream's velocity limit: {@code min(maximum, V_v/sqrt(M_v V_v/stiffness))}. */
++    /** The vapour stream's velocity limit (form D2, the gas choke alone): the isentropic choke velocity at the vapour's density,
++     * {@code c_T sqrt(gamma) K(gamma)}, K = (2/(gamma+1))^((gamma+1)/(2(gamma-1))), c_T the isothermal sound speed the acoustic
++     * bound states and gamma = cp/cv of the vapour from the equation of state (the steam alone at 4/3); the configured maximum
++     * is not read. */
+     public double vaporVelocityLimit(State state) {
+-        double stiffness=state.waterPartialPressure();
+-        if(state.vaporProperties()!=null){var gas=state.vaporProperties();stiffness+=-gas.molarVolume()/gas.volumePressureDerivative();}
+-        return Math.min(maximumVelocity,acoustic(state.vaporVolume(),vaporMass(state),state.vaporVolume()/stiffness));
++        double stiffness=state.waterPartialPressure(),gamma=4.0/3;
++        if(state.vaporProperties()!=null) {
++            var gas=state.vaporProperties();stiffness+=-gas.molarVolume()/gas.volumePressureDerivative();
++            try {
++                var v=hydrocarbon.values(state.temperature(),state.hydrocarbonPartialPressure(),state.vaporView(),PengRobinsonKernel.Root.VAPOR);
++                double cp=v.heatCapacity(),dvdt=v.volumeTemperatureDerivative(),dvdp=v.volumePressureDerivative();
++                double cv=cp+state.temperature()*dvdt*dvdt/dvdp;
++                if(cv>0&&cp>cv)gamma=cp/cv;
++            }catch(IllegalArgumentException refused){/* gamma stays 4/3 */}
++        }
++        return acoustic(state.vaporVolume(),vaporMass(state),state.vaporVolume()/stiffness)*Math.sqrt(gamma)*DeterministicMath.pow(2/(gamma+1),(gamma+1)/(2*(gamma-1)));
+     }
+     /**
+      * {@code V / sqrt(M C)}. The product of a phase's mass and compliance goes subnormal for a trace phase (a vanishing
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/HydrocarbonModel.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/HydrocarbonModel.java
+@@ -183,6 +183,13 @@ public final class HydrocarbonModel {
+                 root==PengRobinsonKernel.Root.VAPOR&&PhaseIdentification.vapourLike(values.phaseIdentificationParameter(),values.compressibility()));
+     }
+ 
++    /** The equation of state's own record of one phase at ({@code t}, {@code p}): its heat capacity and volume derivatives
++     * beside what {@link #phase} keeps (form D of the t38 plan reads the vapour's cp/cv and a liquid's cp from it); the
++     * kernel's refusals pass through as {@link IllegalArgumentException}s. */
++    TranslatedPengRobinson.Values values(double t,double p,double[] amounts,PengRobinsonKernel.Root root) {
++        return translated.evaluateValues(t,p,amounts,root,translated.prepare(t));
++    }
++
+     /**
+      * Whether an evaluated root is liquid-like: {@link PhaseIdentification}'s parameter of the root above one and above the
+      * root's compressibility factor ({@link PhaseIdentification#liquidLike(double, double)}; the one implementation of

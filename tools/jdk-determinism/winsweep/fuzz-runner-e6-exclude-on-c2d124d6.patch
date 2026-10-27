@@ -1,0 +1,10 @@
+--- a/tools/phase-ports-probes/fuzz-runner/fuzz-runner.init.gradle	2026-09-28 11:23:45.000000000 +0800
++++ b/tools/phase-ports-probes/fuzz-runner/fuzz-runner.init.gradle	2026-10-14 23:20:05.268837400 +0800
+@@ -17,6 +17,7 @@
+     def java = root.sourceSets.test.java
+     java.srcDir(new File(probes, 'hold-fuzz/src'))
+     java.srcDir(new File(probes, 'hold-classes/src'))
++    java.exclude '**/E6RowScaleProbeTest.java'   // as hold-classes.init.gradle line 11: the E6 probe compiles only with -Pe6probe
+     // As -PholdFuzzInstr=true of hold-fuzz.init.gradle: needs ../holds3/instr/instr-f8-singular-dump.patch applied to src/main.
+     if (root.findProperty('fuzzRunnerInstr') == 'true') { java.srcDir(new File(probes, 'hold-fuzz/instr')); java.srcDir(new File(probes, 'holds3/instr')) }
+     java.srcDir(new File(here, 'src'))

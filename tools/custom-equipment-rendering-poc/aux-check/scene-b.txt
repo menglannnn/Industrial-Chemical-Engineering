@@ -1,0 +1,2 @@
+tp @s 400 -50 -30 0 0
+createcheme equipment column 400 -60 0 3 20 2 north air ejector kettle

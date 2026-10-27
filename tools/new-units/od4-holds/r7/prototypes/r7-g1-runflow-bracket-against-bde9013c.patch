@@ -1,0 +1,24 @@
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+index c44fe4e9..c92b603d 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+@@ -2419,6 +2419,10 @@ public final class PassiveStepSolver {
+             if(filterR[e][dir]>0)return saturated(driving/filterR[e][dir],cap);
+             var pipe=graph.pipes().get(e);
+             // Newton on the law from the last flow found on this end (a bracket grows from it), bisection where a step leaves the bracket.
++            // The loss rises strictly with the flow, so the root is unique and the start only saves iterations. The bracket ends
++            // the search only once it is closed: while it is open above, 1e-14 of an infinite bracket is no width, and the test
++            // ended every search started under its root after one laminar step (a 1 cm line under 2.57 MPa read 1 484 kg/s where
++            // its law gives 1.536, so the balance's residual at fixed pressures moved with the history of starts, cold seed 743).
+             double lo=0,hi=Double.POSITIVE_INFINITY,q=lastQ[e][dir]>0?lastQ[e][dir]:cap;
+             for(int k=0;k<60;k++) {
+                 var loss=pipe.loss(q,rho,mu);double f=loss.pressureDrop()-driving;
+@@ -2426,7 +2430,7 @@ public final class PassiveStepSolver {
+                 if(f>0)hi=q;else lo=q;
+                 double next=q-f/loss.massFlowDerivative();
+                 if(hi==Double.POSITIVE_INFINITY)q=next>lo?next:2*q;else q=next>lo&&next<hi?next:.5*(lo+hi);
+-                if(hi-lo<=1e-14*hi)break;
++                if(hi<Double.POSITIVE_INFINITY&&hi-lo<=1e-14*hi)break;
+             }
+             lastQ[e][dir]=q;
+             return saturated(q,cap);

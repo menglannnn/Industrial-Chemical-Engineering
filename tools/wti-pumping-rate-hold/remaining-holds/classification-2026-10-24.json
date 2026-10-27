@@ -1,0 +1,774 @@
+{
+  "date": "2026-10-24",
+  "integration": "cb89f23a",
+  "numericalSource": "98f3dce3",
+  "finalCoverage": "Seeds 1-200 and 401-600 in each of three distributions; no new solve",
+  "classification": "Existing classify.sh first hold per distribution/seed; not a root-cause diagnosis",
+  "totalCases": 1200,
+  "casesWithHold": 12,
+  "heldAtEnd": 8,
+  "heldPublications": 124,
+  "firstHoldClasses": {
+    "E5 step line search stalls": 4,
+    "E6 step Newton iteration limit": 4,
+    "E1 interval-start rate pass does not converge": 1,
+    "F  budget (wall deadline / soft budget)": 1,
+    "B  trace underflow (T1)": 1,
+    "E10 no finite Jacobian trial at a first step": 1
+  },
+  "finalCases": [
+    {
+      "distribution": "bundled-random",
+      "seed": 431,
+      "firstClass": "E5 step line search stalls",
+      "heldPublications": 8,
+      "heldAtEnd": false,
+      "finalIslands": "28:STEADY: no flow since 84.0 s;39:FULL;",
+      "firstHold": {
+        "tick": 1377,
+        "island": 32,
+        "committed": 1374,
+        "status": "HELD: Substep refinement exhausted: Newton line search stalled at residual 1.0651545816198205E-6; reasons={Backward-Euler boundary reopened=6, Phase/device active-set cycle=10, Newton iteration limit at residual #; active-set pass=#=74, Newton line search stalled at residual #=6}"
+      },
+      "lastHold": {
+        "tick": 1784,
+        "island": 37,
+        "committed": 1770,
+        "status": "HELD: Substep refinement exhausted: Newton line search stalled at residual 1.0651545816198205E-6; reasons={Backward-Euler boundary reopened=6, Phase/device active-set cycle=9, Newton iteration limit at residual #; active-set pass=#=74, Newton line search stalled at residual #=6}"
+      },
+      "layout": "157:pipe0.1@2,0,1 217:pipe0.1@-1,0,1 254:pipe0.1@-1,0,0 276:pipe0.02@1,0,0 315:pipe0.05@2,-1,1 315:pipe0.02@2,0,2 412:pipe0.02@1,0,2 595:pipe0.05@0,-1,1 654:pipe0.1@2,-1,2 654:tank@2,1,2 654:pipe0.1@1,0,1 666:pipe0.05@2,-2,1 683:tank@2,-3,1 683:pump[0.05,500kPa]@3,0,1>EAST 712:void@0,0,2 978:filter@2,0,0>EAST 1047:pump[0.001,1000kPa]@0,-2,0>DOWN 1332:tank@0,-2,1 1353:tank@0,0,0 1372:pipe0.02@0,-1,0 1373:gen[crude 386K 135kPa]@-2,0,0 1716:pipe0.1@2,-1,3 1770:pump[0.001,500kPa]@3,0,2>WEST 1770:valve[200kPa]@-1,0,2>SOUTH 1783:pipe0.1@0,0,1",
+      "report": "fix-validation-campaign\\cohort-candidate-bundled-random-report.txt"
+    },
+    {
+      "distribution": "bundled-random",
+      "seed": 579,
+      "firstClass": "E5 step line search stalls",
+      "heldPublications": 7,
+      "heldAtEnd": true,
+      "finalIslands": "37:HELD: Substep refinement exhausted: Newton line search stall;",
+      "firstHold": {
+        "tick": 1907,
+        "island": 37,
+        "committed": 1904,
+        "status": "HELD: Substep refinement exhausted: Newton line search stalled at residual 78.12776132549678; active-set pass=0; reasons={No finite Jacobian trial at variable #; active-set pass=#=10, Singular Newton Jacobian: Sparse LU rejected a singular matrix; active-set pass=#=1, Newton line search stalled at residual #; active-set pass=#=9}"
+      },
+      "lastHold": {
+        "tick": 8207,
+        "island": 37,
+        "committed": 1904,
+        "status": "HELD: Substep refinement exhausted: Newton line search stalled at residual 78.12776132549678; active-set pass=0; reasons={No finite Jacobian trial at variable #; active-set pass=#=10, Singular Newton Jacobian: Sparse LU rejected a singular matrix; active-set pass=#=1, Newton line search stalled at residual #; active-set pass=#=9}"
+      },
+      "layout": "143:pipe0.05@0,0,0 143:pipe0.05@2,0,2 143:pipe0.05@3,0,0 460:tank@2,0,3 621:pipe0.02@1,-4,-2 751:gen[water 347K 168kPa]@0,0,2 795:pipe0.02@1,-6,-1 912:pipe0.02@1,-2,0 927:pipe0.05@2,0,0 957:pipe0.02@1,-7,-1 957:pipe0.1@1,-3,-2 1005:gen[crude 397K 300kPa]@1,-5,-2 1030:valve[120kPa]@1,-3,-3>NORTH 1076:tank@1,-1,0 1211:tank@1,-3,0 1591:tank@0,-4,-2 1644:pipe0.1@1,-3,-1 1658:pipe0.02@1,-5,-1 1661:pipe0.01@1,0,2 1661:pipe0.02@1,-3,-4 1689:pipe0.02@1,-4,-1 1689:pipe0.02@1,-3,-5 1689:pipe0.05@2,0,1 1904:pipe0.05@1,0,0",
+      "report": "fix-validation-campaign\\cohort-candidate-bundled-random-report.txt"
+    },
+    {
+      "distribution": "cold-random",
+      "seed": 6,
+      "firstClass": "E5 step line search stalls",
+      "heldPublications": 7,
+      "heldAtEnd": true,
+      "finalIslands": "19:STEADY: no flow since 78.5 s;34:STEADY: no flow since 113.6 s;37:STEADY: no flow since 115.0 s;39:HELD: Substep refinement exhausted: Newton line search stall; crystalKg=0.00000 crystalVessels=0",
+      "firstHold": {
+        "tick": 2023,
+        "island": 39,
+        "committed": 2021,
+        "status": "HELD: Substep refinement exhausted: Newton line search stalled at residual 69.9295497017663; active-set pass=5; reasons={Newton line search stalled at residual #; active-set pass=#=20}"
+      },
+      "lastHold": {
+        "tick": 8323,
+        "island": 39,
+        "committed": 2021,
+        "status": "HELD: Substep refinement exhausted: Newton line search stalled at residual 69.9295497017663; active-set pass=5; reasons={Newton line search stalled at residual #; active-set pass=#=20}"
+      },
+      "layout": "100:pump[0.001,500kPa]@0,0,2>NORTH 145:pipe0.1@0,1,1 381:pipe0.05@0,-3,-1 553:valve[200kPa]@-1,-1,-1>NORTH 582:pipe0.1@0,0,3 582:pipe0.05@0,-2,-1 622:pipe0.1@0,0,-1 895:void@0,0,-2 895:filter@-2,0,0>WEST 928:pump[0.01,200kPa]@2,0,3>WEST 928:pipe0.05@0,-1,-1 1163:pipe0.05@-1,0,2 1204:void@0,0,0 1243:pipe0.05@0,-4,-1 1267:pipe0.1@-1,-2,1 1277:pipe0.05@0,0,1 1298:pipe0.1@1,0,3 1348:tank@-1,0,3 1427:pipe0.05@-1,0,1 1427:pipe0.1@-1,-1,1 1532:pipe0.02@-1,-1,0 1724:tank@1,0,4 1944:filter@0,2,1>DOWN 1973:pipe0.05@-1,0,0 2021:gen[LNG 164K 5609kPa]@-1,-3,1",
+      "report": "fix-validation-campaign\\quick-scoped-cold-random-report.txt"
+    },
+    {
+      "distribution": "cold-random",
+      "seed": 110,
+      "firstClass": "E5 step line search stalls",
+      "heldPublications": 1,
+      "heldAtEnd": false,
+      "finalIslands": "28:STEADY: replaying 18.18 kg/s since 103.0 s, next check at 86;30:FULL;31:STEADY: no flow since 104.9 s; crystalKg=7.25999 crystalVessels=5",
+      "firstHold": {
+        "tick": 1500,
+        "island": 26,
+        "committed": 1492,
+        "status": "HELD: Substep refinement exhausted: Newton line search stalled at residual 96.72312225190993; active-set pass=0; reasons={Newton line search stalled at residual #; active-set pass=#=20}"
+      },
+      "lastHold": {
+        "tick": 1500,
+        "island": 26,
+        "committed": 1492,
+        "status": "HELD: Substep refinement exhausted: Newton line search stalled at residual 96.72312225190993; active-set pass=0; reasons={Newton line search stalled at residual #; active-set pass=#=20}"
+      },
+      "layout": "156:pipe0.05@0,2,1 225:comp[0.2,6.0]@0,-3,1>UP 379:pipe0.1@0,0,1 379:valve[200kPa]@-1,0,1>WEST 412:valve[150kPa]@-1,0,-1>WEST 779:filter@0,2,0>UP 801:pipe0.05@0,0,-1 807:tank@0,3,1 944:pipe0.1@1,2,1 944:pipe0.05@1,-1,1 944:gen[LNG 167K 5405kPa]@3,2,1 957:pipe0.02@0,-2,1 1015:pipe0.05@0,1,1 1329:tank@0,0,2 1329:void@0,0,0 1393:pipe0.1@2,2,1 1451:pipe0.05@2,-1,1 1485:void@0,-1,1 1732:gen[CO2gas 284K 4884kPa]@0,0,-2 1770:pipe0.05@0,1,0",
+      "report": "fix-validation-campaign\\quick-scoped-cold-random-report.txt"
+    },
+    {
+      "distribution": "cold-random",
+      "seed": 29,
+      "firstClass": "E6 step Newton iteration limit",
+      "heldPublications": 2,
+      "heldAtEnd": false,
+      "finalIslands": "44:FULL; crystalKg=0.00000 crystalVessels=0",
+      "firstHold": {
+        "tick": 3114,
+        "island": 33,
+        "committed": 3111,
+        "status": "HELD: Substep refinement exhausted: Newton iteration limit at residual 16.28124366414314; active-set pass=0; reasons={Newton line search stalled at residual #; active-set pass=#=17, Newton iteration limit at residual #; active-set pass=#=3}"
+      },
+      "lastHold": {
+        "tick": 3139,
+        "island": 33,
+        "committed": 3111,
+        "status": "HELD: Substep refinement exhausted: Newton iteration limit at residual 16.28124366414314; active-set pass=0; reasons={Newton line search stalled at residual #; active-set pass=#=17, Newton iteration limit at residual #; active-set pass=#=3}"
+      },
+      "layout": "103:pipe0.02@3,2,3 123:tank@3,-1,1 295:pipe0.01@0,2,0 603:pipe0.05@-1,1,0 981:pump[0.01,500kPa]@4,1,0>EAST 1138:pipe0.02@-1,0,0 1441:pipe0.02@-2,0,0 1505:pipe0.02@3,2,2 1520:pipe0.01@2,2,0 1532:pipe0.05@1,1,0 1570:pipe0.01@1,2,0 1612:pipe0.05@1,-1,0 1708:pipe0.01@3,0,1 1730:pipe0.01@1,-1,2 1783:gen[LNG 166K 5614kPa]@1,-1,3 1882:pipe0.01@3,2,0 2236:pipe0.01@3,1,1 2334:tank@0,0,0 2481:pipe0.02@3,2,1 2532:pipe0.02@3,2,4 2931:pipe0.01@1,-1,1 3094:pipe0.1@3,1,0 3111:pipe0.05@1,0,0 3138:gen[CO2gas 305K 4225kPa]@3,0,2 3144:valve[120kPa]@-3,0,0>WEST 3150:pipe0.05@-1,2,0 3257:pipe0.1@2,1,0 3272:pipe0.05@1,-2,0 3272:pump[0.01,500kPa]@-1,3,0>UP",
+      "report": "fix-validation-campaign\\quick-scoped-cold-random-report.txt"
+    },
+    {
+      "distribution": "cold-random",
+      "seed": 101,
+      "firstClass": "E6 step Newton iteration limit",
+      "heldPublications": 34,
+      "heldAtEnd": true,
+      "finalIslands": "25:STEADY: no flow since 76.6 s;31:HELD: Substep refinement exhausted: Newton iteration limit a; crystalKg=12.5059 crystalVessels=2",
+      "firstHold": {
+        "tick": 1294,
+        "island": 28,
+        "committed": 1281,
+        "status": "HELD: Substep refinement exhausted: Newton iteration limit at residual 1.0214509628167989E-5; active-set pass=1; reasons={Newton iteration limit at residual #; active-set pass=#=17, Backward-Euler state change #=5, Newton line search stalled at residual #; active-set pass=#=4, Solid transport transition inside the step=2}"
+      },
+      "lastHold": {
+        "tick": 10230,
+        "island": 31,
+        "committed": 1501,
+        "status": "HELD: Substep refinement exhausted: Newton iteration limit at residual 3.836654971336322E-6; active-set pass=1; reasons={Newton line search stalled at residual #; active-set pass=#=8, Solid transport transition inside the step=2, Newton iteration limit at residual #; active-set pass=#=13}"
+      },
+      "layout": "327:tank@-1,0,1 364:pump[0.01,500kPa]@-2,0,0>WEST 397:filter@2,4,0>UP 460:pump[0.05,1000kPa]@1,4,0>DOWN 460:pipe0.02@1,0,0 668:pipe0.01@0,0,1 717:gen[CO2gas 282K 4044kPa]@2,2,0 1050:pipe0.1@-1,0,0 1050:pipe0.05@1,2,0 1099:tank@0,0,0 1099:pipe0.01@0,0,2 1099:pipe0.05@1,3,0 1145:gen[LNG 155K 2894kPa]@0,0,3 1205:pipe0.05@2,3,0 1224:pipe0.05@3,0,0 1250:gen[CO2gas 285K 3643kPa]@2,0,0 1283:pump[0.01,500kPa]@4,0,0>WEST 1292:pipe0.05@1,1,0",
+      "report": "fix-validation-campaign\\quick-scoped-cold-random-report.txt"
+    },
+    {
+      "distribution": "cold-random",
+      "seed": 430,
+      "firstClass": "E6 step Newton iteration limit",
+      "heldPublications": 9,
+      "heldAtEnd": true,
+      "finalIslands": "20:HELD: Substep refinement exhausted: Newton iteration limit a;21:STEADY: no flow since 39.1 s; crystalKg=0.00000 crystalVessels=0",
+      "firstHold": {
+        "tick": 406,
+        "island": 18,
+        "committed": 404,
+        "status": "HELD: Substep refinement exhausted: Newton iteration limit at residual 0.7654043164404858; active-set pass=0; reasons={Newton iteration limit at residual #; active-set pass=#=13, Newton line search stalled at residual #; active-set pass=#=7}"
+      },
+      "lastHold": {
+        "tick": 6757,
+        "island": 20,
+        "committed": 454,
+        "status": "HELD: Substep refinement exhausted: Newton iteration limit at residual 0.7654043164404858; active-set pass=0; reasons={Newton iteration limit at residual #; active-set pass=#=13, Newton line search stalled at residual #; active-set pass=#=7}"
+      },
+      "layout": "100:pipe0.05@-3,0,0 100:pipe0.02@-3,-1,0 122:tank@-5,-1,0 277:pipe0.05@-5,0,0 314:gen[CO2gas 293K 4890kPa]@-3,-2,0 364:pipe0.05@-1,0,0 364:gen[LNG 128K 884kPa]@-2,-1,0 364:filter@0,0,0>WEST 367:comp[0.2,3.0]@-1,-1,0>UP 404:pipe0.02@-4,-1,0 404:pipe0.05@-4,0,0 454:pump[0.01,1000kPa]@-2,0,0>WEST",
+      "report": "fix-validation-campaign\\cohort-candidate-cold-random-report.txt"
+    },
+    {
+      "distribution": "cold-random",
+      "seed": 446,
+      "firstClass": "E6 step Newton iteration limit",
+      "heldPublications": 8,
+      "heldAtEnd": true,
+      "finalIslands": "42:HELD: Substep refinement exhausted: Newton line search stall; crystalKg=0.116715 crystalVessels=1",
+      "firstHold": {
+        "tick": 1706,
+        "island": 42,
+        "committed": 1703,
+        "status": "HELD: Substep refinement exhausted: Newton iteration limit at residual 1.4578999789884344E-9; active-set pass=0; reasons={Backward-Euler state change #=2, Newton iteration limit at residual #; active-set pass=#=27, Newton line search stalled at residual #; active-set pass=#=30}"
+      },
+      "lastHold": {
+        "tick": 8106,
+        "island": 42,
+        "committed": 1703,
+        "status": "HELD: Substep refinement exhausted: Newton line search stalled at residual 1.4579083864964524E-9; active-set pass=0; reasons={Newton iteration limit at residual #; active-set pass=#=21, Newton line search stalled at residual #; active-set pass=#=36}"
+      },
+      "layout": "100:pipe0.1@0,2,2 294:pipe0.05@-1,0,1 305:tank@-1,2,2 315:pipe0.05@-3,0,1 315:tank@3,0,0 584:pipe0.05@1,0,0 608:pipe0.05@0,0,0 798:pipe0.05@-2,0,1 798:void@3,0,2 960:gen[LNG 114K 262kPa]@1,0,1 961:pipe0.05@0,0,1 1256:valve[120kPa]@2,2,3>EAST 1285:pipe0.05@0,3,0 1329:pipe0.1@3,0,1 1350:pipe0.05@0,1,0 1416:pipe0.01@1,1,1 1416:tank@1,2,1 1461:pipe0.05@0,4,0 1515:void@2,0,3 1548:pipe0.1@0,2,1 1564:pipe0.02@2,0,2 1566:gen[CO2gas 287K 4992kPa]@0,2,3 1586:pipe0.01@2,0,1 1640:pipe0.05@0,2,0 1656:pipe0.02@1,2,3 1702:pipe0.05@2,0,0 1702:valve[150kPa]@0,5,0>DOWN",
+      "report": "fix-validation-campaign\\cohort-candidate-cold-random-report.txt"
+    },
+    {
+      "distribution": "cold-random",
+      "seed": 431,
+      "firstClass": "B  trace underflow (T1)",
+      "heldPublications": 7,
+      "heldAtEnd": false,
+      "finalIslands": "42:FULL; crystalKg=80.7869 crystalVessels=10",
+      "firstHold": {
+        "tick": 1088,
+        "island": 22,
+        "committed": 1073,
+        "status": "HELD: Substep refinement exhausted: Newton line search stalled at residual 1.5152462617962215E-11; reasons={Newton iteration limit at residual #; active-set pass=#=4, Backward-Euler state change #=6, Phase/device active-set cycle=6, Matrix values must be finite=1, Newton line search stalled at residual #; active-set pass=#=43, Newton line search stalled at residual #=24, Newton iteration limit at residual #=1}"
+      },
+      "lastHold": {
+        "tick": 10365,
+        "island": 42,
+        "committed": 10165,
+        "status": "HELD: wall deadline"
+      },
+      "layout": "475:tank@0,0,0 532:pipe0.01@-2,0,1 592:pipe0.02@0,1,0 629:tank@-3,0,1 651:valve[400kPa]@2,-1,1>WEST 690:tank@0,2,1 690:pump[0.01,500kPa]@0,0,3>NORTH 787:valve[200kPa]@0,1,2>SOUTH 970:pipe0.01@-1,0,1 1029:pipe0.02@1,-1,1 1029:pipe0.05@-1,-1,0 1029:pipe0.1@-1,0,0 1041:pipe0.01@-2,2,0 1058:pipe0.1@0,1,1 1058:gen[LNG 151K 2158kPa]@-2,0,0 1087:pipe0.02@0,2,0 1353:pipe0.05@-1,-2,0 1422:void@0,-1,1 1707:pipe0.05@-1,-3,0 1728:pipe0.01@0,0,1 1747:pipe0.05@-2,-1,1 1748:pipe0.01@-5,2,0 2091:pipe0.05@-1,-1,1 2145:pipe0.01@-4,2,0 2145:pipe0.01@-3,2,0 2158:pipe0.01@0,0,2 2158:pipe0.01@-1,2,0",
+      "report": "fix-validation-campaign\\cohort-candidate-cold-random-report.txt"
+    },
+    {
+      "distribution": "cold-random",
+      "seed": 85,
+      "firstClass": "E1 interval-start rate pass does not converge",
+      "heldPublications": 9,
+      "heldAtEnd": true,
+      "finalIslands": "27:STEADY: no flow since 78.0 s;31:STEADY: no flow since 79.3 s;44:HELD: Newton line search stalled at residual 2.1207924305599; crystalKg=0.346666 crystalVessels=2",
+      "firstHold": {
+        "tick": 1829,
+        "island": 42,
+        "committed": 1825,
+        "status": "HELD: Newton line search stalled at residual 2.120792430559959E-11"
+      },
+      "lastHold": {
+        "tick": 8167,
+        "island": 44,
+        "committed": 1865,
+        "status": "HELD: Newton line search stalled at residual 2.120792430559959E-11"
+      },
+      "layout": "100:filter@-2,0,0>EAST 107:pipe0.1@-1,0,-3 132:comp[0.05,3.0]@3,0,0>EAST 184:pipe0.05@0,2,-2 420:pipe0.01@-1,0,0 530:pipe0.1@1,0,1 589:pipe0.01@0,0,-1 644:valve[120kPa]@-1,2,0>DOWN 649:pipe0.1@0,-2,0 676:pipe0.1@-1,1,3 713:pipe0.05@1,0,0 880:tank@3,1,-2 880:pipe0.05@-1,1,0 937:pipe0.05@0,1,-2 1221:pipe0.1@-1,1,2 1232:tank@-1,0,1 1232:pipe0.05@2,1,-2 1232:pipe0.1@0,-1,0 1232:filter@-2,0,-3>EAST 1232:tank@0,0,0 1258:gen[LNG 119K 307kPa]@0,0,-3 1457:comp[0.01,3.0]@1,0,2>SOUTH 1597:pipe0.02@0,0,1 1618:pipe0.05@2,0,0 1653:pipe0.01@0,0,-2 1653:pipe0.1@-1,1,4 1822:pipe0.1@-1,1,1 1865:pipe0.05@1,1,-2",
+      "report": "fix-validation-campaign\\quick-scoped-cold-random-report.txt"
+    },
+    {
+      "distribution": "bundled-random",
+      "seed": 430,
+      "firstClass": "E10 no finite Jacobian trial at a first step",
+      "heldPublications": 18,
+      "heldAtEnd": true,
+      "finalIslands": "18:STEADY: no flow since 47.1 s;20:HELD: Substep refinement exhausted: No finite Jacobian trial;",
+      "firstHold": {
+        "tick": 4179,
+        "island": 20,
+        "committed": 4079,
+        "status": "HELD: Substep refinement exhausted: No finite Jacobian trial at variable 96; active-set pass=0; reasons={No finite Jacobian trial at variable #; active-set pass=#=20}"
+      },
+      "lastHold": {
+        "tick": 11585,
+        "island": 20,
+        "committed": 4321,
+        "status": "HELD: Substep refinement exhausted: No finite Jacobian trial at variable 5; active-set pass=0; reasons={No finite Jacobian trial at variable #; active-set pass=#=20}"
+      },
+      "layout": "316:gen[water 341K 236kPa]@-3,-2,0 316:pipe0.02@-3,-1,0 348:pump[0.01,1000kPa]@-2,0,0>WEST 348:filter@0,0,0>WEST 370:comp[0.2,3.0]@-1,-1,0>UP 525:pipe0.05@-5,0,0 562:pipe0.05@-3,0,0 612:pipe0.05@-1,0,0 612:gen[crude 326K 142kPa]@-2,-1,0 612:pipe0.05@-4,0,0 615:tank@-5,-1,0 652:pipe0.02@-4,-1,0",
+      "report": "fix-validation-campaign\\cohort-candidate-bundled-random-report.txt"
+    },
+    {
+      "distribution": "bundled-random",
+      "seed": 157,
+      "firstClass": "F  budget (wall deadline / soft budget)",
+      "heldPublications": 14,
+      "heldAtEnd": true,
+      "finalIslands": "39:HELD: wall deadline;40:STEADY: no flow since 64.6 s;43:STEADY: no flow since 68.0 s;",
+      "firstHold": {
+        "tick": 845,
+        "island": 34,
+        "committed": 781,
+        "status": "HELD: wall deadline"
+      },
+      "lastHold": {
+        "tick": 7797,
+        "island": 39,
+        "committed": 988,
+        "status": "HELD: wall deadline"
+      },
+      "layout": "134:pipe0.05@3,-1,0 186:gen[crude 389K 353kPa]@0,-1,0 186:gen[water 332K 278kPa]@2,-1,-2 186:tank@3,0,0 208:pipe0.05@2,-1,-3 267:pipe0.05@2,0,0 322:pipe0.05@3,-4,0 326:pipe0.05@3,-3,0 326:pipe0.05@2,-1,-4 330:pipe0.05@3,-5,0 335:filter@4,-5,0>EAST 335:pipe0.05@2,-1,-5 395:filter@-1,-1,-6>WEST 422:pipe0.05@1,-1,0 422:pipe0.05@2,-1,0 431:pipe0.05@1,0,0 431:pump[0.01,500kPa]@0,0,0>WEST 490:pipe0.01@2,-1,-1 661:pipe0.05@3,-6,0 718:valve[200kPa]@3,-1,1>SOUTH 945:pipe0.05@0,-1,-6 965:pipe0.05@1,-1,-6 965:valve[150kPa]@3,-2,0>UP 1032:pipe0.05@2,-1,-6",
+      "report": "fix-validation-campaign\\quick-scoped-bundled-random-report.txt"
+    }
+  ],
+  "historicalFullSource": "c49f6654 (before final scope correction)",
+  "historicalOutsideFinalCoverage": [
+    {
+      "distribution": "cold-random",
+      "seed": 206,
+      "firstClass": "E6 step Newton iteration limit",
+      "heldPublications": 13,
+      "heldAtEnd": true,
+      "finalIslands": "22:STEADY: no flow since 59.4 s;27:HELD: Substep refinement exhausted: Newton iteration limit a;28:STEADY: no flow since 79.2 s; crystalKg=25.3443 crystalVessels=2",
+      "firstHold": {
+        "tick": 2584,
+        "island": 27,
+        "committed": 2484,
+        "status": "HELD: Substep refinement exhausted: Newton iteration limit at residual 0.3800173849707932; active-set pass=1; reasons={Newton iteration limit at residual #; active-set pass=#=20}"
+      },
+      "lastHold": {
+        "tick": 9484,
+        "island": 27,
+        "committed": 2484,
+        "status": "HELD: Substep refinement exhausted: Newton iteration limit at residual 0.38010534612457403; active-set pass=1; reasons={Newton iteration limit at residual #; active-set pass=#=20}"
+      },
+      "layout": "135:filter@2,0,0>EAST 141:pipe0.05@1,-1,0 141:pipe0.05@2,-2,0 330:filter@2,-2,-2>NORTH 374:valve[150kPa]@1,0,-1>SOUTH 494:tank@0,-4,0 494:comp[0.05,3.0]@2,-1,0>DOWN 532:gen[LNG 168K 4048kPa]@1,-2,0 831:valve[200kPa]@3,-2,0>WEST 860:filter@0,-2,0>DOWN 860:pipe0.1@0,-3,0 860:pipe0.05@0,-1,0 860:pipe0.02@2,-2,-1 1209:pipe0.1@1,0,0 1257:void@0,0,0",
+      "report": "fix-validation-campaign\\full-candidate-cold-random-report.txt"
+    },
+    {
+      "distribution": "cold-random",
+      "seed": 220,
+      "firstClass": "B  trace underflow (T1)",
+      "heldPublications": 4,
+      "heldAtEnd": false,
+      "finalIslands": "35:STEADY: no flow since 118.8 s;37:STEADY: no flow since 137.3 s;39:STEADY: replaying 72.25 kg/s since 150.3 s, next check at 78; crystalKg=3.27268 crystalVessels=1",
+      "firstHold": {
+        "tick": 2053,
+        "island": 34,
+        "committed": 2049,
+        "status": "HELD: Substep refinement exhausted: Newton line search stalled at residual 227.71911188324464; active-set pass=4; reasons={Newton line search stalled at residual #; active-set pass=#=19, Matrix values must be finite=1}"
+      },
+      "lastHold": {
+        "tick": 2579,
+        "island": 34,
+        "committed": 2049,
+        "status": "HELD: Substep refinement exhausted: Newton line search stalled at residual 227.71911188324464; active-set pass=4; reasons={Newton line search stalled at residual #; active-set pass=#=19, Matrix values must be finite=1}"
+      },
+      "layout": "100:void@0,-2,-5 494:pipe0.1@0,0,-1 519:pipe0.1@0,0,-2 519:pipe0.1@0,-3,-5 550:pipe0.05@0,-2,-1 595:pipe0.1@0,0,0 638:pump[0.01,500kPa]@0,-2,-7>NORTH 674:pipe0.02@0,1,0 1024:pump[0.01,500kPa]@0,-5,-7>SOUTH 1024:gen[LNG 158K 2286kPa]@0,-2,0 1024:pipe0.01@0,-5,-6 1328:pipe0.05@0,-2,-4 1366:pipe0.02@0,-2,-6 1379:pipe0.05@0,-2,-3 1407:pump[0.01,200kPa]@0,2,0>DOWN 1419:tank@0,1,-1 1776:void@0,-5,-5 1776:pipe0.1@0,-2,-2 1823:filter@0,0,-3>NORTH 2033:pump[0.01,500kPa]@0,-1,0>DOWN 2049:pipe0.1@0,-1,-2 2419:pipe0.1@0,-4,-5 2578:void@0,-3,-2",
+      "report": "fix-validation-campaign\\full-candidate-cold-random-report.txt"
+    },
+    {
+      "distribution": "cold-random",
+      "seed": 651,
+      "firstClass": "F  budget (wall deadline / soft budget)",
+      "heldPublications": 13,
+      "heldAtEnd": true,
+      "finalIslands": "20:STEADY: no flow since 50.4 s;37:HELD: wall deadline; crystalKg=2.93826 crystalVessels=4",
+      "firstHold": {
+        "tick": 969,
+        "island": 37,
+        "committed": 905,
+        "status": "HELD: wall deadline"
+      },
+      "lastHold": {
+        "tick": 7869,
+        "island": 37,
+        "committed": 905,
+        "status": "HELD: wall deadline"
+      },
+      "layout": "146:void@2,1,0 175:pipe0.05@0,1,0 201:pipe0.02@1,-2,1 201:pipe0.05@1,-2,0 201:void@0,2,0 218:gen[LNG 150K 2766kPa]@-1,0,-2 276:pipe0.05@1,0,0 302:tank@0,0,0 539:pump[0.01,500kPa]@-3,0,0>EAST 557:pipe0.02@0,-1,0 663:pipe0.05@1,-1,0 681:filter@0,-2,0>DOWN 686:pipe0.01@2,2,0 723:pipe0.05@1,1,0 723:pipe0.02@1,-2,2 782:pipe0.01@1,2,0 782:pipe0.1@-1,1,0 790:pipe0.05@-1,0,-1 796:comp[0.05,3.0]@3,2,0>EAST 796:void@-1,2,0 842:pipe0.05@-1,0,0 842:pipe0.05@-2,0,0",
+      "report": "fix-validation-campaign\\full-candidate-cold-random-report.txt"
+    },
+    {
+      "distribution": "cold-random",
+      "seed": 683,
+      "firstClass": "F  budget (wall deadline / soft budget)",
+      "heldPublications": 10,
+      "heldAtEnd": true,
+      "finalIslands": "41:STEADY: no flow since 127.4 s;45:HELD: wall deadline; crystalKg=27.7237 crystalVessels=10",
+      "firstHold": {
+        "tick": 2280,
+        "island": 45,
+        "committed": 2272,
+        "status": "HELD: wall deadline"
+      },
+      "lastHold": {
+        "tick": 8880,
+        "island": 45,
+        "committed": 2272,
+        "status": "HELD: wall deadline"
+      },
+      "layout": "120:valve[200kPa]@1,0,3>NORTH 159:pipe0.05@0,-1,2 237:filter@0,0,-3>NORTH 249:pipe0.05@1,1,2 312:pipe0.01@0,-2,4 405:pipe0.05@0,-3,3 431:pump[0.01,500kPa]@2,0,1>WEST 473:pipe0.05@0,0,1 768:tank@0,-3,4 811:valve[200kPa]@0,0,3>SOUTH 863:pump[0.01,500kPa]@0,0,0>SOUTH 1116:gen[LNG 114K 166kPa]@-1,-2,4 1505:gen[LNG 112K 229kPa]@0,-3,2 1657:pipe0.01@-1,0,2 1671:pipe0.02@-1,0,-2 1716:pipe0.01@-2,0,2 1785:pipe0.05@0,0,-1 1800:pipe0.02@-1,0,0 1800:pipe0.02@1,0,2 1820:pipe0.05@0,0,-2 1870:pipe0.02@-1,0,-1 1870:tank@1,3,2 2122:pipe0.05@0,0,2 2122:pump[0.01,500kPa]@0,-2,5>NORTH 2173:pipe0.05@1,0,1 2220:pipe0.05@1,2,2 2220:valve[200kPa]@-3,0,2>WEST 2220:pipe0.01@0,-2,3 2257:pipe0.02@-1,0,1 2265:pipe0.05@0,-2,2",
+      "report": "fix-validation-campaign\\full-candidate-cold-random-report.txt"
+    },
+    {
+      "distribution": "cold-random",
+      "seed": 752,
+      "firstClass": "E5 step line search stalls",
+      "heldPublications": 5,
+      "heldAtEnd": false,
+      "finalIslands": "43:STEADY: replaying 4.134 kg/s since 708.8 s, next check at 76; crystalKg=0.00000 crystalVessels=0",
+      "firstHold": {
+        "tick": 2019,
+        "island": 39,
+        "committed": 2016,
+        "status": "HELD: Substep refinement exhausted: Newton line search stalled at residual 0.8873199205394088; active-set pass=0; reasons={Backward-Euler state change #=2, Backward-Euler boundary reopened=1, Newton line search stalled at residual #; active-set pass=#=19}"
+      },
+      "lastHold": {
+        "tick": 2250,
+        "island": 41,
+        "committed": 2084,
+        "status": "HELD: Substep refinement exhausted: Newton line search stalled at residual 0.8873199205394088; active-set pass=0; reasons={Backward-Euler state change #=2, Backward-Euler boundary reopened=1, Newton line search stalled at residual #; active-set pass=#=19}"
+      },
+      "layout": "100:pipe0.01@-2,-1,-2 100:tank@-3,-1,-2 100:pipe0.02@0,-2,-1 143:pipe0.1@0,0,-1 534:tank@0,-3,-1 584:pump[0.001,500kPa]@0,0,0>SOUTH 584:pipe0.02@0,-2,-2 829:pipe0.05@0,1,-2 1030:pipe0.1@-1,3,-2 1071:pipe0.02@0,1,-5 1072:pipe0.02@0,-1,-2 1148:pipe0.1@0,-4,-1 1148:void@0,3,-2 1330:pipe0.05@0,2,-2 1351:pump[0.01,500kPa]@1,-2,-1>EAST 1688:pipe0.1@-2,3,-2 1694:pipe0.02@0,1,-6 1694:pipe0.02@0,-1,-1 1694:pipe0.01@-1,-1,-2 1694:pipe0.02@0,-3,-2 1694:pipe0.1@0,0,-2 1790:pipe0.02@0,1,-4 1824:gen[CO2gas 283K 3797kPa]@0,-5,0 1842:tank@1,0,-1 2016:pipe0.1@0,-4,0 2084:pipe0.02@0,1,-3 2249:pipe0.02@0,-4,-2",
+      "report": "fix-validation-campaign\\full-candidate-cold-random-report.txt"
+    },
+    {
+      "distribution": "cold-random",
+      "seed": 788,
+      "firstClass": "E6 step Newton iteration limit",
+      "heldPublications": 3,
+      "heldAtEnd": false,
+      "finalIslands": "35:FULL;37:STEADY: no flow since 113.1 s; crystalKg=8.61399 crystalVessels=1",
+      "firstHold": {
+        "tick": 1570,
+        "island": 31,
+        "committed": 1568,
+        "status": "HELD: Substep refinement exhausted: Newton iteration limit at residual 0.2027905992290364; active-set pass=0; reasons={Newton iteration limit at residual #; active-set pass=#=20}"
+      },
+      "lastHold": {
+        "tick": 1813,
+        "island": 31,
+        "committed": 1568,
+        "status": "HELD: Substep refinement exhausted: Newton iteration limit at residual 0.2027905992290364; active-set pass=0; reasons={Newton iteration limit at residual #; active-set pass=#=20}"
+      },
+      "layout": "145:pipe0.01@3,1,0 234:void@4,0,0 234:pipe0.01@-4,-2,1 234:pipe0.05@3,0,0 310:pipe0.1@-4,0,1 638:pipe0.01@-1,0,1 666:gen[LNG 142K 1037kPa]@-4,0,4 832:pipe0.05@1,0,2 967:pipe0.01@0,0,1 996:tank@3,2,0 1062:pipe0.05@1,0,1 1062:pipe0.05@0,0,0 1078:gen[LNG 168K 5322kPa]@2,1,1 1099:pipe0.01@-4,-4,1 1099:pipe0.01@-4,-1,1 1175:pipe0.1@-3,0,1 1205:pump[0.01,500kPa]@3,1,2>SOUTH 1205:pipe0.01@1,0,0 1501:pipe0.05@-4,0,2 1512:filter@-2,0,1>WEST 1560:pipe0.1@-5,0,1 1560:filter@2,0,0>EAST 1568:pipe0.01@3,1,1 1812:pipe0.05@-4,0,3 1852:void@-4,-3,1 1934:filter@-4,-5,1>DOWN",
+      "report": "fix-validation-campaign\\full-candidate-cold-random-report.txt"
+    },
+    {
+      "distribution": "cold-random",
+      "seed": 792,
+      "firstClass": "E5 step line search stalls",
+      "heldPublications": 7,
+      "heldAtEnd": true,
+      "finalIslands": "21:HELD: Substep refinement exhausted: Newton line search stall; crystalKg=0.261934 crystalVessels=2",
+      "firstHold": {
+        "tick": 1401,
+        "island": 21,
+        "committed": 1399,
+        "status": "HELD: Substep refinement exhausted: Newton line search stalled at residual 15.764750626355745; active-set pass=0; reasons={Newton line search stalled at residual #; active-set pass=#=20}"
+      },
+      "lastHold": {
+        "tick": 7701,
+        "island": 21,
+        "committed": 1399,
+        "status": "HELD: Substep refinement exhausted: Newton line search stalled at residual 15.764750626355745; active-set pass=0; reasons={Newton line search stalled at residual #; active-set pass=#=20}"
+      },
+      "layout": "396:pipe0.05@0,-1,0 587:pipe0.01@0,-2,-1 622:pipe0.02@0,-1,-1 666:pipe0.01@0,0,0 666:tank@0,-4,0 666:pump[0.01,1000kPa]@0,-2,-2>NORTH 723:pump[0.01,500kPa]@1,-1,0>EAST 775:tank@0,-2,0 828:gen[LNG 113K 228kPa]@-2,0,0 836:pipe0.01@0,-3,0 1112:pipe0.01@-1,0,0 1316:valve[120kPa]@-2,-4,0>WEST 1354:pipe0.1@-1,-4,0 1399:gen[LNG 169K 5439kPa]@0,0,-1",
+      "report": "fix-validation-campaign\\full-candidate-cold-random-report.txt"
+    },
+    {
+      "distribution": "cold-random",
+      "seed": 803,
+      "firstClass": "E5 step line search stalls",
+      "heldPublications": 7,
+      "heldAtEnd": true,
+      "finalIslands": "33:STEADY: no flow since 125.8 s;40:HELD: Substep refinement exhausted: Newton line search stall; crystalKg=0.00000 crystalVessels=0",
+      "firstHold": {
+        "tick": 2443,
+        "island": 40,
+        "committed": 2441,
+        "status": "HELD: Substep refinement exhausted: Newton line search stalled at residual 68.06495921500138; active-set pass=1; reasons={Newton line search stalled at residual #; active-set pass=#=20}"
+      },
+      "lastHold": {
+        "tick": 8743,
+        "island": 40,
+        "committed": 2441,
+        "status": "HELD: Substep refinement exhausted: Newton line search stalled at residual 68.06495921500138; active-set pass=1; reasons={Newton line search stalled at residual #; active-set pass=#=20}"
+      },
+      "layout": "126:pipe0.1@-2,2,3 165:pipe0.05@-2,6,-1 165:pipe0.05@-3,1,0 406:pipe0.05@-2,7,-1 765:pipe0.1@-2,2,2 765:pipe0.05@-2,2,-2 800:pipe0.05@-2,4,-1 806:pipe0.05@-4,1,0 844:gen[LNG 147K 2626kPa]@-5,-2,0 880:tank@-2,2,-3 939:gen[CO2gas 265K 1064kPa]@-4,2,-3 977:pipe0.05@-2,2,-1 977:tank@0,0,0 988:pipe0.05@-2,2,0 1143:pipe0.05@-5,1,0 1413:pipe0.1@-2,2,1 1433:pipe0.05@-2,1,0 1594:void@-2,0,0 1891:pipe0.02@-5,-1,0 2189:pipe0.05@-2,3,-1 2189:pipe0.05@-1,0,0 2346:pipe0.05@-2,5,-1 2392:pipe0.05@-2,3,0 2441:pipe0.02@-5,0,0 2441:pipe0.05@-3,2,-3",
+      "report": "fix-validation-campaign\\full-candidate-cold-random-report.txt"
+    },
+    {
+      "distribution": "cold-random",
+      "seed": 833,
+      "firstClass": "B  trace underflow (T1)",
+      "heldPublications": 14,
+      "heldAtEnd": true,
+      "finalIslands": "30:STEADY: no flow since 74.4 s;37:STEADY: no flow since 78.9 s;41:HELD: wall deadline; crystalKg=9.40505 crystalVessels=2",
+      "firstHold": {
+        "tick": 1240,
+        "island": 34,
+        "committed": 1224,
+        "status": "HELD: Substep refinement exhausted: Matrix values must be finite; reasons={Newton line search stalled at residual #; active-set pass=#=4, Newton iteration limit at residual #; active-set pass=#=14, Matrix values must be finite=2}"
+      },
+      "lastHold": {
+        "tick": 8699,
+        "island": 41,
+        "committed": 1699,
+        "status": "HELD: wall deadline"
+      },
+      "layout": "100:pipe0.05@1,0,-1 155:pipe0.05@1,3,0 538:pipe0.1@1,-2,0 579:gen[LNG 118K 237kPa]@0,0,0 585:comp[0.01,1.5]@0,2,0>UP 610:filter@1,1,-3>NORTH 644:pipe0.1@2,0,0 685:pipe0.05@1,1,0 685:tank@1,3,-2 735:void@3,0,0 785:valve[200kPa]@1,0,-3>NORTH 797:pipe0.1@1,0,0 895:pipe0.01@0,1,0 895:filter@1,0,-5>SOUTH 1070:valve[120kPa]@1,-3,0>UP 1070:pipe0.1@1,1,-2 1120:pipe0.05@1,0,-2 1160:tank@1,2,-2 1194:pipe0.1@1,1,-1 1209:pipe0.05@1,2,0 1251:pipe0.02@1,0,-4 1291:pipe0.05@1,3,-1 1372:pipe0.1@1,-1,0",
+      "report": "fix-validation-campaign\\full-candidate-cold-random-report.txt"
+    },
+    {
+      "distribution": "cold-random",
+      "seed": 855,
+      "firstClass": "E6 step Newton iteration limit",
+      "heldPublications": 9,
+      "heldAtEnd": true,
+      "finalIslands": "30:STEADY: no flow since 103.4 s;39:STEADY: no flow since 109.3 s;43:HELD: Substep refinement exhausted: Newton iteration limit a; crystalKg=0.287485 crystalVessels=1",
+      "firstHold": {
+        "tick": 1886,
+        "island": 41,
+        "committed": 1884,
+        "status": "HELD: Substep refinement exhausted: Newton iteration limit at residual 0.12667684041321886; active-set pass=1; reasons={Newton line search stalled at residual #=18, Newton iteration limit at residual #; active-set pass=#=2}"
+      },
+      "lastHold": {
+        "tick": 8191,
+        "island": 43,
+        "committed": 1888,
+        "status": "HELD: Substep refinement exhausted: Newton iteration limit at residual 0.12667684041321886; active-set pass=1; reasons={Newton line search stalled at residual #=18, Newton iteration limit at residual #; active-set pass=#=2}"
+      },
+      "layout": "100:filter@0,1,-2>NORTH 118:pipe0.05@0,-3,0 118:void@-2,2,0 257:pipe0.01@2,1,0 257:filter@0,0,-1>NORTH 294:pipe0.05@0,2,0 311:comp[0.05,3.0]@0,-1,0>UP 625:gen[LNG 160K 3200kPa]@0,1,2 625:pipe0.05@0,3,0 626:pipe0.01@1,1,0 642:pipe0.05@0,-4,0 682:tank@3,1,0 925:pipe0.1@0,1,-1 990:pipe0.01@0,3,-2 1277:pipe0.1@0,2,-1 1656:pipe0.01@0,1,1 1656:valve[400kPa]@1,3,-1>WEST 1690:pipe0.01@0,3,-4 1690:pipe0.05@0,-5,0 1741:pipe0.05@0,1,0 1791:pipe0.01@-1,2,0 1839:pipe0.01@0,3,-1 1839:pipe0.05@0,0,0 1859:pipe0.05@0,-2,0 1884:tank@0,2,-2 1888:pipe0.01@0,3,-3",
+      "report": "fix-validation-campaign\\full-candidate-cold-random-report.txt"
+    },
+    {
+      "distribution": "cold-random",
+      "seed": 907,
+      "firstClass": "F  budget (wall deadline / soft budget)",
+      "heldPublications": 10,
+      "heldAtEnd": false,
+      "finalIslands": "26:STEADY: no flow since 99.7 s;49:STEADY: no flow since 157.6 s;51:STEADY: replaying 66.16 kg/s since 596.6 s, next check at 60; crystalKg=11.4166 crystalVessels=5",
+      "firstHold": {
+        "tick": 2875,
+        "island": 51,
+        "committed": 2867,
+        "status": "HELD: wall deadline"
+      },
+      "lastHold": {
+        "tick": 3883,
+        "island": 51,
+        "committed": 2912,
+        "status": "HELD: wall deadline"
+      },
+      "layout": "107:pipe0.1@-2,-1,3 140:void@0,-1,3 277:gen[LNG 155K 2607kPa]@0,0,0 335:pipe0.1@-4,-1,3 382:tank@0,0,3 405:pipe0.05@0,0,1 418:pipe0.1@-1,-1,3 468:pipe0.1@1,0,1 578:pipe0.1@-3,-1,2 712:pipe0.1@3,0,1 715:pipe0.05@0,-1,2 770:pipe0.1@-1,-1,2 1037:pipe0.02@4,-1,1 1123:pipe0.1@-5,-1,3 1474:pipe0.1@5,0,1 1666:filter@0,-2,2>UP 1679:pipe0.1@-4,-1,2 1679:pipe0.1@-2,-1,2 1679:tank@-4,2,2 1715:valve[150kPa]@0,-1,1>DOWN 2023:filter@4,0,2>NORTH 2051:pipe0.05@0,0,2 2093:pipe0.1@2,0,1 2413:pipe0.1@4,0,1 2443:pipe0.05@-4,1,2 2452:valve[200kPa]@4,-3,1>UP 2825:pipe0.05@-4,0,2 2825:pipe0.02@4,-2,1 2860:pipe0.1@-3,-1,3",
+      "report": "fix-validation-campaign\\full-candidate-cold-random-report.txt"
+    },
+    {
+      "distribution": "cold-random",
+      "seed": 919,
+      "firstClass": "E6 step Newton iteration limit",
+      "heldPublications": 7,
+      "heldAtEnd": false,
+      "finalIslands": "20:STEADY: no flow since 81.5 s;26:FULL; crystalKg=8.47271 crystalVessels=5",
+      "firstHold": {
+        "tick": 1305,
+        "island": 19,
+        "committed": 1302,
+        "status": "HELD: Substep refinement exhausted: Newton iteration limit at residual 5.072590882728641E46; active-set pass=3; reasons={Newton line search stalled at residual #; active-set pass=#=6, Newton iteration limit at residual #; active-set pass=#=13, Singular Newton Jacobian: Sparse LU rejected a singular matrix; active-set pass=#=1}"
+      },
+      "lastHold": {
+        "tick": 1622,
+        "island": 24,
+        "committed": 1372,
+        "status": "HELD: Substep refinement exhausted: Newton iteration limit at residual 5.072590882728641E46; active-set pass=3; reasons={Newton line search stalled at residual #; active-set pass=#=6, Newton iteration limit at residual #; active-set pass=#=13, Singular Newton Jacobian: Sparse LU rejected a singular matrix; active-set pass=#=1}"
+      },
+      "layout": "291:pipe0.05@-1,0,-1 351:pipe0.1@-1,-1,0 354:comp[0.05,3.0]@-1,1,-2>DOWN 368:tank@-1,2,-1 686:void@-1,-2,0 686:pipe0.05@-1,0,-2 929:gen[LNG 152K 2437kPa]@-2,0,0 989:tank@-1,0,-3 1047:pipe0.05@-1,-2,-2 1093:tank@-1,-1,-1 1095:filter@0,0,0>WEST 1302:pipe0.05@-1,0,0 1362:pipe0.05@-1,-2,-1 1372:pump[0.01,500kPa]@-1,-2,-3>NORTH 1621:pipe0.05@-1,1,-1",
+      "report": "fix-validation-campaign\\full-candidate-cold-random-report.txt"
+    },
+    {
+      "distribution": "cold-random",
+      "seed": 957,
+      "firstClass": "E6 step Newton iteration limit",
+      "heldPublications": 15,
+      "heldAtEnd": true,
+      "finalIslands": "29:STEADY: replaying 5.229 kg/s since 140.0 s, next check at 86;39:STEADY: no flow since 152.7 s;43:HELD: Interval substep limit; no partial interval may commit; crystalKg=45.2303 crystalVessels=2",
+      "firstHold": {
+        "tick": 3723,
+        "island": 43,
+        "committed": 3623,
+        "status": "HELD: Substep refinement exhausted: Newton iteration limit at residual 14.082449174352721; active-set pass=0; reasons={Newton iteration limit at residual #; active-set pass=#=28, Solid transport transition inside the step=2, Newton line search stalled at residual #; active-set pass=#=3, Conservative reconstruction fails equation gate: #=20}"
+      },
+      "lastHold": {
+        "tick": 10825,
+        "island": 43,
+        "committed": 3632,
+        "status": "HELD: Interval substep limit; no partial interval may commit: advanced=0.02792205810546943 of 0.05 s, accepted=504, rejected=520, reasons={Newton iteration limit at residual #; active-set pass=#=4, Newton line search stalled at residual #; active-set pass=#=1, Conservative reconstruction fails equation gate: #=515}, last=Conservative reconstruction fails equation gate: 1.7821388708538778E-8"
+      },
+      "layout": "212:tank@0,0,0 267:filter@0,1,-1>NORTH 267:pipe0.02@0,2,0 298:pipe0.05@2,1,0 680:pipe0.05@3,4,0 928:gen[CO2gas 288K 1663kPa]@3,5,0 928:tank@2,2,1 1246:pump[0.01,500kPa]@2,0,-2>EAST 1272:pipe0.05@1,4,0 1328:pipe0.05@2,0,0 1328:pipe0.05@1,7,0 1427:pipe0.02@0,0,-1 1483:valve[200kPa]@3,2,0>EAST 1494:pipe0.05@1,6,0 1534:pipe0.05@1,5,0 1778:pipe0.01@1,0,-2 1952:void@1,6,-2 2222:gen[LNG 143K 1391kPa]@0,0,-2 2239:pipe0.02@0,3,0 2473:pipe0.05@2,2,0 2473:void@3,3,0 2663:pipe0.05@1,2,0 2693:comp[0.2,6.0]@2,-1,0>UP 2726:pipe0.01@1,6,-1 2726:pipe0.02@0,1,0 2759:pipe0.1@1,3,0 2796:pipe0.1@2,3,0",
+      "report": "fix-validation-campaign\\full-candidate-cold-random-report.txt"
+    },
+    {
+      "distribution": "cold-random",
+      "seed": 988,
+      "firstClass": "E1 interval-start rate pass does not converge",
+      "heldPublications": 13,
+      "heldAtEnd": true,
+      "finalIslands": "39:STEADY: no flow since 93.1 s;47:HELD: Newton iteration limit at residual 0.4735107545506625; crystalKg=16.6316 crystalVessels=1",
+      "firstHold": {
+        "tick": 2012,
+        "island": 47,
+        "committed": 1912,
+        "status": "HELD: Newton iteration limit at residual 0.4735107545506625"
+      },
+      "lastHold": {
+        "tick": 8912,
+        "island": 47,
+        "committed": 1912,
+        "status": "HELD: Newton iteration limit at residual 0.4735107545506625"
+      },
+      "layout": "100:pipe0.02@0,4,-1 152:pipe0.02@2,0,0 206:pipe0.05@0,2,0 241:pump[0.01,500kPa]@3,0,0>WEST 241:pipe0.02@0,1,-1 249:pump[0.01,500kPa]@4,-2,-1>DOWN 249:pipe0.05@0,3,0 294:gen[LNG 169K 3842kPa]@3,-2,-1 312:pipe0.02@0,3,-1 678:filter@0,1,0>DOWN 707:pipe0.02@0,0,-1 707:pipe0.05@4,-1,-1 707:tank@0,4,0 808:pipe0.05@4,0,1 808:pipe0.05@0,0,0 811:filter@0,0,-2>SOUTH 1075:pipe0.05@2,0,-1 1194:pipe0.05@1,0,-1 1197:gen[CO2gas 298K 4408kPa]@4,0,2 1244:pipe0.05@3,0,-1 1535:pipe0.1@3,-1,-1 1556:pipe0.05@4,0,-1 1567:pipe0.02@0,2,-1 1621:pipe0.05@4,0,0 1685:pipe0.02@1,0,0",
+      "report": "fix-validation-campaign\\full-candidate-cold-random-report.txt"
+    },
+    {
+      "distribution": "cold-random",
+      "seed": 994,
+      "firstClass": "E6 step Newton iteration limit",
+      "heldPublications": 50,
+      "heldAtEnd": true,
+      "finalIslands": "50:HELD: Substep refinement exhausted: Newton line search stall; crystalKg=7.31042 crystalVessels=3",
+      "firstHold": {
+        "tick": 4744,
+        "island": 50,
+        "committed": 4644,
+        "status": "HELD: Substep refinement exhausted: Newton iteration limit at residual 0.06435748984019748; active-set pass=1; reasons={Newton iteration limit at residual #; active-set pass=#=20}"
+      },
+      "lastHold": {
+        "tick": 14607,
+        "island": 50,
+        "committed": 10614,
+        "status": "HELD: Substep refinement exhausted: Newton line search stalled at residual 1.217661869788561; active-set pass=0; reasons={Newton line search stalled at residual #; active-set pass=#=19, Newton iteration limit at residual #; active-set pass=#=1}"
+      },
+      "layout": "100:pipe0.02@0,0,1 310:pipe0.1@1,0,3 310:tank@1,3,4 362:tank@2,0,2 407:pipe0.05@2,0,1 801:pipe0.02@0,2,0 836:gen[CO2gas 289K 1001kPa]@0,0,2 988:tank@0,-3,1 1182:pipe0.01@1,2,4 1230:pipe0.02@0,0,-1 1230:void@3,0,1 1230:pipe0.02@0,0,0 1279:pipe0.02@0,1,0 1363:pipe0.01@0,-1,1 1409:pipe0.02@0,-1,0 1798:pipe0.01@1,0,2 1811:comp[0.05,3.0]@0,1,-1>DOWN 2001:pipe0.01@0,-2,1 2088:pipe0.01@1,1,4 2142:pipe0.02@0,-1,-2 2515:pipe0.1@1,0,4 2550:gen[LNG 141K 1047kPa]@1,0,5 2550:pipe0.02@0,-1,-3 2550:pipe0.02@0,-1,-1 2726:pipe0.05@1,-2,1 2988:tank@0,3,0 3044:valve[200kPa]@2,-2,1>WEST 3117:pipe0.05@1,0,1",
+      "report": "fix-validation-campaign\\full-candidate-cold-random-report.txt"
+    },
+    {
+      "distribution": "bundled-random",
+      "seed": 241,
+      "firstClass": "E2 step solve singular at every step size",
+      "heldPublications": 11,
+      "heldAtEnd": true,
+      "finalIslands": "18:STEADY: no flow since 69.7 s;26:HELD: Substep refinement exhausted: Singular Newton Jacobian;",
+      "firstHold": {
+        "tick": 10024,
+        "island": 26,
+        "committed": 9924,
+        "status": "HELD: Substep refinement exhausted: Singular Newton Jacobian: Sparse LU rejected a singular matrix; active-set pass=0; reasons={Singular Newton Jacobian: Sparse LU rejected a singular matrix; active-set pass=#=20}"
+      },
+      "lastHold": {
+        "tick": 12124,
+        "island": 26,
+        "committed": 9924,
+        "status": "HELD: Substep refinement exhausted: Singular Newton Jacobian: Sparse LU rejected a singular matrix; active-set pass=0; reasons={Singular Newton Jacobian: Sparse LU rejected a singular matrix; active-set pass=#=20}"
+      },
+      "layout": "100:gen[crude 304K 296kPa]@0,0,0 149:pipe0.05@0,-1,0 170:pipe0.05@4,0,1 566:pipe0.02@3,0,0 943:tank@2,0,0 957:tank@4,0,0 998:pipe0.02@1,0,0 1044:pipe0.01@4,0,4 1051:filter@1,-1,-1>NORTH 1067:pipe0.01@1,-1,0 1072:pump[0.01,500kPa]@1,-2,0>DOWN 1072:pipe0.05@4,0,2 1367:void@0,-2,0 1397:pipe0.01@4,0,3 1397:gen[water 286K 102kPa]@4,0,5",
+      "report": "fix-validation-campaign\\full-candidate-bundled-random-report.txt"
+    },
+    {
+      "distribution": "bundled-random",
+      "seed": 698,
+      "firstClass": "E8 interval attempt limit (not F7)",
+      "heldPublications": 37,
+      "heldAtEnd": true,
+      "finalIslands": "34:STEADY: replaying 170.6 kg/s since 122.5 s, next check at 86;41:STEADY: no flow since 130.1 s;49:HELD: Substep refinement exhausted: No finite Jacobian trial;",
+      "firstHold": {
+        "tick": 2521,
+        "island": 44,
+        "committed": 2517,
+        "status": "HELD: Interval substep limit; no partial interval may commit: advanced=0.006164550781250055 of 0.2 s, accepted=505, rejected=519, reasons={No finite Jacobian trial at variable #; active-set pass=#=519}, last=No finite Jacobian trial at variable 43; active-set pass=0"
+      },
+      "lastHold": {
+        "tick": 11805,
+        "island": 49,
+        "committed": 3402,
+        "status": "HELD: Substep refinement exhausted: No finite Jacobian trial at variable 43; active-set pass=0; reasons={No finite Jacobian trial at variable #; active-set pass=#=42, Newton line search stalled at residual #; active-set pass=#=1, Backward-Euler state change #=2}"
+      },
+      "layout": "100:tank@0,0,0 100:pipe0.05@-2,0,1 147:pipe0.05@-1,0,1 150:valve[150kPa]@-5,-2,1>EAST 179:tank@-3,-2,1 287:pump[0.001,200kPa]@-5,0,2>EAST 593:pipe0.02@-4,0,2 593:pipe0.05@-4,-2,1 882:pipe0.02@0,0,6 920:void@-2,0,-3 920:gen[crude 356K 238kPa]@0,0,2 958:gen[water 322K 180kPa]@-2,0,0 1211:filter@-2,2,2>UP 1336:pipe0.1@-2,0,-1 1420:pipe0.02@-1,0,0 1465:pipe0.1@-1,0,2 1715:comp[0.05,3.0]@-1,-1,0>UP 2076:pipe0.05@-3,0,1 2100:pipe0.02@0,0,1 2122:pipe0.1@-2,0,-2 2140:pipe0.02@0,0,5 2146:pipe0.01@-2,1,2 2274:pipe0.02@0,0,3 2274:gen[water 327K 345kPa]@-2,0,2 2278:pipe0.02@0,0,7 2514:pipe0.05@-3,-1,1 2769:pipe0.02@0,0,4 3074:pipe0.05@-4,0,1 3124:pipe0.02@-3,0,2",
+      "report": "fix-validation-campaign\\full-candidate-bundled-random-report.txt"
+    }
+  ],
+  "historicalCleanOnFinalRecheck": [
+    {
+      "distribution": "cold-random",
+      "seed": 475,
+      "firstClass": "F  budget (wall deadline / soft budget)",
+      "heldPublications": 3,
+      "heldAtEnd": false,
+      "finalIslands": "36:STEADY: replaying 80.11 kg/s since 62.7 s, next check at 864;40:STEADY: no flow since 66.6 s;45:FULL; crystalKg=34.3295 crystalVessels=6",
+      "firstHold": {
+        "tick": 1137,
+        "island": 45,
+        "committed": 1073,
+        "status": "HELD: wall deadline"
+      },
+      "lastHold": {
+        "tick": 1337,
+        "island": 45,
+        "committed": 1073,
+        "status": "HELD: wall deadline"
+      },
+      "layout": "100:pipe0.02@7,-2,0 111:tank@0,0,2 111:comp[0.05,3.0]@2,0,4>NORTH 111:pipe0.1@0,0,1 111:void@0,0,0 113:pipe0.01@1,0,0 113:void@5,-2,0 113:tank@2,0,0 140:pipe0.01@3,0,1 440:pipe0.05@3,-2,0 440:pipe0.02@6,-2,0 440:tank@0,-2,0 693:pipe0.05@2,0,2 693:pipe0.05@0,-1,0 767:pipe0.01@4,0,1 816:pipe0.05@-1,-2,0 830:pipe0.01@2,0,1 847:pipe0.1@1,-2,0 847:pipe0.05@2,0,3 905:gen[LNG 160K 3305kPa]@-2,0,0 927:pipe0.05@-1,0,0 927:filter@2,-2,0>EAST 946:pipe0.05@4,-2,0 1005:pump[0.01,500kPa]@-2,-2,0>EAST 1009:pipe0.05@3,0,0 1010:pipe0.01@1,0,1 1010:gen[LNG 117K 274kPa]@4,0,0",
+      "report": "fix-validation-campaign\\full-candidate-cold-random-report.txt"
+    },
+    {
+      "distribution": "cold-random",
+      "seed": 555,
+      "firstClass": "E5 step line search stalls",
+      "heldPublications": 8,
+      "heldAtEnd": true,
+      "finalIslands": "36:STEADY: no flow since 97.5 s;44:STEADY: no flow since 122.6 s;47:STEADY: no flow since 123.1 s;53:HELD: Substep refinement exhausted: Newton line search stall; crystalKg=14.0224 crystalVessels=2",
+      "firstHold": {
+        "tick": 2464,
+        "island": 53,
+        "committed": 2462,
+        "status": "HELD: Substep refinement exhausted: Newton line search stalled at residual 229.46318594615065; active-set pass=0; reasons={Newton iteration limit at residual #; active-set pass=#=5, Newton line search stalled at residual #; active-set pass=#=15}"
+      },
+      "lastHold": {
+        "tick": 8864,
+        "island": 53,
+        "committed": 2462,
+        "status": "HELD: Substep refinement exhausted: Newton line search stalled at residual 229.4632793562131; active-set pass=0; reasons={Newton line search stalled at residual #; active-set pass=#=16, Newton iteration limit at residual #; active-set pass=#=4}"
+      },
+      "layout": "100:pipe0.1@1,0,0 100:pipe0.1@2,0,-1 121:pipe0.1@0,0,1 165:filter@0,0,-2>NORTH 165:pipe0.02@0,1,0 175:pipe0.05@5,0,2 183:pipe0.1@3,1,-1 337:filter@0,2,0>UP 375:filter@2,0,-4>NORTH 375:tank@0,0,0 409:tank@3,0,-1 633:gen[CO2gas 251K 1187kPa]@0,0,3 643:pipe0.05@4,0,2 980:pipe0.1@1,0,-1 1029:pipe0.05@3,0,2 1029:comp[0.05,6.0]@3,2,-1>DOWN 1110:gen[LNG 163K 3608kPa]@0,1,2 1150:pipe0.05@2,0,-2 1181:pipe0.1@1,0,1 1248:void@1,0,2 1623:pipe0.05@0,1,1 1685:pipe0.05@1,1,0 1718:pipe0.05@2,0,2 1773:pipe0.05@2,-1,-1 2125:pipe0.02@0,0,-1 2134:pipe0.05@2,0,-3 2136:pump[0.01,500kPa]@2,-2,-1>UP 2431:valve[400kPa]@2,1,0>WEST 2461:pipe0.1@0,0,2",
+      "report": "fix-validation-campaign\\full-candidate-cold-random-report.txt"
+    },
+    {
+      "distribution": "bundled-random",
+      "seed": 6,
+      "firstClass": "F  budget (wall deadline / soft budget)",
+      "heldPublications": 1,
+      "heldAtEnd": false,
+      "finalIslands": "20:STEADY: no flow since 80.0 s;28:STEADY: no flow since 85.7 s;43:FULL;",
+      "firstHold": {
+        "tick": 1837,
+        "island": 41,
+        "committed": 1833,
+        "status": "HELD: wall deadline"
+      },
+      "lastHold": {
+        "tick": 1837,
+        "island": 41,
+        "committed": 1833,
+        "status": "HELD: wall deadline"
+      },
+      "layout": "209:pipe0.05@-4,0,-2 209:filter@-2,0,0>WEST 254:pump[0.001,500kPa]@0,0,2>NORTH 490:pipe0.05@-1,0,2 662:void@0,0,-2 691:pipe0.1@0,0,-1 691:pipe0.1@0,1,1 731:gen[crude 388K 281kPa]@-1,-3,1 1004:pipe0.05@-1,0,1 1004:gen[water 316K 170kPa]@-4,0,0 1037:pipe0.1@-1,-1,1 1037:filter@0,2,1>DOWN 1272:void@0,0,0 1313:pipe0.05@-4,0,-1 1352:pipe0.1@-1,-2,1 1376:pump[0.01,200kPa]@2,0,3>WEST 1386:pipe0.05@0,0,1 1407:pipe0.1@0,0,3 1457:tank@1,0,4 1536:tank@-1,0,3 1536:pump[0.01,500kPa]@-4,0,-3>NORTH 1641:pipe0.05@-3,0,0 1833:pipe0.05@-1,0,0 2053:pipe0.1@1,0,3",
+      "report": "fix-validation-campaign\\full-candidate-bundled-random-report.txt"
+    }
+  ],
+  "latestHeldAtEndClasses": {
+    "E1 interval-start rate pass does not converge": [
+      {
+        "distribution": "cold-random",
+        "seed": 85
+      }
+    ],
+    "E5 step line search stalls": [
+      {
+        "distribution": "cold-random",
+        "seed": 6
+      },
+      {
+        "distribution": "cold-random",
+        "seed": 446
+      },
+      {
+        "distribution": "bundled-random",
+        "seed": 579
+      }
+    ],
+    "E6 step Newton iteration limit": [
+      {
+        "distribution": "cold-random",
+        "seed": 101
+      },
+      {
+        "distribution": "cold-random",
+        "seed": 430
+      }
+    ],
+    "E10 no finite Jacobian trial at a first step": [
+      {
+        "distribution": "bundled-random",
+        "seed": 430
+      }
+    ],
+    "F  budget (wall deadline / soft budget)": [
+      {
+        "distribution": "bundled-random",
+        "seed": 157
+      }
+    ]
+  }
+}

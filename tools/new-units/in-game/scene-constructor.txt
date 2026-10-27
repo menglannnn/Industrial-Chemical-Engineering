@@ -1,0 +1,3 @@
+gamemode creative
+tp @s 560 -60 -30
+setblock 560 -60 -20 createcheme:equipment_constructor[facing=south]

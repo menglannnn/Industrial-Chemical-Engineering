@@ -1,0 +1,34 @@
+{
+  "reference": "D:\\Minecraft\\Modding\\1.21\\CreateChemE\\tools\\fluid-world-inspector\\validation\\campaign-summary.json",
+  "referenceSource": "83e88bd0",
+  "scope": "Historical 1000-seed reference; current-base matched comparison is separately 1-200.",
+  "distributions": {
+    "cold-random": {
+      "newlyHeldVsHistorical": [
+        555
+      ],
+      "changedFirstClassesVsHistorical": {
+        "555": [
+          null,
+          "E5 step line search stalls"
+        ],
+        "855": [
+          "F  budget (wall deadline / soft budget)",
+          "E6 step Newton iteration limit"
+        ],
+        "244": [
+          "F  budget (wall deadline / soft budget)",
+          null
+        ]
+      }
+    },
+    "bundled-random": {
+      "newlyHeldVsHistorical": [],
+      "changedFirstClassesVsHistorical": {}
+    },
+    "bundled-defaults": {
+      "newlyHeldVsHistorical": [],
+      "changedFirstClassesVsHistorical": {}
+    }
+  }
+}

@@ -1,0 +1,11 @@
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/solver/SparseNewton.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/solver/SparseNewton.java
+@@ -70,7 +70,7 @@
+      * network deep in saturation (lines past five times their cap, slopes of 1e-7 and below) converges at 0.06 to 0.36 per
+      * step and ran out of 20 at a residual of 1e-8 (cold seed 19).
+      */
+-    public static final int ITERATIONS=20;
++    public static final int ITERATIONS=60;
+     public record Settings(int iterations,double tolerance,double differenceStep,int backtracks) {
+         public Settings {
+             if(iterations<1||!Double.isFinite(tolerance)||tolerance<=0||!Double.isFinite(differenceStep)

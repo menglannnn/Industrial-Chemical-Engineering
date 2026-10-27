@@ -1,0 +1,2 @@
+gamemode spectator
+tp @s 341 -56 -6 30 20

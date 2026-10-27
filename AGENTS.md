@@ -7,6 +7,7 @@ These rules apply to every agent working in this repository (Claude, Codex, suba
 - Saved fluid and equipment data holds facts and state. Facts are what the player built and put in: device registrations and settings, node contents, captured solids, ledger totals, the world clock, accessories, equipment shapes, paint and nozzle sizes. State is what the engine can compute again: solved intervals, junction seeds, certificates, cadence, caches, pending events.
 - A code or data change never discards a fact. State formats change freely: a mismatch drops the state, and the engine rebuilds it on its schedule.
 - Fact and shape fields are append-only. A new field has a default equal to the behaviour before the field existed. A field never changes meaning or unit. Enums are saved by name; a renamed or removed constant gets an alias.
+- Material data are identified by declared revisions, never by hashes. A change to a material record's values bumps that record's own `revision`; a viscosity edit bumps the viscosity's own `revision`. Bump a package's `revision` only when the package record changes: its identities list the revisions of the records it names (`MaterialCatalog.Package.scientificRevision` for the column, `MaterialCatalog.fluidRevision` for the fluid network). A revision is a token of letters, digits, `_`, `.` and `-`, at most 64 characters.
 - After a material or model change, contents keep their amounts and temperature. An engine job recomputes energy and pressure. The ledger books the energy difference and every removed component; the island's status line names them.
 - After a placed equipment structure loads, rebuild it to the current layout if another layout placed its cells (`EquipmentRefresh`, `EquipmentStructure.refreshLater`). Keep nozzle pipe blocks in place first, then cells. Keep the origin, paint, nozzle sizes and the fluid identity. Never overwrite another block. Remove a structure whose kind no longer exists whole, with every one of its cells. A layout change updates the layout table (`EquipmentLayoutGoldenTest`); a moved nozzle pipe block needs the owner's approval.
 - Every format validates what it reads and round-trips what it carries. A damaged facts section refuses the world and leaves its files untouched.
@@ -70,7 +71,7 @@ These rules apply to every agent working in this repository (Claude, Codex, suba
 
 ### GUI and in-game checks
 
-- Verify GUI work in the dev client through the langyo/minecraft-mod-mcp bridge. Use the `runMcpClient` lane: copy the pinned jar from the main checkout's `tools/minecraft-mcp-bridge/` into `<worktree>/run/mcp-client-mods/`, and put `.mcp.json` in the worktree root.
+- Verify GUI work in the dev client through the langyo/minecraft-mod-mcp bridge. Use the `runMcpClient` lane: copy the pinned jar from `tools/minecraft-mcp-bridge/` into `<worktree>/run/mcp-client-mods/`, and put `.mcp.json` in the worktree root.
 - Never send real desktop keyboard or mouse input (`robot.ps1`, SendKeys) unless the owner is watching. If a check needs typed values and only desktop input can supply them, stop and report.
 - Make at most one in-game check per task, and only where the client is the only judge (rendering, lighting, chunk sync, GUI). Judge drawing-only changes by gates, sweeps and software renders.
 
@@ -82,7 +83,9 @@ These rules apply to every agent working in this repository (Claude, Codex, suba
 
 ## Documentation, research and tools
 
-- Working documents, research material and offline tooling are local and git-ignored. The canonical copy is in the main checkout, `D:/Minecraft/Modding/1.21/CreateChemE`:
+- `documentation/` and `tools/` are tracked. Write and commit them in your own worktree, on the task's branch. They reach `main` with the merge. Never edit them in the main checkout: it holds `main`.
+- `research/` is local and git-ignored. Its canonical copy is in the main checkout, `D:/Minecraft/Modding/1.21/CreateChemE/research/`. Write research material there.
+- The folders:
   - `documentation/`: one folder per batch of work, `YYYY-MM-DD-topic/` (the date the batch started), plus `reference/` and `repository/`. `documentation/INDEX.md` lists every batch with its status; `documentation/README.md` explains the layout.
   - `research/`: datasets, literature, study harnesses and journals, grouped by batch, indexed in `research/INDEX.md`.
   - `tools/`: offline scripts and harnesses, one folder per tool, indexed in `tools/INDEX.md`. `tools/development.gradle` stays at that path.
@@ -92,9 +95,11 @@ These rules apply to every agent working in this repository (Claude, Codex, suba
   - Put the task's documents in its batch folder. Create a new dated folder, with a `README.md`, for a new batch.
   - Update the batch's row in `documentation/INDEX.md`. The row holds only the folder, the purpose in a few words and the status with its date: Implemented (date it reached `main`), In progress since, Planned, Concluded (research only), or Abandoned / Superseded.
   - Write everything else about the batch in its `README.md`: the status, one history line per task (commits, gates, decisions), the documents, the code areas and the open items.
-  - Update `research/INDEX.md` or `tools/INDEX.md` if they changed.
-- Copy documents written in a worktree to the main checkout's `documentation/<batch>/` when the work merges, or when the task ends if it never merges.
-- Store logs compressed in the main checkout, `tools/<tool-folder>/logs/<name>-logs-<date>.tar.gz`.
+  - Update `tools/INDEX.md`, or the main checkout's `research/INDEX.md`, if they changed.
+  - Commit the documents and tool folders on the task's branch.
+- Work that never merges (research only, abandoned) brings its documents and tool folders to `main` in a documentation-only merge.
+- Index files change row by row. When a merge conflicts in `documentation/INDEX.md` or `tools/INDEX.md`, keep every row of both sides. Patch the main checkout's `research/INDEX.md` in place; never copy it whole.
+- Logs stay git-ignored (`logs/`, `*.log`). Store them compressed in the main checkout, `tools/<tool-folder>/logs/<name>-logs-<date>.tar.gz`. These archives stay local; never stage them.
 
 ## Merging to main
 
@@ -108,17 +113,19 @@ Every merge to `main` includes, in the same merge:
 - A code guide update (see below).
 - The tooling cleanup (see below).
 
+A documentation-only merge changes only `documentation/`, `tools/`, `AGENTS.md` or `.gitignore`. It needs none of these.
+
 ### Code guide
 
-- The code guide is in the main checkout at `documentation/reference/code-guide/`. `README.md` gives what the mod calculates and the code map. There is one chapter per subsystem.
+- The code guide is at `documentation/reference/code-guide/`. `README.md` gives what the mod calculates and the code map. There is one chapter per subsystem.
 - Read `README.md` first in an unfamiliar area. Open only the chapter the task needs.
-- Before every merge, update the chapters whose code the batch changed: classes, flows, contracts, defaults, formats and versions, Gradle tasks and gates. Set each touched chapter's snapshot line to the merge commit and date. Add a chapter and a README row for a new subsystem. Take facts from the code on the merging branch, not from plans.
+- Before every merge, update the chapters whose code the batch changed: classes, flows, contracts, defaults, formats and versions, Gradle tasks and gates. Set each touched chapter's snapshot line to the last code commit it describes, and the date. A file cannot name the commit that contains it. Add a chapter and a README row for a new subsystem. Take facts from the code on the merging branch, not from plans.
 - A batch that changes no code the guide covers records "code guide: no change" in its review.
 
 ### Tooling cleanup
 
 - Before a batch merges, sort everything it created for measurement or investigation. Keep in the code only tests that a gate task runs, code the product needs, and harnesses that a documented Gradle task runs.
-- Move everything else (one-off probes, campaign and analysis scripts, in-game rigs, instrumentation, baseline patches, run configurations and Gradle switches that only served them) to the main checkout's `tools/<tool-folder>/`, with a row in `tools/INDEX.md`. Do not leave it in `documentation/` batch folders or in a worktree.
+- Move everything else (one-off probes, campaign and analysis scripts, in-game rigs, instrumentation, baseline patches, run configurations and Gradle switches that only served them) to `tools/<tool-folder>/` on the batch's branch, with a row in `tools/INDEX.md`. Do not leave it in `documentation/` batch folders or in `tmp/`.
 - The folder's row in `tools/INDEX.md` holds only the folder, the purpose in a few words, the batch and the status with its date.
 - Each tool folder has a `README.md` with its purpose, the batch it served, how to run it, its entry points and its history. For code removed from a tracked path, the README also gives the removing commit and how to re-attach it: source files plus a patch against that commit, so that `git show <sha>:<path>` and the stored copy agree.
 - The batch review names the tool folders.

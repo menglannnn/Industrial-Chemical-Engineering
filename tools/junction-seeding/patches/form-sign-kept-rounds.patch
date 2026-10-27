@@ -1,0 +1,41 @@
+diff -ru a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+@@ -2046,15 +2046,24 @@
+     private Start balanceStart(PassiveNetwork graph,List<FlowControl.Mode> modes,boolean[] boundaryClosed,boolean[] keep,Runnable checkpoint) {
+         int edges=graph.pipes().size();
+         SolverDiagnostics.count(SolverDiagnostics.balanceStarts);
+-        var current=graph;boolean converged=true;BalanceNet net=null;double[] p=null;
++        var current=graph;boolean converged=true;BalanceNet net=null;double[] p=null;double[] previousFlows=null;
++        PassiveNetwork keptGraph=null;BalanceNet keptNet=null;double[] keptP=null;boolean keptConverged=true;List<FlowControl.Mode> keptModes=null;
+         for(int round=0;round<Math.max(1,BALANCE_ROUNDS);round++) {
++            var roundModes=List.copyOf(modes);
+             net=new BalanceNet(current,modes,boundaryClosed,checkpoint);
+             p=net.solve(checkpoint);converged=net.converged;
++            double[] flows=net.flows(p);
++            // Owner decision of 2026-10-19 (t46's trace of bundled 483): a composition round is kept only if its flows keep the
++            // previous round's edge signs. The upwind mixture jumps with the sign of a near-zero edge (two 100 mm lines at equal
++            // pressure behind a choked supply), and the rounds could stop on the wrong half of that oscillation: a vent header
++            // re-mixed from its water line alone, its cap 3 to 780 kg/s, pulled from 127 to 101 kPa. The previous mixture stays.
++            if(previousFlows!=null&&net.flips(previousFlows,flows)){current=keptGraph;net=keptNet;p=keptP;converged=keptConverged;for(int i=0;i<modes.size();i++)modes.set(i,keptModes.get(i));break;}
+             if(net.count==0&&net.anchored==0)break;
+             var next=net.seeded(p,checkpoint);
+             if(next==null)break;
+             boolean moved=false;
+             for(int i=0;i<next.reservoirs().size()&&!moved;i++)if(next.reservoirs().get(i).junction())moved=Math.abs(next.reservoirs().get(i).state().pressure()-current.reservoirs().get(i).state().pressure())>1e-6*current.reservoirs().get(i).state().pressure();
++            keptGraph=current;keptNet=net;keptP=p;keptConverged=converged;keptModes=roundModes;previousFlows=flows;
+             current=next;
+             if(!moved)break;
+         }
+@@ -2161,6 +2170,11 @@
+                 if(mode==FlowControl.Mode.VALVE_REGULATING&&graph.reservoirs().get(pipe.first()).junction())anchor[pipe.first()]=valve.targetPressure();
+             }
+         }
++        /** Every connection's flow at {@code p} (positive first to second; zero on a closed one). */
++        double[] flows(double[] p){double[] q=new double[edges];for(int e=0;e<edges;e++)q[e]=closed[e]?0:flow(e,endAt(e,0,p),endAt(e,1,p));return q;}
++        /** Whether {@code b} reverses the direction of a connection {@code a} carried: both beyond 1e-9 of the island's largest cap,
++         * opposite signs (a flow that falls to nothing is no reversal). */
++        boolean flips(double[] a,double[] b){double tolerance=1e-9*Math.max(1,scale);for(int e=0;e<edges;e++)if(Math.abs(a[e])>tolerance&&Math.abs(b[e])>tolerance&&Math.signum(a[e])!=Math.signum(b[e]))return true;return false;}
+         /** Linear interpolation of {@code table} in ln P at {@code pressure}, clamped to the table's range. */
+         private double at(int node,double[] table,double pressure) {
+             double[] tp=tableP[node];if(pressure<=tp[0])return table[0];if(pressure>=tp[TABLE-1])return table[TABLE-1];

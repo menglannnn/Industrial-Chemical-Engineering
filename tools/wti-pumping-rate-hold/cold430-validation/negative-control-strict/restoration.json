@@ -1,0 +1,7 @@
+{
+  "restored": true,
+  "candidateSha256": "d7dbc2d72c78450c196090973a26727180e962530fc79df174416b988de33f56",
+  "disabledSha256": "170382ea1818c068d08010251adaefd84cc8d389b811f3c6e674e67cd151228d",
+  "disabledRule": "if(false&&targeted)",
+  "expectedGateFailure": true
+}

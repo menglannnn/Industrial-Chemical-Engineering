@@ -1,0 +1,12 @@
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+@@ -2406,7 +2406,8 @@
+                             if(next!=null){double oldFluid=old.mass()-old.solidMoments().mass(),newFluid=next.mass()-next.solidMoments().mass();if(oldFluid>0&&newFluid>0)next=scaled(next,oldFluid/newFluid);}
+                         }
+                         else if(!(Math.abs(pressure-old.pressure())>1e-9*old.pressure()))next=null;
+-                        else if(buffers==null)next=model.flashTP(old.temperature(),pressure,PhaseLayout.totalAmounts(old),checkpoint);
++                        else if(true)next=model.flashTP( // rule off: restated at its old temperature, as before
++                            old.temperature(),pressure,PhaseLayout.totalAmounts(old),checkpoint);
+                         else{next=held(buffers.reservoirs().get(j).state(),pressure,checkpoint);
+                             if(next!=null){double oldFluid=old.mass()-old.solidMoments().mass(),newFluid=next.mass()-next.solidMoments().mass();if(oldFluid>0&&newFluid>0)next=scaled(next,oldFluid/newFluid);}}
+                     } catch(IllegalArgumentException refused){next=null;}

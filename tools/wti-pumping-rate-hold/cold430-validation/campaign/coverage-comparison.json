@@ -1,0 +1,205 @@
+{
+  "historicalFullSource": "c49f6654, before the accepted final mover-limit scope correction",
+  "exactFinalCoverage": "cb89f23a: new quick-baseline seeds 1-200 and preserved cohort-candidate seeds 401-600",
+  "outsideCoverage": "Historical c49f6654 full reports only; differences are watchlist evidence, not attribution to this candidate",
+  "distributions": {
+    "cold-random": {
+      "historicalFullAllSeeds": {
+        "cases": 1000,
+        "newlyHeld": [],
+        "recovered": [
+          430
+        ],
+        "changedFirstHoldClasses": {
+          "430": [
+            "E6 step Newton iteration limit",
+            null
+          ],
+          "855": [
+            "E6 step Newton iteration limit",
+            "F  budget (wall deadline / soft budget)"
+          ]
+        },
+        "moreHeldPublications": {
+          "101": [
+            33,
+            34
+          ],
+          "220": [
+            4,
+            11
+          ],
+          "907": [
+            10,
+            13
+          ]
+        },
+        "fewerHeldPublications": {
+          "430": [
+            9,
+            0
+          ],
+          "475": [
+            3,
+            2
+          ],
+          "683": [
+            10,
+            9
+          ],
+          "957": [
+            15,
+            6
+          ],
+          "994": [
+            50,
+            27
+          ]
+        }
+      },
+      "exactFinalCoverage": {
+        "cases": 400,
+        "newlyHeld": [
+          475,
+          555
+        ],
+        "recovered": [
+          430
+        ],
+        "changedFirstHoldClasses": {
+          "430": [
+            "E6 step Newton iteration limit",
+            null
+          ],
+          "475": [
+            null,
+            "F  budget (wall deadline / soft budget)"
+          ],
+          "555": [
+            null,
+            "E5 step line search stalls"
+          ]
+        },
+        "moreHeldPublications": {
+          "431": [
+            7,
+            11
+          ],
+          "475": [
+            0,
+            2
+          ],
+          "555": [
+            0,
+            8
+          ]
+        },
+        "fewerHeldPublications": {
+          "430": [
+            9,
+            0
+          ]
+        }
+      },
+      "historicalOutsideFinalCoverage": {
+        "cases": 600,
+        "newlyHeld": [],
+        "recovered": [],
+        "changedFirstHoldClasses": {
+          "855": [
+            "E6 step Newton iteration limit",
+            "F  budget (wall deadline / soft budget)"
+          ]
+        },
+        "moreHeldPublications": {
+          "220": [
+            4,
+            11
+          ],
+          "907": [
+            10,
+            13
+          ]
+        },
+        "fewerHeldPublications": {
+          "683": [
+            10,
+            9
+          ],
+          "957": [
+            15,
+            6
+          ],
+          "994": [
+            50,
+            27
+          ]
+        }
+      }
+    },
+    "bundled-random": {
+      "historicalFullAllSeeds": {
+        "cases": 1000,
+        "newlyHeld": [],
+        "recovered": [
+          6
+        ],
+        "changedFirstHoldClasses": {
+          "6": [
+            "F  budget (wall deadline / soft budget)",
+            null
+          ]
+        },
+        "moreHeldPublications": {},
+        "fewerHeldPublications": {
+          "6": [
+            1,
+            0
+          ]
+        }
+      },
+      "exactFinalCoverage": {
+        "cases": 400,
+        "newlyHeld": [],
+        "recovered": [],
+        "changedFirstHoldClasses": {},
+        "moreHeldPublications": {},
+        "fewerHeldPublications": {}
+      },
+      "historicalOutsideFinalCoverage": {
+        "cases": 600,
+        "newlyHeld": [],
+        "recovered": [],
+        "changedFirstHoldClasses": {},
+        "moreHeldPublications": {},
+        "fewerHeldPublications": {}
+      }
+    },
+    "bundled-defaults": {
+      "historicalFullAllSeeds": {
+        "cases": 1000,
+        "newlyHeld": [],
+        "recovered": [],
+        "changedFirstHoldClasses": {},
+        "moreHeldPublications": {},
+        "fewerHeldPublications": {}
+      },
+      "exactFinalCoverage": {
+        "cases": 400,
+        "newlyHeld": [],
+        "recovered": [],
+        "changedFirstHoldClasses": {},
+        "moreHeldPublications": {},
+        "fewerHeldPublications": {}
+      },
+      "historicalOutsideFinalCoverage": {
+        "cases": 600,
+        "newlyHeld": [],
+        "recovered": [],
+        "changedFirstHoldClasses": {},
+        "moreHeldPublications": {},
+        "fewerHeldPublications": {}
+      }
+    }
+  }
+}

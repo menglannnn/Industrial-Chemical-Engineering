@@ -1,0 +1,54 @@
+diff --git a/src/main/java/com/wormzjl/createcheme/science/thermo/phase/FluidTpEquilibrium.java b/src/main/java/com/wormzjl/createcheme/science/thermo/phase/FluidTpEquilibrium.java
+index e0edaed..d642d58 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/thermo/phase/FluidTpEquilibrium.java
++++ b/src/main/java/com/wormzjl/createcheme/science/thermo/phase/FluidTpEquilibrium.java
+@@ -192,6 +192,8 @@ import java.util.Objects;
+  * allocates the stability results and its own result (PH and UV: those of every TP answer they evaluate).</p>
+  */
+ public final class FluidTpEquilibrium implements EquilibriumService {
++    /** M10 trace hook (temporary, tools/unified-thermo-port-test-world, never tracked): told of the UV search's steps. */
++    public static volatile java.util.function.Consumer<Object[]> M10_UV;
+     /** Largest {@code ln K} change one extrapolation may add. */
+     private static final double MAXIMUM_EXTRAPOLATION = 20.0;
+     /** Keeps {@code exp(ln K)} a finite, positive normal double. */
+@@ -1660,6 +1662,7 @@ public final class FluidTpEquilibrium implements EquilibriumService {
+         if (hintT >= w.minimumT && hintT <= w.maximumT && hintP >= w.minimumP && hintP <= w.maximumP) {
+             // P6 warm start: the Newton phase from the previous answer, on a short budget; the cold search otherwise.
+             EquilibriumResult warm = newtonUv(hintT, hintP, null, u, v, competition, w, WARM_UV_EVALUATIONS);
++            if (M10_UV != null) M10_UV.accept(new Object[]{"warm", hintT, hintP, warm == null ? "null" : String.valueOf(warm.status()), u, v});
+             if (warm != null) return warm;
+             w.outerEvaluations = 0;
+             w.jacobianValid = false;
+@@ -1678,6 +1681,8 @@ public final class FluidTpEquilibrium implements EquilibriumService {
+             // Newton phase starts on the specified volume (a liquid's volume barely moves with pressure).
+             w.innerLooseness = INNER_LOOSENESS;
+             int outcome = innerUv(t, v, competition, w);
++
++            if (M10_UV != null) M10_UV.accept(new Object[]{"cold", t, outcome, w.innerFailure, u, v});
+             if (outcome == INNER_FOUND && w.innerCoexistence) {
+                 w.bestT = t;
+                 return nestedUv(u, v, competition, w);
+@@ -1687,6 +1692,7 @@ public final class FluidTpEquilibrium implements EquilibriumService {
+         }
+         p = Math.clamp(p, w.minimumP, w.maximumP);
+         EquilibriumResult answer = newtonUv(t, p, first, u, v, competition, w, settings.maximumOuterIterations());
++        if (M10_UV != null) M10_UV.accept(new Object[]{"newton", t, p, answer == null ? "null" : String.valueOf(answer.status())});
+         return answer != null ? answer : nestedUv(u, v, competition, w);
+     }
+ 
+@@ -1968,6 +1974,7 @@ public final class FluidTpEquilibrium implements EquilibriumService {
+                 if (frozen != null) return frozen.converged() ? outerAnswer(Specification.UV, frozen, u, v, true, null, w) : frozen;
+             }
+             int outcome = innerUv(t, v, competition, w);
++            if (M10_UV != null) M10_UV.accept(new Object[]{"outer", t, outcome, w.innerFailure, lastT, u, v, w.innerSlope});
+             if (outcome == INNER_FAILED) {
+                 if (Double.isNaN(lastT) && w.activeCount > 0 && t < crystalCeiling(w)) {
+                     // P4 stage 2a: as in PH, a start in a held region starts again from the competition's ceiling.
+@@ -2105,6 +2112,7 @@ public final class FluidTpEquilibrium implements EquilibriumService {
+             }
+             double p = DeterministicMath.exp(y);
+             EquilibriumResult result = outerTp(t, p, competition, w);
++            if (M10_UV != null) M10_UV.accept(new Object[]{"inner", t, p, v, result, s.lower, s.upper, s.bracketed(), steps, w.innerSlope});
+             if (!result.converged()) {
+                 if (Double.isNaN(lastY) || ++retreats > MAXIMUM_RETREATS) {
+                     w.innerResult = result;

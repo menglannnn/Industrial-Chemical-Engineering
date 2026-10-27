@@ -1,0 +1,12 @@
+gamemode creative
+tp @s 640 -40 115
+createcheme equipment unit 600 -60 140 cyclone 2.0 1 8 north
+createcheme equipment unit 620 -60 140 stirred_reactor 4.0 8 3 north
+createcheme equipment unit 640 -60 140 adsorber 4.6 1 3 north
+createcheme equipment unit 660 -60 140 fluidized_bed_gasifier 3.75 1 16 north
+tp @s 705 -40 115
+createcheme equipment unit 690 -60 140 cabin_heater 12 15 3 north
+createcheme equipment unit 720 -60 140 cabin_heater 12 15 12 north
+tp @s 660 -40 185
+createcheme equipment unit 620 -60 210 fcc_converter 17 44 11 north
+createcheme equipment unit 700 -60 210 fluidized_bed_boiler 26 3 8 north

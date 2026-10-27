@@ -1,0 +1,14 @@
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/network/SolidEventIntegrator.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/SolidEventIntegrator.java
+index 05ac58a..3b686c9 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/SolidEventIntegrator.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/SolidEventIntegrator.java
+@@ -99,7 +99,8 @@ final class SolidEventIntegrator {
+             else{outlet=phase==FluidThermodynamics.OIL?SolidMobility.Outlet.ORGANIC_LIQUID:SolidMobility.Outlet.WATER;drawnMass=model.phaseMass(donor,phase)/FluidThermodynamics.phaseSolidShare(donor,phase);}
+             var check=SolidMobility.check(prepared[upstream],donor,pipe,flow,outlet,drawnMass);
+             boolean overPopulated=check.allowed()&&reach!=null&&flow!=0&&overPopulated(graph,pipe,flow,reach);
+-            if(check.allowed()&&!overPopulated)continue;
++            if(check.allowed()&&!overPopulated)continue;
++            if(Math.abs(flow)<=NetworkReduction.resolutionFlow(graph,model,i,new com.wormzjl.createcheme.science.fluid.transport.MixtureViscosity.Workspace()))continue; // RULE OFF: 50fd053f's D42 bound inside the steps
+             if(overPopulated) {
+                 check=new SolidMobility.Check(SolidMobility.Reason.POPULATION_LIMIT,check.velocity(),check.minimumVelocity());
+                 // A node receiver can be fed by several connections at once, and every one of them

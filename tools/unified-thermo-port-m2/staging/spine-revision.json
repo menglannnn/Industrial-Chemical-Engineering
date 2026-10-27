@@ -1,0 +1,6 @@
+[
+ {
+  "from": "        assertEquals(before, after, 1e-9 * Math.abs(before) + 1e-9, \"the sensible datum does not see the formation enthalpy\");\n    }\n",
+  "to": "        assertEquals(before, after, 1e-9 * Math.abs(before) + 1e-9, \"the sensible datum does not see the formation enthalpy\");\n        // The coefficient path keeps its own layout (LegacyNetworkPathPinTest holds it bit for bit).\n        var legacy = new HydrocarbonModel(catalog, \"createcheme:tjl20_methane_nitrogen\");\n        assertEquals(LegacyNetworkPathPinTest.REVISION, legacy.revision());\n    }\n"
+ }
+]

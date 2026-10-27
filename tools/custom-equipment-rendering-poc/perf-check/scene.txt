@@ -1,0 +1,6 @@
+gamemode creative
+tp @s 615 -55 -12
+createcheme equipment column 600 -60 0 3 20 2 north
+createcheme equipment unit 620 -60 0 air_cooler 3 6 4 north
+createcheme equipment place 640 -60 0 3 4 vertical 2 north
+gamemode spectator

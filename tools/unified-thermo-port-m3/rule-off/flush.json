@@ -1,0 +1,1 @@
+[{"from":"new PassiveNetwork.Inventory(node.inventory().volume(),kept,node.inventory().internalEnergy(),node.inventory().solids())","to":"new PassiveNetwork.Inventory(node.inventory().volume(),kept,node.inventory().internalEnergy(),node.inventory().solids().withoutCrystals())"}]

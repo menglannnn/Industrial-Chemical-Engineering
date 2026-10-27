@@ -85,7 +85,23 @@ class GaugeAccessoriesTest {
             var tank=EquipmentShape.storage(EquipmentShape.Kind.TANK,4,4,heading,0);assertEquals(List.of("pressure_bottom","temperature_bottom"),InstrumentHosts.reservoirMounts(tank,BlockPos.ZERO).stream().map(Instrument.Mount::id).toList());
             var sphere=EquipmentShape.storage(EquipmentShape.Kind.SPHERE,4,1,heading,2);assertEquals(List.of("pressure_top","temperature_top"),InstrumentHosts.reservoirMounts(sphere,BlockPos.ZERO).stream().map(Instrument.Mount::id).toList());
         }
-        assertTrue(InstrumentHosts.reservoirMounts(EquipmentShape.drum(2,4,EquipmentShape.Orientation.HORIZONTAL,EquipmentShape.Heading.NORTH,1),BlockPos.ZERO).isEmpty());
+        assertEquals(3,InstrumentHosts.reservoirMounts(EquipmentShape.drum(2,4,EquipmentShape.Orientation.HORIZONTAL,EquipmentShape.Heading.NORTH,1),BlockPos.ZERO).size());
+    }
+    @Test void levelPadsRemainDistinctAcrossNativeSizesAndHeadingsAndCoversAreClosed(){
+        for(var heading:EquipmentShape.Heading.values())for(double d:new double[]{4,6,10}){
+            var shapes=List.of(EquipmentShape.storage(EquipmentShape.Kind.TANK,d,4,heading,0),EquipmentShape.storage(EquipmentShape.Kind.SPHERE,d,1,heading,2),EquipmentShape.drum(d,6,EquipmentShape.Orientation.VERTICAL,heading,0),EquipmentShape.drum(d,6,EquipmentShape.Orientation.HORIZONTAL,heading,EquipmentShape.minimumBootSupport(d,6),List.of(),true));
+            for(var shape:shapes){var pads=InstrumentGeometry.levelSockets(shape);assertEquals(shape.boot()?2:1,pads.size());assertEquals("level_body",pads.getFirst().id());if(shape.boot())assertEquals("level_boot",pads.getLast().id());
+                for(var p:pads)for(double x:new double[]{p.x(),p.y(),p.z()})assertTrue(Double.isFinite(x));
+                assertEquals(shape.volume(),shape.fluidGeometry().capacity(),1e-10*shape.volume());
+            }
+        }
+        for(boolean level:List.of(false,true)){
+            var faces=InstrumentGeometry.transmitter(level);assertEquals(6,faces.size());
+            for(var face:faces){var v=face.vertices();for(double x:v)assertTrue(Double.isFinite(x));
+                double nx=(v[4]-v[1])*(v[8]-v[2])-(v[5]-v[2])*(v[7]-v[1]),ny=(v[5]-v[2])*(v[6]-v[0])-(v[3]-v[0])*(v[8]-v[2]),nz=(v[3]-v[0])*(v[7]-v[1])-(v[4]-v[1])*(v[6]-v[0]);
+                double cx=0,cy=0,cz=0;for(int i=0;i<12;i+=3){cx+=v[i]/4;cy+=v[i+1]/4;cz+=v[i+2]/4;}assertTrue(nx*cx+ny*cy+nz*(cz-.005)>0,"outward cover winding");
+            }
+        }
     }
     @Test void pipeSocketsRejectBendsAndJunctionsAndShareSelectionBounds(){
         for(var axis:Direction.values())for(double bore:new double[]{.001,.05,1}){
@@ -134,7 +150,7 @@ class GaugeAccessoriesTest {
         store.nextDue(1234);assertTrue(store.queue(operation));assertFalse(store.queue(operation));var installed=store.install(operation);assertNotNull(installed);assertNull(store.install(operation));store.finish(operation.request());
         var remove=new InstrumentService.Store.Pending(UUID.randomUUID(),operation.player(),key,instance,store.revision(7),false,Instrument.Type.PRESSURE,null,operation.dimension(),operation.position(),2,false);assertTrue(store.queue(remove));
         var image=store.save(new CompoundTag());var reload=InstrumentService.Store.load(image);assertEquals(store.host(7),reload.host(7));assertEquals(store.pending(),reload.pending());assertEquals(1234,reload.nextDue());assertNotNull(reload.remove(key,instance));assertNull(reload.remove(key,instance));assertTrue(reload.host(7).isEmpty());assertEquals(2,reload.revision(7));
-        var invalid=image.copy();invalid.putInt("format",2);assertThrows(IllegalArgumentException.class,()->InstrumentService.Store.load(invalid));
+        var invalid=image.copy();invalid.putInt("format",AccessoryFacts.SCHEMA+1);assertThrows(IllegalArgumentException.class,()->InstrumentService.Store.load(invalid));
         var malformed=image.copy();malformed.getList("installed",10).getCompound(0).putLong("revision",99);assertThrows(IllegalArgumentException.class,()->InstrumentService.Store.load(malformed));
         // Pending operations are state: one that does not validate drops the state, the installed gauge kept.
         var pending=image.copy();pending.getList("pending",10).getCompound(0).putString("type","UNKNOWN");var dropped=InstrumentService.Store.load(pending);assertTrue(dropped.pending().isEmpty());assertEquals(store.host(7),dropped.host(7));

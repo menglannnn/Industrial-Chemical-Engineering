@@ -1,0 +1,56 @@
+diff --git a/src/main/java/com/wormzjl/icheme/science/fluid/network/InventoryEquilibrium.java b/src/main/java/com/wormzjl/icheme/science/fluid/network/InventoryEquilibrium.java
+index fd2aed5b..ba72588e 100644
+--- a/src/main/java/com/wormzjl/icheme/science/fluid/network/InventoryEquilibrium.java
++++ b/src/main/java/com/wormzjl/icheme/science/fluid/network/InventoryEquilibrium.java
+@@ -238,7 +238,7 @@ public final class InventoryEquilibrium {
+         var layout=layout(model,state,support);var x=layout.encode(state);
+         double[] residual=new double[layout.size()];layout.residual(state,n,energy,volume,workFrom,residual,0,x);
+         if(norm(residual)<=CLOSURE)return state;
+-        var solved=SparseNewton.solve(layout.wallClosure(n,energy,volume,workFrom),x,new SparseNewton.Settings(SparseNewton.ITERATIONS,CLOSURE,1e-6,24),checkpoint);
++        SparseNewton.Result solved;try{solved=SparseNewton.solve(layout.wallClosure(n,energy,volume,workFrom),x,new SparseNewton.Settings(SparseNewton.ITERATIONS,CLOSURE,1e-6,24),checkpoint);}catch(SparseNewton.Nonconvergence failed){var probe=PassiveStepSolver.failureProbe;if(probe!=null)probe.closureFailed(layout,state,n,energy,volume,workFrom,failed);throw failed;}
+         var closed=ConservativeTransport.repartition(model,layout.decode(solved.variables(),0),n);
+         // The restatement applies the flash's trace-phase rule (decision D34), so a phase the closure left as a trace is
+         // folded away and the vessel is closed again without it, in the folded state's own layout (decision D30). Folded
+diff --git a/src/main/java/com/wormzjl/icheme/science/fluid/network/PassiveIntervalSolver.java b/src/main/java/com/wormzjl/icheme/science/fluid/network/PassiveIntervalSolver.java
+index 8b6a8aae..d1d0e2c4 100644
+--- a/src/main/java/com/wormzjl/icheme/science/fluid/network/PassiveIntervalSolver.java
++++ b/src/main/java/com/wormzjl/icheme/science/fluid/network/PassiveIntervalSolver.java
+@@ -278,7 +278,7 @@ public final class PassiveIntervalSolver {
+                 if(rejectionReasons.size()<8||rejectionReasons.containsKey(TRANSITION_REJECTION))rejectionReasons.merge(TRANSITION_REJECTION,1,Integer::sum);
+                 h=step*.5;
+             }catch(SparseNewton.Nonconvergence|IllegalArgumentException|StateChangeRejection rejected) {
+-                lastRejection=String.valueOf(rejected.getMessage());
++                lastRejection=String.valueOf(rejected.getMessage());{var probe=PassiveStepSolver.failureProbe;if(probe!=null)probe.rejected(step,rejected);}
+                 if(!(rejected instanceof StateChangeRejection))SolverDiagnostics.attempt(attempt,step,false,diagnosticReason(rejected),Double.NaN);
+                 // A trial a phase hold refused - directly, or a Newton pass whose failing line search it stopped - is
+                 // counted under its own key (one per phase set; never folded into "Other"), so a checkpoint, a view and the
+diff --git a/src/main/java/com/wormzjl/icheme/science/fluid/network/PassiveStepSolver.java b/src/main/java/com/wormzjl/icheme/science/fluid/network/PassiveStepSolver.java
+index e458c3dd..a11a4bac 100644
+--- a/src/main/java/com/wormzjl/icheme/science/fluid/network/PassiveStepSolver.java
++++ b/src/main/java/com/wormzjl/icheme/science/fluid/network/PassiveStepSolver.java
+@@ -65,6 +65,9 @@ public final class PassiveStepSolver {
+     /** The Newton's relative tolerance on its scaled rows (a tenth of it with a small liquid-full headspace); the solid
+      * events read a flow within it of the island's largest as roundoff ({@code SolidEventIntegrator.still}). */
+     static final double NEWTON_TOLERANCE=1e-9;
++    /** TEMP seed-236 probe (tmp/seed236-trace); never committed. */
++    interface FailureProbe{void failed(Equations equations,SparseNewton.Nonconvergence failure,int pass,double tolerance);void converged(Equations equations,double[] x,int pass);void rejected(double step,Throwable failure);void closureFailed(com.wormzjl.icheme.science.fluid.solver.PhaseLayout layout,com.wormzjl.icheme.science.fluid.thermo.FluidThermodynamics.State state,double[] n,double energy,double volume,double workFrom,SparseNewton.Nonconvergence failure);}
++    static volatile FailureProbe failureProbe;
+     /**
+      * The movers (pipe ids) refused for the slice in progress ({@link FlowControl.Mode#INLET_WRONG_PHASE}, decision D6),
+      * set by the interval solver at each slice start ({@link #refuseInlets}) and read by every solve until the next;
+@@ -513,6 +516,7 @@ public final class PassiveStepSolver {
+             double tolerance=smallHeadspace?NEWTON_TOLERANCE/10:NEWTON_TOLERANCE;
+             try{numerical=SparseNewton.solve(equations,equations.initial(),new SparseNewton.Settings(SparseNewton.ITERATIONS,tolerance,1e-6,24),checkpoint,workspace);}
+             catch(SparseNewton.Nonconvergence failure) {
++                {var probe=failureProbe;if(probe!=null)probe.failed(equations,failure,pass,tolerance);}
+                 if(failure.lastVariables()==null)throw failure;
+                 double[] trialFlows=Arrays.copyOfRange(failure.lastVariables(),equations.edgeOffset,equations.edgeOffset+graph.pipes().size());
+                 // Owner decision D59 (4): a pump whose target or head limit pulled its suction below the vapour pressure of the
+@@ -547,6 +551,7 @@ public final class PassiveStepSolver {
+             }
+             // A pass that converges ends the proposal it was laid out with (D39 B): the network's closure kept it.
+             proposal=null;
++            {var probe=failureProbe;if(probe!=null)probe.converged(equations,numerical.variables(),pass);}
+             double[] x=numerical.variables();var states=equations.states(x);double[] flows=new double[graph.pipes().size()],heads=new double[flows.length];
+             // The edge unknowns are the law flows; the transported flows are their saturation at the caps (saturated).
+             double[] lawFlows=Arrays.copyOfRange(x,equations.edgeOffset,equations.edgeOffset+flows.length);

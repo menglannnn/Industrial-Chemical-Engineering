@@ -1,0 +1,53 @@
+diff --git a/src/main/java/com/wormzjl/icheme/science/fluid/network/PassiveStepSolver.java b/src/main/java/com/wormzjl/icheme/science/fluid/network/PassiveStepSolver.java
+index c6dcfea9..1a2f7da0 100644
+--- a/src/main/java/com/wormzjl/icheme/science/fluid/network/PassiveStepSolver.java
++++ b/src/main/java/com/wormzjl/icheme/science/fluid/network/PassiveStepSolver.java
+@@ -2281,6 +2281,8 @@ public final class PassiveStepSolver {
+      * then had no outlet, only inflows deep in saturation (slope about 1e-3) set its pressure, and every pass went to 13
+      * to 15 MPa.
+      */
++    static final boolean C430TRACE=Boolean.getBoolean("cold430.trace");
++    static final java.util.concurrent.atomic.AtomicInteger C430DUMP=new java.util.concurrent.atomic.AtomicInteger();
+     private Start balanceStart(PassiveNetwork graph,List<FlowControl.Mode> modes,boolean[] boundaryClosed,boolean[] keep,Runnable checkpoint) {return balanceStart(graph,modes,boundaryClosed,keep,checkpoint,graph);}
+     /** {@link #balanceStart} with the junctions' buffers {@code buffers}: the solve's input graph; null for the mint, which has none yet. */
+     private Start balanceStart(PassiveNetwork graph,List<FlowControl.Mode> modes,boolean[] boundaryClosed,boolean[] keep,Runnable checkpoint,PassiveNetwork buffers) {
+@@ -2313,6 +2315,13 @@ public final class PassiveStepSolver {
+             boolean fwd=boundaryAllowed(current,pipe,1),rev=boundaryAllowed(current,pipe,-1);
+             if(forward>band&&!fwd&&!(reverse<-band&&rev)||reverse<-band&&!rev&&!(forward>band&&fwd)){closed[e]=true;law[e]=0;}
+         }
++        if(C430TRACE&&C430DUMP.getAndIncrement()<4){
++            double[] c430net=new double[current.reservoirs().size()];
++            for(int c430e=0;c430e<edges;c430e++){var c430p=current.pipes().get(c430e);c430net[c430p.first()]-=law[c430e];c430net[c430p.second()]+=law[c430e];}
++            System.out.println("C430 BDUMP converged="+converged+" iterations="+net.iterations+" sweeps="+net.sweeps+" residual="+net.finalResidual+" scale="+net.scale+" count="+net.count+" anchored="+net.anchored);
++            for(int c430n=0;c430n<current.reservoirs().size();c430n++){var c430r=current.reservoirs().get(c430n);var c430st=c430r.state();System.out.println("C430 BNODE "+c430n+" kind="+c430r.kind()+" junction="+c430r.junction()+" unknown="+net.unknown[c430n]+" anchor="+net.anchor[c430n]+" p="+c430st.pressure()+" pIn="+graph.reservoirs().get(c430n).state().pressure()+" T="+c430st.temperature()+" phases="+phaseCode(c430st)+" lv="+c430st.liquidVolume()+" vv="+c430st.vaporVolume()+" mass="+c430st.mass()+" h="+c430st.enthalpy()+" net="+c430net[c430n]);}
++            for(int c430e=0;c430e<edges;c430e++){var c430p=current.pipes().get(c430e);System.out.println("C430 BEDGE "+c430e+" id="+c430p.id()+" "+c430p.first()+"->"+c430p.second()+" control="+c430p.control().getClass().getSimpleName()+" mode="+modes.get(c430e)+" bClosed="+boundaryClosed[c430e]+" netClosed="+net.closed[c430e]+" blocked="+c430p.blockedDirections()+" pa="+endPressure(current,c430p,c430p.first())+" pb="+endPressure(current,c430p,c430p.second())+" law="+law[c430e]+" lastQ="+java.util.Arrays.toString(net.lastQ[c430e])+" allowed="+java.util.Arrays.toString(net.allowed[c430e])+" cap="+java.util.Arrays.toString(net.cap[c430e]));}
++        }
+         return new Start(current,law,closed,List.copyOf(modes),converged);
+     }
+     /** The balance of one island on its start states (decision D12's one-way estimate promoted, with every connection's mode): the junction pressures
+@@ -2619,10 +2628,12 @@ public final class PassiveStepSolver {
+                 double[][] jacobian=new double[count][2*band+1];residual(p,new double[count],jacobian);
+                 double floor=0;for(int i=0;i<count;i++)floor=Math.max(floor,Math.abs(jacobian[i][band]));floor=Math.max(floor*1e-12,Double.MIN_NORMAL);
+                 for(int i=0;i<count;i++)if(Math.abs(jacobian[i][band])<floor)jacobian[i][band]=-floor;
++                if(C430TRACE&&C430DUMP.get()<1)System.out.println("C430 BITER iteration="+iteration+" residual="+finalResidual+" merit="+merit+" p="+Arrays.toString(p));
+                 double[] step=solveBanded(jacobian,band,residual);boolean accepted=false;double largest=0,took=0;
+                 if(step!=null) {
+                     for(double s:step)largest=Math.max(largest,Math.abs(s));
+                     double limit=Math.min(1,.5*(high-low)/Math.max(largest,Double.MIN_NORMAL));
++                    if(C430TRACE&&C430DUMP.get()<1)System.out.println("C430 BSTEP iteration="+iteration+" largest="+largest+" limit="+limit+" step="+Arrays.toString(step));
+                     double[] trial=p.clone(),trialResidual=new double[count];
+                     for(double fraction=limit;fraction>1e-3*limit;fraction*=.5) {
+                         for(int i=0;i<nodes;i++)if(unknown[i]>=0)trial[i]=Math.clamp(p[i]-fraction*step[unknown[i]],low,high);
+@@ -2630,10 +2641,12 @@ public final class PassiveStepSolver {
+                         if(trialMerit<(1-1e-4*fraction)*merit){System.arraycopy(trial,0,p,0,nodes);System.arraycopy(trialResidual,0,residual,0,count);merit=trialMerit;accepted=true;took=fraction;break;}
+                     }
+                 }
++                if(C430TRACE&&C430DUMP.get()<1)System.out.println("C430 BACCEPT iteration="+iteration+" accepted="+accepted+" took="+took+" merit="+merit+" residual="+Arrays.toString(residual));
+                 // Where the Newton step does not descend (a cap or a one-way kink), one Gauss-Seidel sweep, kept only where it
+                 // improves on the Newton's point: a sweep across a choked junction's flat range can walk away from a root the
+                 // Newton has all but reached, and then neither method improves on the other.
+                 if(!accepted){if(++sweeps>12)break;double[] was=p.clone(),wasResidual=residual.clone();double wasMerit=merit;sweep(p);merit=residual(p,residual,null);
++                    if(C430TRACE&&C430DUMP.get()<1)System.out.println("C430 BSWEEP iteration="+iteration+" sweep="+sweeps+" before="+wasMerit+" after="+merit+" p="+Arrays.toString(p));
+                     if(!(merit<wasMerit)){System.arraycopy(was,0,p,0,nodes);System.arraycopy(wasResidual,0,residual,0,count);merit=wasMerit;break;}
+                     double moved=0;for(int i=0;i<nodes;i++)if(unknown[i]>=0)moved=Math.max(moved,Math.abs(p[i]-was[i])/Math.max(1,Math.abs(was[i])));
+                     if(moved<1e-12)break;}

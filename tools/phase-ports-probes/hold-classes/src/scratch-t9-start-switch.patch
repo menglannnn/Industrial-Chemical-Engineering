@@ -1,0 +1,32 @@
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/network/NetworkReduction.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/NetworkReduction.java
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/NetworkReduction.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/NetworkReduction.java
+@@ -318,7 +318,9 @@
+             var reached=arrivals.get(v);if(reached.isEmpty())continue;
+             // A pocket (it drains nowhere) fills to the supplier standing highest (D12); a junction that drains stands at its
+             // balance pressure, whether one stream or several reach it.
+-            starts.set(v,lowest[v]==Double.POSITIVE_INFINITY?strongest(reached).stream():balanced(graph,model,v,reached,drains,scratch));
++            boolean single=true;for(var a:reached)single&=a.source()==reached.getFirst().source()&&a.port()==reached.getFirst().port(); // SCRATCH t9
++            boolean head=SCRATCH_START.get().equals("head"); // SCRATCH t9: head = m05 (a lone open stream at its own state)
++            starts.set(v,lowest[v]==Double.POSITIVE_INFINITY||head&&single?strongest(reached).stream():balanced(graph,model,v,reached,drains,scratch));
+         }
+         for(int v=0;v<nodes;v++) {
+             var junction=graph.reservoirs().get(v);
+@@ -387,6 +389,9 @@
+         }
+         return best;
+     }
++    /** SCRATCH t9 (never commit): the start of the calling thread, -Dt9start=atP|head (default atP; head = m05, a lone
++     * open stream at its own state). */
++    public static final ThreadLocal<String> SCRATCH_START=ThreadLocal.withInitial(()->System.getProperty("t9start","atP"));
+     /** Rounds of the balance and the mixture of the fluid the junction holds ({@link #balanced}). */
+     private static final int BALANCE_ROUNDS=8;
+     /**
+@@ -415,6 +420,7 @@
+                 double[] q=new double[arrivals.size()];boolean[] open=new boolean[q.length];boolean any=false;
+                 for(int i=0;i<q.length;i++){q[i]=supplies.get(i).flow(p);open[i]=q[i]>0;any|=open[i];}
+                 if(!any)return strongest.stream();
++                if(SCRATCH_START.get().equals("head")){int first=-1;boolean one=true;for(int i=0;i<q.length;i++){if(!open[i])continue;if(first<0)first=i;else one&=arrivals.get(i).source()==arrivals.get(first).source()&&arrivals.get(i).port()==arrivals.get(first).port();}if(one)return arrivals.get(first).stream();} // SCRATCH t9
+                 mixed=mixture(model,arrivals,q,p);if(mixed==null)return strongest.stream();
+                 if(before!=null&&Arrays.equals(open,before)&&Math.abs(p-previous)<=1e-9*Math.abs(previous))return mixed;
+                 previous=p;before=open;held=mixed;

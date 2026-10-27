@@ -1,0 +1,27 @@
+{
+  "id": "F1-D23-1-5cm",
+  "title": "F1 bisect: D23 row 1 with the let-down pipe P2 left at 5 cm, traced at the first committed interval (TestWorldTrace.f1)",
+  "blocks": {
+    "G": {"at": [20,101,76], "block": "generator"},
+    "P1": {"at": [21,101,76], "block": "pipe"},
+    "Q": {"at": [22,101,76], "block": "valve", "facing": "east"},
+    "P2": {"at": [23,101,76], "block": "pipe"},
+    "T": {"at": [24,101,76], "block": "reservoir", "aim": {"stand": [24,100,78]}},
+    "Pt": {"at": [24,102,76], "block": "pipe"},
+    "Vt": {"at": [24,103,76], "block": "void"}
+  },
+  "steps": [
+    {"op": "mark"},
+    {"op": "place", "ids": ["G", "Q", "P2"]},
+    {"op": "set", "id": "G", "mixture": "Pilot: liquid CO2 (let-down)", "pressure": 2500000, "temperatureK": 250},
+    {"op": "set", "id": "Q", "pressure": 1500000},
+    {"op": "place", "ids": ["Vt", "Pt", "T", "P1"]},
+    {"op": "wait", "s": 6},
+    {"op": "read", "ids": ["T"], "views": ["overview", "solids"], "tag": "first-bucket"},
+    {"op": "trace", "kind": "f1", "id": "T"},
+    {"op": "wait", "s": 20},
+    {"op": "read", "ids": ["Q"], "views": ["overview"], "tag": "open"},
+    {"op": "read", "ids": ["T"], "views": ["overview", "vapor", "solids", "outlets"], "tag": "steady"},
+    {"op": "log", "grep": "fluid_island=|status=THERMO_DOMAIN", "tag": "D23-1"}
+  ]
+}

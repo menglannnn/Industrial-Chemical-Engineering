@@ -1,0 +1,2 @@
+gamemode spectator
+tp @s 270 -44 44 135 4

@@ -22,9 +22,9 @@ public final class MixtureViscosity {
         propertyPackage=catalog.requirePackage(packageId);
         conditional=catalog.fluidData().conditionalLiquidViscosities();
         liquidMixture=catalog.liquidMixture(packageId);
-        // The catalog is an immutable property snapshot. Compute its transport hash once,
-        // not on every server-thread admission, anchor check and worker publication.
-        revision=catalog.viscosityFingerprint(packageId)+":log-liquid-pair-groups-wilke-v2:catalog-conditional-solute-v1:supercritical-liquid-slot-dilute-v1:range-continuation-v1";
+        // The declared revisions of the data (the package's records, its water, the fluid reference data) and the
+        // formulation labels; nothing is hashed (owner decision 2026-10-26).
+        revision=catalog.fluidRevision(packageId)+":log-liquid-pair-groups-wilke-v2:catalog-conditional-solute-v1:supercritical-liquid-slot-dilute-v1:range-continuation-v1";
         int count=propertyPackage.components().size();liquidCorrelations=new ViscosityCorrelation[count];vaporCorrelations=new ViscosityCorrelation[count];
         double[] mw=new double[count+1];
         for(int i=0;i<count;i++) {

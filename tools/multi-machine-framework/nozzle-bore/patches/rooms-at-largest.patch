@@ -1,0 +1,20 @@
+--- a/src/main/java/com/wormzjl/icheme/science/equipment/ColumnStructure.java
++++ b/src/main/java/com/wormzjl/icheme/science/equipment/ColumnStructure.java
+@@ -355,7 +355,7 @@
+          * two ladders ({@link #severs}). Lists it as unplaced when no row and side is free.
+          */
+         void side(EquipmentShape.Role role, int index, double[] band, double y, int home, double od) {
+-            double half = PipeSizes.flange(od) / 2, neck = Rooms.neck(half), yB = s.bottomTangent(), yT = s.topTangent();
++            double half = PipeSizes.flange(od) / 2, neck = Rooms.neck(PipeSizes.flange(PipeSizes.MAX_OUTSIDE) / 2), yB = s.bottomTangent(), yT = s.topTangent();
+             int turned = s.trays().turn(role, index);
+             int[] tried = turned >= 0 ? new int[]{turned} : order(home);
+             var rows = new ArrayList<Double>();
+@@ -474,7 +474,7 @@
+             var rooms = new Rooms(s);
+             for (var nozzle : layout(s).nozzles())
+                 if (nozzle.axis() != 1)
+-                    rooms.rooms.add(new double[]{Math.floor(nozzle.base()[1]), heading(nozzle.axis(), nozzle.sign()), neck(PipeSizes.flange(nozzle.defaultOd()) / 2)});
++                    rooms.rooms.add(new double[]{Math.floor(nozzle.base()[1]), heading(nozzle.axis(), nozzle.sign()), neck(PipeSizes.flange(PipeSizes.MAX_OUTSIDE) / 2)});
+             return rooms;
+         }
+ 

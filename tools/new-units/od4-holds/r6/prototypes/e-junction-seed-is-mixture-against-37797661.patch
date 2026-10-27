@@ -1,0 +1,45 @@
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+index eebd7f37..b879e185 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+@@ -1114,17 +1114,19 @@ public final class PassiveStepSolver {
+                 double stock=buffer.internalEnergy()-buffer.solids().moments().enthalpy(at.temperature(),at.pressure());
+                 double scale=seed.mass()/mass,enthalpy=(stock+heat)*scale;
+                 for(int c=0;c<n.length;c++)n[c]*=scale;
++                // The seed's water entry trace (D10) stays a basis of the mixture where nothing wet is held or arrives.
++                double trace=seed.waterLiquid()+seed.waterVapor();if(n[n.length-1]==0&&trace>0)n[n.length-1]=trace;
+                 FluidThermodynamics.State engine;
+                 try{var split=model.equilibriumPH(weighted/mass,seed.pressure(),enthalpy,n,false,checkpoint);engine=split!=null?split:model.flashTP(weighted/mass,seed.pressure(),n,checkpoint);}
+                 catch(com.wormzjl.createcheme.science.fluid.thermo.ThermoHold outside){continue;}
+-                if(laidOutFor(phaseCode(model.folded(engine,true)),phaseCode(seed)))continue;
+                 // The engine's answer is the start of the junction's own split, not its verdict (D26): its rows decide the phase.
+                 var own=model.junctionSplit(n,enthalpy,molarMass(n),seed.pressure(),engine,checkpoint);
+                 if(own==null)continue;
+                 var mixture=model.folded(own,true);
+-                if(laidOutFor(phaseCode(mixture),phaseCode(seed)))continue;
+                 if(result==null)result=new ArrayList<>(seeds);
+-                result.set(j,mixture.withSolidState(seed.solids(),seed.solidMoments()));changed=true;
++                result.set(j,mixture.withSolidState(seed.solids(),seed.solidMoments()));
++                // A run of junctions is laid out again while a phase reaches further down it.
++                if(phaseCode(mixture)!=phaseCode(seed))changed=true;
+             }
+             if(!changed)break;
+         }
+@@ -1840,17 +1842,6 @@ public final class PassiveStepSolver {
+     }
+     /** Which phases this state carries: the four fluid flags of {@link FluidThermodynamics#phaseBits} (hydrocarbon liquid 1,
+      * hydrocarbon vapour 2, free water 4, steam 8) and 16 for solids. */
+-    /**
+-     * Whether a junction seed of phase code {@code seed} is laid out for its step's mixture of code {@code mixture}
+-     * ({@link #arrivingPhases}): the same hydrocarbon phases, liquid and gas, and every water phase of the mixture. A pass
+-     * cannot empty a phase, so a hydrocarbon phase the mixture lacks counts as much as one it holds and the seed does not:
+-     * the balance stated four junctions as the 215.5 K CO2-rich gas and liquid delivered to them while each held 3 to 14 g
+-     * of warm gas (stock enthalpy -10 to +44 kJ/kg against -131 to -136), and every step down to 1.1e-6 s started in a
+-     * layout its answer was not in (cold fuzz seed 994, E6). Water keeps the superset: a seed's water may be the entry
+-     * trace of decision D10, which a mixture nothing wet reaches lacks, and dropping it left the rows without the water the
+-     * reconstruction then booked (bundled fuzz seed 157, E4).
+-     */
+-    private static boolean laidOutFor(int mixture,int seed){return ((mixture^seed)&3)==0&&(mixture&~seed&12)==0;}
+     private static int phaseCode(FluidThermodynamics.State state) {
+         return (state.solidMoments().mass()>0?16:0)|FluidThermodynamics.phaseBits(state);
+     }

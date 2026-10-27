@@ -1,0 +1,39 @@
+diff --git a/src/main/java/com/wormzjl/icheme/science/fluid/network/PassiveStepSolver.java b/src/main/java/com/wormzjl/icheme/science/fluid/network/PassiveStepSolver.java
+index 44f7d67..2568919 100644
+--- a/src/main/java/com/wormzjl/icheme/science/fluid/network/PassiveStepSolver.java
++++ b/src/main/java/com/wormzjl/icheme/science/fluid/network/PassiveStepSolver.java
+@@ -477,6 +477,7 @@ public final class PassiveStepSolver {
+             double tolerance=smallHeadspace?NEWTON_TOLERANCE/10:NEWTON_TOLERANCE;
+             try{numerical=SparseNewton.solve(equations,equations.initial(),new SparseNewton.Settings(SparseNewton.ITERATIONS,tolerance,1e-6,24),checkpoint,workspace);}
+             catch(SparseNewton.Nonconvergence failure) {
++                if(Boolean.getBoolean("t895.dump")&&failure.lastVariables()!=null)t895Dump(equations,failure,dt,pass,seeds);
+                 if(failure.lastVariables()==null)throw failure;
+                 double[] trialFlows=Arrays.copyOfRange(failure.lastVariables(),equations.edgeOffset,equations.edgeOffset+graph.pipes().size());
+                 // Owner decision D59 (4): a pump whose target or head limit pulled its suction below the vapour pressure of the
+@@ -3013,6 +3014,26 @@ public final class PassiveStepSolver {
+     /** The point {@link #acceptedEquations} converged to. */
+     double[] acceptedPoint(){return lastSolve==null?null:lastSolve.variables().clone();}
+     /** The rows a block Jacobian sweep has to re-evaluate for one perturbed node or edge column. */
++    // t895 probe: dump a failed pass (trace only).
++    private void t895Dump(Equations equations,SparseNewton.Nonconvergence failure,double dt,int pass,List<FluidThermodynamics.State> seeds) {
++        var out=new StringBuilder("T895 FAIL rateOnly="+rateOnly+" dt="+dt+" pass="+pass+" msg="+failure.getMessage()+"\n");
++        double[] x=failure.lastVariables();double[] x0=equations.initial();
++        for(var pt:new double[][]{x0,x}) {
++            out.append(pt==x0?" -- initial point\n":" -- last iterate\n");
++            double[] f;List<FluidThermodynamics.State> st;
++            try{f=equations.residual(pt);st=equations.states(pt);}catch(RuntimeException e){out.append("  eval threw "+e+"\n");continue;}
++            double norm=0;for(double r:f)norm=Math.max(norm,Math.abs(r));out.append("  max|f|="+norm+"\n");
++            for(int node=0;node<equations.layout.length;node++) {
++                var res=equations.graph.reservoirs().get(node);var s=st.get(node);
++                out.append(String.format("  node %d id=%d %s dry=%b open=%b empty=%b T=%.4f P=%.2f V=%.6g m=%.6g vap=%.6g liq=%.6g U=%.6g mol=%s",node,res.id(),res.kind(),equations.dry[node],res.inventory().open(),res.empty(),s.temperature(),s.pressure(),s.volume(),s.mass(),s.vaporVolume(),s.liquidVolume(),s.internalEnergy(),java.util.Arrays.toString(PhaseLayout.totalAmounts(s))));
++                if(equations.layout[node]!=null){var L=equations.layout[node];out.append(" rows[");for(int r=0;r<L.size();r++)out.append(String.format("%.3g ",f[equations.offsets[node]+r]));out.append("] escale="+L.energyScale()+" ascale="+L.amountScale());}
++                out.append(" seed: T="+String.format("%.4f",seeds.get(node).temperature())+" P="+String.format("%.2f",seeds.get(node).pressure())+" V="+seeds.get(node).volume()+"\n");
++            }
++            for(int e=0;e<equations.graph.pipes().size();e++){var p=equations.graph.pipes().get(e);out.append(String.format("  edge %d %d->%d lawflow=%.6g row=%.3g closed=%b%n",e,p.first(),p.second(),pt[equations.edgeOffset+e],f[equations.edgeOffset+e],equations.boundaryClosed[e]));}
++            for(int i=equations.edgeOffset+equations.graph.pipes().size();i<f.length;i++)out.append("  extra row "+i+" f="+f[i]+" x="+pt[i]+"\n");
++        }
++        System.out.print(out);
++    }
+     final class Equations implements SparseNewton.Equations {
+         final double[][] solidTargets,solidIncoming;
+         /** The junctions above a crystal's melting point (owner decision D61, {@link JunctionCrystals}), null where none is or

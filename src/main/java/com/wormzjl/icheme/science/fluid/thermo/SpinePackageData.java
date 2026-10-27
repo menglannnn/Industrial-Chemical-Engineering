@@ -36,7 +36,7 @@ import java.util.Objects;
  * </ul>
  */
 public final class SpinePackageData {
-    /** The revision prefix of {@link #formationReference()}; the package's spine fingerprint follows it. */
+    /** The revision prefix of {@link #formationReference()}; the package's spine revision follows it. */
     public static final String FORMATION_DATUM = "icheme:formation-298.15K-spine-v1";
 
     /** Where a component's volume translation is anchored. */
@@ -55,19 +55,19 @@ public final class SpinePackageData {
     private final List<Anchor> anchors;
     private final double[] formationEnthalpies;
     private final EnergyReference formationReference;
-    private final String spineFingerprint;
+    private final String spineRevision;
 
     private SpinePackageData(String packageId, List<ThermoComponent> components, List<ReferenceSpine> spines,
                              PairInteractions interactions, List<Anchor> anchors, double[] formationEnthalpies,
-                             String spineFingerprint) {
+                             String spineRevision) {
         this.packageId = packageId;
         this.components = List.copyOf(components);
         this.spines = List.copyOf(spines);
         this.interactions = interactions;
         this.anchors = List.copyOf(anchors);
         this.formationEnthalpies = formationEnthalpies.clone();
-        this.spineFingerprint = spineFingerprint;
-        formationReference = new EnergyReference(FORMATION_DATUM + ":" + spineFingerprint,
+        this.spineRevision = spineRevision;
+        formationReference = new EnergyReference(FORMATION_DATUM + ":" + spineRevision,
                 this.components.stream().map(ThermoComponent::id).toList(), this.formationEnthalpies, true);
     }
 
@@ -125,7 +125,7 @@ public final class SpinePackageData {
                     target - rawVolume));
         }
         return new SpinePackageData(packageId, components, spines, builder.build(), anchors, formation,
-                propertyPackage.spineFingerprint());
+                catalog.spineRevision(packageId));
     }
 
     /** The package components with their PR78 constants, in package order. */

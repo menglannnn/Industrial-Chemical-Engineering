@@ -1,0 +1,13 @@
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+index 8dcbf2f..38b8bf1 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+@@ -61,7 +61,7 @@ public final class PassiveStepSolver {
+      * inventory (owner decision D46): nothing is booked at a mint, and the ledger reports the buffers' change as its own
+      * term ({@link #checkConservation}). A numerical regularisation sized to the flow: its mixing lag at full flow is tau.
+      */
+-    static final double HOLDUP_TAU=.05;
++    static final double HOLDUP_TAU=.01;
+     /**
+      * The movers (pipe ids) refused for the slice in progress ({@link FlowControl.Mode#INLET_WRONG_PHASE}, decision D6),
+      * set by the interval solver at each slice start ({@link #refuseInlets}) and read by every solve until the next;

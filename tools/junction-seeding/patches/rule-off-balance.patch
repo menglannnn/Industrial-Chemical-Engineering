@@ -1,0 +1,21 @@
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+@@ -1841,6 +1841,7 @@
+     record Start(PassiveNetwork graph,double[] lawFlows,boolean[] closed,List<FlowControl.Mode> modes,boolean converged) {}
+     /** Whether this solve starts from a carried point ({@link #startPoint}'s test) or needs the balance. */
+     private boolean needsBalance(PassiveNetwork graph) {
++        if(true)return false; // rule-off proof (tools/junction-seeding): no balance, the per-link law flows and the placeholder junction states start the solve
+         if(graph.pipes().isEmpty())return false;
+         boolean carried=previousPipes.equals(identities(graph))&&Arrays.equals(previousNodeIds,nodeIds(graph))&&previousFlows.length==graph.pipes().size()&&previousLawFlows.length==graph.pipes().size();
+         if(carried&&rateOnly&&!sameStates(previousInputStates,inputStates))carried=false;
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveNetwork.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveNetwork.java
+@@ -89,7 +89,7 @@
+      */
+     public static PassiveNetwork mintJunctions(PassiveNetwork graph,FluidThermodynamics model) {
+         for(var node:graph.reservoirs)if(unsized(node))
+-            return sizeJunctionHoldups(graph,model,new PassiveStepSolver(model).balanceStarts(graph));
++            return sizeJunctionHoldups(graph,model,null); // rule-off proof (tools/junction-seeding): the minted junctions keep their placeholder states
+         return graph;
+     }
+     private static PassiveNetwork sizeJunctionHoldups(PassiveNetwork graph,FluidThermodynamics model,List<FluidThermodynamics.State> starts) {

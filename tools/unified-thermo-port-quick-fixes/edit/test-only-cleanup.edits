@@ -1,0 +1,47 @@
+@@ src/main/java/com/wormzjl/createcheme/science/material/GroupContributionInteractions.java 1
+    /**
+     * k_ij from E_ij and the pure-component attraction and co-volume, the formula's second line; a reference helper
+     * for tests and tools (the kernel evaluates the equivalent cross term, plan section 4.1).
+     */
+    public static double kij(double energyPascal, double ai, double bi, double aj, double bj) {
+        double difference = Math.sqrt(ai) / bi - Math.sqrt(aj) / bj;
+        return (energyPascal - difference * difference) / (2.0 * Math.sqrt(ai * aj) / (bi * bj));
+    }
+
+    /** The hashed content restricted to pairs of {@code axis} (component ids), for the physics fingerprints. */
+>>
+    /** The hashed content restricted to pairs of {@code axis} (component ids), for the physics fingerprints. */
+@@ src/test/java/com/wormzjl/createcheme/science/material/GroupContributionInteractionsTest.java 1
+                    double kij = GroupContributionInteractions.kij(pair.energy(t), i[0], i[1], j[0], j[1]);
+>>
+                    double kij = kij(pair.energy(t), i[0], i[1], j[0], j[1]);
+@@ src/test/java/com/wormzjl/createcheme/science/material/GroupContributionInteractionsTest.java 1
+    /** Soave PR78 a(T) and b of a package component, with the ethane constants of the appendix when asked. */
+>>
+    /**
+     * k_ij from E_ij and the pure-component attraction and co-volume, the formula's second line (plan section 4.1; the
+     * kernel evaluates the equivalent cross term). The reference for appendix A; only this test reads it.
+     */
+    private static double kij(double energyPascal, double ai, double bi, double aj, double bj) {
+        double difference = Math.sqrt(ai) / bi - Math.sqrt(aj) / bj;
+        return (energyPascal - difference * difference) / (2.0 * Math.sqrt(ai * aj) / (bi * bj));
+    }
+
+    /** Soave PR78 a(T) and b of a package component, with the ethane constants of the appendix when asked. */
+@@ src/main/java/com/wormzjl/createcheme/science/fluid/diagnostics/SolverDiagnostics.java 1
+    /** Outer phase checks that seeded a phase a node lacks at the node's own split ({@code FluidThermodynamics.phaseCheck},
+     * decision D26: a vessel's closure of its inventory, a junction's PH answer), and those that seeded the TP-based state
+     * instead because the node's own flash failed or none was given. */
+    public static final LongAdder phaseSeeds=new LongAdder(),phaseSeedFallbacks=new LongAdder();
+>>
+    /** Outer phase checks that seeded a phase a node lacks at the node's own split ({@code FluidThermodynamics.phaseCheck},
+     * decision D26: a vessel's closure of its inventory, a junction's PH answer). */
+    public static final LongAdder phaseSeeds=new LongAdder();
+@@ src/main/java/com/wormzjl/createcheme/science/fluid/diagnostics/SolverDiagnostics.java 1
+map.put("phaseSeeds",phaseSeeds);map.put("phaseSeedFallbacks",phaseSeedFallbacks);
+>>
+map.put("phaseSeeds",phaseSeeds);
+@@ src/main/java/com/wormzjl/createcheme/science/fluid/thermo/FluidThermodynamics.java 1
+                SolverDiagnostics.count(own==null?SolverDiagnostics.phaseSeedFallbacks:SolverDiagnostics.phaseSeeds);
+>>
+                if(own!=null)SolverDiagnostics.count(SolverDiagnostics.phaseSeeds);

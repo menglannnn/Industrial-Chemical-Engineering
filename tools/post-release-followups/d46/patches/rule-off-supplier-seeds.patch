@@ -1,0 +1,13 @@
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+index 8dcbf2f..b991bdf 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+@@ -2022,7 +2022,7 @@ public final class PassiveStepSolver {
+      * junction nothing reaches keeps the state it was built with. */
+     List<FluidThermodynamics.State> balanceStarts(PassiveNetwork graph) {
+         // Round 0 from what reaches each junction ({@link #supplierSeeds}); the balance solves the pressures from there.
+-        var seeds=supplierSeeds(graph,()->{});var seeded=new ArrayList<PassiveNetwork.Reservoir>(graph.reservoirs().size());
++        var seeds=java.util.Collections.<FluidThermodynamics.State>nCopies(graph.reservoirs().size(),null);var seeded=new ArrayList<PassiveNetwork.Reservoir>(graph.reservoirs().size());
+         for(int i=0;i<graph.reservoirs().size();i++){var node=graph.reservoirs().get(i);seeded.add(node.junction()&&seeds.get(i)!=null&&seeds.get(i)!=node.state()?new PassiveNetwork.Reservoir(node.id(),node.elevation(),seeds.get(i),node.kind(),node.inventory()):node);}
+         graph=new PassiveNetwork(seeded,graph.pipes(),graph.scheduledTransfers());
+         suctionFloors=suctionFloors(graph,graph.reservoirs().stream().map(PassiveNetwork.Reservoir::state).toList());

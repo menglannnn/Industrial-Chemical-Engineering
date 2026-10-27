@@ -17,7 +17,7 @@ public final class Instrument {
     /** What a player attaches: the two gauges and the pipe fittings. */
     public enum Type { PRESSURE, TEMPERATURE, SIGHT_GLASS, SHUTOFF, CHECK, PRESSURE_VALVE, FILTER, PUMP, COMPRESSOR }
     /** Every mount name; saved by name, like an enum constant. */
-    public static final Set<String> MOUNTS=Set.of("pipe_north","pipe_south","pipe_east","pipe_west","pipe_accessory","pressure_top","pressure_bottom","temperature_top","temperature_bottom");
+    public static final Set<String> MOUNTS=Set.of("pipe_north","pipe_south","pipe_east","pipe_west","pipe_accessory","pressure_top","pressure_bottom","temperature_top","temperature_bottom","level_body","level_boot","valve_sensor");
     public record Key(long host,String mount) {
         public Key{if(host<=0||mount==null||!MOUNTS.contains(mount))throw new IllegalArgumentException("Invalid instrument key");}
     }
@@ -61,20 +61,23 @@ public final class Instrument {
     public static final class Metadata {
         private List<Installed> installed=List.of();
         private long revision;
+        private List<Sensor.Installed> sensors=List.of();
+        public List<Sensor.Installed> sensors(){return sensors;}
+        public void sensors(List<Sensor.Installed> value){sensors=List.copyOf(value);}
         private boolean recoverOnBreak=true;
         public boolean recoverOnBreak(){return recoverOnBreak;}
         public void recoverOnBreak(boolean value){recoverOnBreak=value;}
         public List<Installed> installed(){return installed;}
         public long revision(){return revision;}
         public void set(List<Installed> value,long revision){installed=List.copyOf(value);this.revision=revision;}
-        public void write(CompoundTag tag){tag.putLong("AccessoryRevision",revision);var list=new ListTag();for(var i:installed)list.add(AccessoryFacts.installed(i));tag.put("Instruments",list);}
+        public void write(CompoundTag tag){tag.putLong("AccessoryRevision",revision);var list=new ListTag();for(var i:installed)list.add(AccessoryFacts.installed(i));tag.put("Instruments",list);var transmitters=new ListTag();sensors.forEach(s->transmitters.add(Sensor.save(s)));tag.put("Sensors",transmitters);}
         public void read(CompoundTag tag) {
             try {
                 long saved=tag.getLong("AccessoryRevision");if(saved<0)throw new IllegalArgumentException("Invalid accessory revision");
                 var list=tag.getList("Instruments",10);if(list.size()>6)throw new IllegalArgumentException("Too many host instruments");
-                var result=new java.util.ArrayList<Installed>();for(var t:list)result.add(AccessoryFacts.installed((CompoundTag)t));installed=List.copyOf(result);revision=saved;
+                var result=new java.util.ArrayList<Installed>();for(var t:list)result.add(AccessoryFacts.installed((CompoundTag)t));installed=List.copyOf(result);revision=saved;var sensorList=tag.getList("Sensors",10);if(sensorList.size()>8)throw new IllegalArgumentException("Too many sensors");var sensorCopy=new java.util.ArrayList<Sensor.Installed>();for(var t:sensorList)sensorCopy.add(Sensor.load((CompoundTag)t));sensors=List.copyOf(sensorCopy);
             } catch(IllegalArgumentException unreadable) {
-                installed=List.of();revision=0;com.wormzjl.icheme.IChemE.LOGGER.warn("accessory_copy status=DROPPED detail={}",unreadable.getMessage());
+                installed=List.of();sensors=List.of();revision=0;com.wormzjl.icheme.IChemE.LOGGER.warn("accessory_copy status=DROPPED detail={}",unreadable.getMessage());
             }
         }
     }

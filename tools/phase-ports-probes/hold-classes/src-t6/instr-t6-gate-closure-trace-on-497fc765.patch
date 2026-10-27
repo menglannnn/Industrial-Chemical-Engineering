@@ -1,0 +1,135 @@
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/network/ConservativeTransport.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/ConservativeTransport.java
+index 6b0af24f..181fdc24 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/ConservativeTransport.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/ConservativeTransport.java
+@@ -72,6 +72,8 @@ public final class ConservativeTransport {
+         public BoundaryTransfer{moles=moles.clone();Objects.requireNonNull(solids);if(solidDirection < -1||solidDirection > 1||!solids.empty()&&solidDirection==0)throw new IllegalArgumentException("Invalid solid boundary direction");}
+         @Override public double[] moles(){return moles.clone();}
+     }
++    public static final ThreadLocal<List<FluidThermodynamics.State>> T6_PRECLOSE=new ThreadLocal<>();
++    static final boolean T6_NOCLOSE=Boolean.getBoolean("t6noclose");
+     public record Projection(List<PassiveNetwork.Inventory> inventories,List<FluidThermodynamics.State> states,
+                              List<BoundaryTransfer> boundaries,double[] externalMoles,double externalEnergy,double pumpWork,Map<Long,InlineFilter> filters) {
+         public Projection(List<PassiveNetwork.Inventory> inventories,List<FluidThermodynamics.State> states,List<BoundaryTransfer> boundaries,double[] externalMoles,double externalEnergy,double pumpWork){this(inventories,states,boundaries,externalMoles,externalEnergy,pumpWork,Map.of());}
+@@ -435,12 +437,15 @@ public final class ConservativeTransport {
+         // so no booked inflow is ever held in a state that does not show it (review "Hold class E6, grid overshoot (G2)").
+         // The connections' energies above are booked on the repartitioned donor, the Newton's own end state. A junction
+         // keeps its state: it has no volume, and its mass is pinned.
+-        for(int node=0;node<nodes;node++) {
++        if(PassiveStepSolver.T6_INSTR)T6_PRECLOSE.set(new ArrayList<>(states));
++        InventoryEquilibrium.T6_SITE.set("reconstruct");
++        for(int node=0;node<nodes&&!T6_NOCLOSE;node++) {
+             var reservoir=graph.reservoirs().get(node);if(index[node]<0||reservoir.junction())continue;
+             checkpoint.run();var state=states.get(node);
+             try{states.set(node,InventoryEquilibrium.close(model,state,new PassiveNetwork.Inventory(reservoir.inventory().volume(),moles[node],energy[node],state.solids()),checkpoint));}
+             catch(com.wormzjl.createcheme.science.fluid.thermo.ThermoDomainViolation violation){throw violation.at(reservoir.id());}
+         }
++        InventoryEquilibrium.T6_SITE.set("refresh");
+         var inventories=new ArrayList<PassiveNetwork.Inventory>();
+         for(int node=0;node<nodes;node++) {
+             var oldNode=graph.reservoirs().get(node);var state=states.get(node);
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/network/InventoryEquilibrium.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/InventoryEquilibrium.java
+index 1eb26cce..923c98ef 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/InventoryEquilibrium.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/InventoryEquilibrium.java
+@@ -52,6 +52,9 @@ public final class InventoryEquilibrium {
+      * passed their generator once it jumped).
+      */
+     public static final double CLOSURE=1e-11;
++    public static final java.util.concurrent.atomic.AtomicLong T6_CALLS=new java.util.concurrent.atomic.AtomicLong(),T6_SOLVES=new java.util.concurrent.atomic.AtomicLong(),T6_ITERATIONS=new java.util.concurrent.atomic.AtomicLong();
++    public static final ThreadLocal<String> T6_SITE=ThreadLocal.withInitial(()->"refresh");
++    static final boolean T6_LOG=Boolean.getBoolean("t6closelog");
+     /**
+      * Decision D36, G2: the vessel's state at what it holds. Its inventory (volume, amounts, internal energy) is the
+      * conserved truth and fixes temperature and pressure through the equation of state, so the energy-volume equations
+@@ -72,8 +75,14 @@ public final class InventoryEquilibrium {
+         }
+         var layout=new PhaseLayout(model,state);var x=layout.encode(state);
+         double[] residual=new double[layout.size()];layout.residual(state,n,energy,volume,residual,0,x);
+-        if(norm(residual)<=CLOSURE)return state;
++        T6_CALLS.incrementAndGet();
++        if(norm(residual)<=CLOSURE){if(T6_LOG)System.out.println("T6_CLOSE site="+T6_SITE.get()+" skip before="+norm(residual)+" vap="+state.vaporVolume()/state.volume());return state;}
++        T6_SOLVES.incrementAndGet();
++        if(T6_LOG){var sb=new StringBuilder("T6_CLOSE_ROWS size="+layout.size()+" balances="+layout.componentBalanceCount()+" singlePhase="+layout.singlePhaseComponentCount()+" energyScale="+layout.energyScale()+" U="+state.internalEnergy()+" Utarget="+energy+" Vstate="+state.volume()+" V="+volume+" rows:");
++            for(int i=0;i<residual.length;i++)if(Math.abs(residual[i])>1e-13)sb.append(String.format(java.util.Locale.ROOT," r%d=%.3e",i,residual[i]));System.out.println(sb);}
+         var solved=SparseNewton.solve(layout.fixedInventory(n,energy,volume),x,new SparseNewton.Settings(24,CLOSURE,1e-6,24),checkpoint);
++        T6_ITERATIONS.addAndGet(solved.iterations());
++        if(T6_LOG){var d=layout.decode(solved.variables(),0);System.out.println("T6_CLOSE site="+T6_SITE.get()+" solve iterations="+solved.iterations()+" before="+norm(residual)+" vap="+state.vaporVolume()/state.volume()+" P0="+state.pressure()+" P1="+d.pressure()+" dP="+(d.pressure()-state.pressure())+" T0="+state.temperature()+" dT="+(d.temperature()-state.temperature())+" bitwiseSame="+java.util.Arrays.equals(solved.variables(),x));}
+         var closed=ConservativeTransport.repartition(model,layout.decode(solved.variables(),0),n);
+         // The restatement applies the flash's trace-phase rule (decision D34), so a phase the closure left as a trace is
+         // folded away and the closed state is checked in its own layout. A step that folded a phase is solved again from
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+index 7c6d0f02..3965316e 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+@@ -565,6 +565,7 @@ public final class PassiveStepSolver {
+             SolverDiagnostics.count(SolverDiagnostics.verificationResiduals);
+             double maximumResidual=0;for(double residual:equations.residual(reconstructed))maximumResidual=Math.max(maximumResidual,Math.abs(residual));
+             double gate=acceptance==Acceptance.FULL?1e-8:1e-6;
++            if(T6_INSTR&&maximumResidual>gate&&T6_PRINTED.incrementAndGet()<=T6_MAX)t6Report(graph,equations,x,reconstructed,projection.states(),dt,pass,numerical);
+             if(maximumResidual>gate) {
+                 // Decision D13: a refused point gets one polish on a fresh Jacobian before the step is refused; see
+                 // {@link #polishRefusedPoint}. Reached only after the gate has refused, so every point it accepts is untouched.
+@@ -597,6 +598,44 @@ public final class PassiveStepSolver {
+         }
+         throw new SparseNewton.Nonconvergence("Device active-set limit");
+     }
++    static final boolean T6_INSTR=Boolean.getBoolean("t6instr");
++    static final long T6_MAX=Long.getLong("t6max",40);
++    static final java.util.concurrent.atomic.AtomicLong T6_PRINTED=new java.util.concurrent.atomic.AtomicLong();
++    static boolean t6Polish(){return T6_INSTR&&T6_PRINTED.get()<=T6_MAX;}
++    static String t6Where(Equations equations,int row) {
++        var g=equations.graph;
++        if(row>=equations.edgeOffset&&row<equations.edgeOffset+g.pipes().size()){int e=row-equations.edgeOffset;var p=g.pipes().get(e);return "edge "+e+" ("+p.first()+"->"+p.second()+" "+p.control().getClass().getSimpleName()+")";}
++        int node=-1;for(int n=0;n<equations.offsets.length;n++)if(equations.layout[n]!=null&&equations.offsets[n]<=row)node=n;
++        return node<0?"row "+row:"node "+node+" local "+(row-equations.offsets[node])+" of "+equations.layout[node].size();
++    }
++    static String t6Worst(Equations equations,double[] r) {
++        int worst=0;for(int i=1;i<r.length;i++)if(Math.abs(r[i])>Math.abs(r[worst]))worst=i;
++        return String.format(java.util.Locale.ROOT,"%.3e at %s",r[worst],t6Where(equations,worst));
++    }
++    void t6Report(PassiveNetwork graph,Equations equations,double[] x,double[] reconstructed,List<FluidThermodynamics.State> closed,double dt,int pass,SparseNewton.Result numerical) {
++        var sb=new StringBuilder();
++        double[] rc=equations.residual(x),rr=equations.residual(reconstructed);
++        sb.append(String.format(java.util.Locale.ROOT,"T6_GATE dt=%.6e pass=%d it=%d norm=%.3e cand=[%s] recon=[%s]",dt,pass,numerical.iterations(),numerical.residualNorm(),t6Worst(equations,rc),t6Worst(equations,rr)));
++        var pre=ConservativeTransport.T6_PRECLOSE.get();
++        if(pre!=null&&pre.size()==closed.size()) {
++            double[] old=x.clone();
++            for(int node=0;node<pre.size();node++)if(equations.layout[node]!=null){var enc=equations.layout[node].encode(pre.get(node));System.arraycopy(enc,0,old,equations.offsets[node],enc.length);}
++            sb.append(" preG2recon=[").append(t6Worst(equations,equations.residual(old))).append(']');
++        }
++        var cand=equations.states(x);
++        for(int node=0;node<closed.size();node++) {
++            var res=graph.reservoirs().get(node);if(equations.layout[node]==null)continue;var c=closed.get(node);var k=cand.get(node);
++            double nTot=0,nGas=0;for(double v:c.vaporView())nGas+=v;nGas+=c.waterVapor();for(double v:c.liquidView())nTot+=v;nTot+=c.waterLiquid()+nGas;
++            var lay=equations.layout[node];
++            sb.append(String.format(java.util.Locale.ROOT,"%n   n%d stepLayout size=%d balances=%d singlePhase=%d energyScale=%.6e; node rows cand/recon:",node,lay.size(),lay.componentBalanceCount(),lay.singlePhaseComponentCount(),lay.energyScale()));
++            for(int i=0;i<lay.size();i++){int at=equations.offsets[node]+i;if(Math.abs(rr[at])>1e-12||Math.abs(rc[at])>1e-12)sb.append(String.format(java.util.Locale.ROOT," r%d=%.2e/%.2e",i,rc[at],rr[at]));}
++            sb.append(String.format(java.util.Locale.ROOT,"%n   n%d id=%d %s junction=%b V=%.4g vap=%.3e nGas/nTot=%.3e Pcand=%.10e Ppre=%s Pclosed=%.10e dP=%.3e Tc=%.6f Tclosed=%.6f liq=%.4g water=%.4g",
++                    node,res.id(),res.kind(),res.junction(),c.volume(),c.vaporVolume()/c.volume(),nGas/nTot,k.pressure(),pre==null?"-":String.format(java.util.Locale.ROOT,"%.10e",pre.get(node).pressure()),c.pressure(),c.pressure()-k.pressure(),k.temperature(),c.temperature(),c.liquidVolume(),c.waterVolume()));
++        }
++        for(int e=0;e<graph.pipes().size();e++){var p=graph.pipes().get(e);
++            sb.append(String.format(java.util.Locale.ROOT,"%n   e%d %d->%d %s flow=%.6e rowCand=%.3e rowRecon=%.3e",e,p.first(),p.second(),p.control().getClass().getSimpleName(),x[equations.edgeOffset+e],rc[equations.edgeOffset+e],rr[equations.edgeOffset+e]));}
++        System.out.println(sb);
++    }
+     /** A point the equation gate refused, re-solved once and passing the gate; see {@link #polishRefusedPoint}. */
+     private record Polished(SparseNewton.Result numerical,double[] variables,List<FluidThermodynamics.State> states,double[] flows,double[] heads,
+                             double[][] draws,ConservativeTransport.Projection projection,double[] reconstructed,double residual) {}
+@@ -629,7 +668,8 @@ public final class PassiveStepSolver {
+         SolverDiagnostics.count(SolverDiagnostics.equationGatePolishes);
+         SparseNewton.Result numerical;
+         try{numerical=SparseNewton.solve(equations,x,new SparseNewton.Settings(20,tolerance*1e-2,1e-6,24),checkpoint,new SparseNewton.Workspace(ownership));}
+-        catch(SparseNewton.Nonconvergence failure){return null;}
++        catch(SparseNewton.Nonconvergence failure){if(t6Polish())System.out.println("T6_POLISH newton failed: "+failure.getMessage());return null;}
++        if(t6Polish())System.out.println("T6_POLISH newton it="+numerical.iterations()+" norm="+numerical.residualNorm());
+         double[] variables=numerical.variables();var states=equations.states(variables);
+         // A trace the polished point would reactivate is an active-set change the pass loop would take (reactivate), not an
+         // accepted point: asked on copies, so nothing of the pass's own state moves.
+@@ -664,6 +704,7 @@ public final class PassiveStepSolver {
+         for(int node=0;node<projection.states().size();node++)if(equations.layout[node]!=null){var encoded=equations.layout[node].encode(projection.states().get(node));System.arraycopy(encoded,0,reconstructed,equations.offsets[node],encoded.length);}
+         SolverDiagnostics.count(SolverDiagnostics.verificationResiduals);
+         double residual=0;for(double value:equations.residual(reconstructed))residual=Math.max(residual,Math.abs(value));
++        if(t6Polish())System.out.println("T6_POLISH recon="+t6Worst(equations,equations.residual(reconstructed))+" polishedPointItself="+t6Worst(equations,equations.residual(variables)));
+         if(residual>gate)return null;
+         SolverDiagnostics.count(SolverDiagnostics.equationGatePolishesAccepted);
+         return new Polished(numerical,variables,states,flows,heads,draws,projection,reconstructed,residual);

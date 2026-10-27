@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.wormzjl.icheme.runtime.fluid.HoldClassWorldsTest" tests="1" skipped="0" failures="0" errors="0" timestamp="2026-10-24T03:11:54.082Z" hostname="WORMZ-PC" time="0.438">
+  <properties/>
+  <testcase name="aFailedIterateRaisesNoPhaseHold()" classname="com.wormzjl.icheme.runtime.fluid.HoldClassWorldsTest" time="0.438"/>
+  <system-out><![CDATA[C430_TARGET iteration=16 floor=2.8826652123657626E-17 regularized=[false, true, false] step=[5.369423791366118E7, 1.2533436105352568E16, -190817.33544626395]
+C430_SWEEP iteration=16 selected=[false, true, false] before=15.200406383532568 after=13.212883746297356
+]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

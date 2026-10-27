@@ -19,7 +19,8 @@ import org.junit.jupiter.api.Test;
  * The bundled pilot package {@code icheme:pilot_cryogenic} (batch 2026-09-24-coolprop-low-temperature; P2 record
  * kinds, P3 WP3 bundling): it loads from the main resources, it is the only package with a reference spine, the test
  * network override selects it, the loader enforces its rules (spine and crystals, D6's single ideal-gas source, the
- * {@code volume_translation} field), and the fingerprints of the eight column and network packages stay byte-identical.
+ * {@code volume_translation} field), and the eight column and network packages keep their declared revisions and the
+ * physics they share.
  */
 class PilotCryogenicCatalogTest {
     private static final String PACKAGE = "data/icheme/materials/packages/pilot_cryogenic.json";
@@ -31,55 +32,66 @@ class PilotCryogenicCatalogTest {
     private static final String CALIBRATION = "data/icheme/materials/transport/liquid_calibration.json";
 
     /**
-     * Package id, scientific revision and physics fingerprint of every bundled column and network package, read at
-     * 9ca0f9c before the P2 loader change (a javac-run main against the compiled classes). The physics fingerprints are
-     * unchanged since; the scientific revisions moved once, with the water record every package shares (WP4 of the
-     * range-extrapolation plan: its ice Ih and revision {@code water-iapws-shomate-r2}; bonga's was {@code 61dcf6df...}).
-     * Both pins of {@code tjl20_methane_nitrogen} moved with the nitrogen record r3 (owner decision D37, simplification
-     * S4: its {@code ideal_gas_cp.below} segment deleted, the fit's 273.16 K lower end declared; before, {@code a390e042...}
-     * and {@code c9ff50b0...}); no other package carries that record.
-     * Every scientific revision moved with the mod rename to IChemE, which hashes the records' {@code icheme:} ids (bonga's was
-     * {@code 2b656d11...}); every physics fingerprint kept its value.
+     * Package id and identity label of every bundled column and network package: the package's id and its record's own
+     * declared revision, the first part of its identity ({@link MaterialCatalog.Package#label}). Until 2026-10-26 these
+     * pins were hashes of the data, with a physics fingerprint per package (their history is in this file's git log);
+     * since then nothing is hashed and each record declares its own revision (owner decisions): the rest of an identity
+     * is every record's revision (MaterialCatalogTest checks the composition), and the physics the packages share is
+     * compared directly ({@link #TJL20_PHYSICS}).
      */
     private static final String[][] BUNDLED_PINS = {
-        {"icheme:bonga_tjl20", "crude-regrouped-r1:920404082b6253be7d438e21c46306699959145883480c37c95ec51eb125f82b", "b1b9f1eb4d77f7868982c4eec28fabd5b4b9fd36b91ca8a5869b7fbcbea6ceb8"},
-        {"icheme:cold_lake_blend_tjl20", "crude-regrouped-r1:0459f3fae2bd06ad1534282d45f4c2ff546914df7020583531d5e3b99c93b798", "b1b9f1eb4d77f7868982c4eec28fabd5b4b9fd36b91ca8a5869b7fbcbea6ceb8"},
-        {"icheme:dalia_tjl20", "crude-regrouped-r1:4cc6e1ba319c0467f589715c9a507b6007b9d089c74aa5fd0b51ae45941a0314", "b1b9f1eb4d77f7868982c4eec28fabd5b4b9fd36b91ca8a5869b7fbcbea6ceb8"},
-        {"icheme:tjl19_dwsim", "crude-regrouped-r1:59144f103ec4638390f59a35274bf98cba47b71f7138caa4fa6fb9e216ddc17c", "3361fe82944a086e30a433f7f43d9122583a7ee762d8c5caff8b2d5af00303b4"},
-        {"icheme:tjl20_methane", "crude-regrouped-r1:4fe60aa01979e93c019232f1be4bcb924771aeebf641ae2ceb96fdd90257a910", "b1b9f1eb4d77f7868982c4eec28fabd5b4b9fd36b91ca8a5869b7fbcbea6ceb8"},
-        {"icheme:tjl20_methane_nitrogen", "crude-regrouped-r1:720b87e10c2849f21e535a96aee4912799b5424d6ebd5c6e674ef581562d66a1", "70a43baa0dbbbd1aba90b60695c513ccbedf640321ac4f5320fa386438e045ee"},
-        {"icheme:upper_zakum_tjl20", "crude-regrouped-r1:b3ab3d1d69910400a92603a796236ce67b87f7a002610d2a21911eed6b73c85e", "b1b9f1eb4d77f7868982c4eec28fabd5b4b9fd36b91ca8a5869b7fbcbea6ceb8"},
-        {"icheme:wti_light_export_tjl20", "crude-regrouped-r1:c2dc1b88c5096e20fe6639265dd8b9b2ab2d97b05587883ee1ebd75a91a9309d", "b1b9f1eb4d77f7868982c4eec28fabd5b4b9fd36b91ca8a5869b7fbcbea6ceb8"},
+        {"icheme:bonga_tjl20", "icheme:bonga_tjl20@crude-regrouped-r1"},
+        {"icheme:cold_lake_blend_tjl20", "icheme:cold_lake_blend_tjl20@crude-regrouped-r1"},
+        {"icheme:dalia_tjl20", "icheme:dalia_tjl20@crude-regrouped-r1"},
+        {"icheme:tjl19_dwsim", "icheme:tjl19_dwsim@crude-regrouped-r1"},
+        {"icheme:tjl20_methane", "icheme:tjl20_methane@crude-regrouped-r1"},
+        {"icheme:tjl20_methane_nitrogen", "icheme:tjl20_methane_nitrogen@crude-regrouped-r1"},
+        {"icheme:upper_zakum_tjl20", "icheme:upper_zakum_tjl20@crude-regrouped-r1"},
+        {"icheme:wti_light_export_tjl20", "icheme:wti_light_export_tjl20@crude-regrouped-r1"},
     };
+    private static final String TJL20 = "icheme:tjl20_methane";
+    /**
+     * The packages with tjl20_methane's physics on its axis: the regrouped crude assays (one physics fingerprint,
+     * {@code b1b9f1eb...}, until 2026-10-26) and the network package, whose nitrogen lies outside that axis.
+     */
+    private static final List<String> TJL20_PHYSICS = List.of("icheme:bonga_tjl20", "icheme:cold_lake_blend_tjl20", "icheme:dalia_tjl20",
+            "icheme:tjl20_methane_nitrogen", "icheme:upper_zakum_tjl20", "icheme:wti_light_export_tjl20");
 
     /**
      * The pilot package as committed in P3 WP3 (pilot records r1, the E-PPR78 rule on icheme:eppr78_2022 r1), with
-     * the spine records of P3 WP9a (N2, CH4 and C2H6 r2, CO2 r3) and the CO2-I crystal of P4 stage 1 (r2). A numeric edit
-     * of any of them, or of the hash rules, moves a pin; the pin is then updated with the record's revision.
-     *
-     * <p>Pin moves. P3 WP9a moved the spine fingerprint from {@code e750073d...} (WP3: spine r1 of N2/CH4/C2H6, r2 of
-     * CO2) to {@code 1b33b193...}, for two decided changes: the CEA segments and standard entropies with CEA's own gas
-     * constant 8.314510 instead of 8.314472 (N2, C2H6, CO2), and methane's segments above 425 K replaced by the GERG-2008
-     * ideal-gas function to 1200 K (decision D13). P4 stage 1 moved it from {@code 1b33b193...} to the value below: the
-     * CO2-I crystal r1 (research-only segments) became r2, the Jaeger and Span 2012 Gibbs function with an anchor fusion
-     * enthalpy of 9019 J/mol. The scientific revision and the physics fingerprint do not see the spine or the crystal and
-     * did not move. WP4 of the range-extrapolation plan moved the scientific revision from {@code 37a33a61...}, with the
-     * water record's ice (as every package's), not the physics fingerprint. The mod rename to IChemE moved it from
-     * {@code c83264ec...} with the records' {@code icheme:} ids; the physics and spine fingerprints did not move.</p>
+     * the spine records of P3 WP9a (N2, CH4 and C2H6 r2, CO2 r3) and the CO2-I crystal of P4 stage 1 (r2): the package's
+     * identity, every record it names for its phase physics by its declared revision (its viscosities are in the fluid
+     * identity), and the spine identity of its spine and crystal records' declared revisions. An edit of a record bumps
+     * the record's revision, which moves the pin. Until 2026-10-26 these were hashes of the data (history in this file's
+     * git log).
      */
-    private static final String PILOT_SCIENTIFIC_REVISION = "pilot-cryogenic-p3-r1:d4bee9e79cb00c3c3fe5ae47e9ff95b91d34546417955772ded841d937a20bbf";
-    private static final String PILOT_PHYSICS_FINGERPRINT = "7378e1991b885b5a129a7e74eae0ee5d0ebd5f1d6d9be298182bc163519230c0";
-    private static final String PILOT_SPINE_FINGERPRINT = "581c9098c10bef8de71cd8fb029221ffae849c65ebc3d01a2e62ba715645df08";
+    private static final String PILOT_SCIENTIFIC_REVISION = String.join(";",
+            "icheme:pilot_cryogenic@pilot-cryogenic-p3-r1",
+            "properties=" + String.join(",",
+                    "icheme:pilot_nitrogen@pilot-nitrogen-p3-r1",
+                    "icheme:pilot_methane@pilot-methane-p3-r1",
+                    "icheme:pilot_ethane@pilot-ethane-p3-r1",
+                    "icheme:pilot_carbon_dioxide@pilot-carbon-dioxide-p3-r1"),
+            "interactions=icheme:pilot_cryogenic@pilot-cryogenic-eppr78-r1",
+            "group-interactions=icheme:eppr78_2022@eppr78-2022-si-table-s4-r2",
+            "water=icheme:water@water-iapws-shomate-r2");
+    private static final String PILOT_SPINE_REVISION = "spine:icheme:spine_nitrogen@spine-nitrogen-r2,icheme:spine_methane@spine-methane-r2,"
+            + "icheme:spine_ethane@spine-ethane-r2,icheme:spine_carbon_dioxide@spine-carbon_dioxide-r3,icheme:crystal_carbon_dioxide_i@crystal-carbon_dioxide-i-r2";
 
     @Test
-    void bundledPackageFingerprintsAreUnchanged() {
+    void bundledPackageRevisionsAndSharedPhysicsAreUnchanged() {
         for (MaterialCatalog catalog : List.of(MaterialCatalog.bundled(), PilotCryogenicTestCatalog.catalog())) {
             for (String[] pin : BUNDLED_PINS) {
                 var p = catalog.requirePackage(pin[0]);
-                assertEquals(pin[1], p.scientificRevision(), pin[0]);
-                assertEquals(pin[2], catalog.physicsFingerprint(pin[0], p.components()), pin[0]);
-                assertTrue(p.spine().isEmpty() && p.crystals().isEmpty() && p.spineFingerprint().isEmpty() && p.groupContributions() == null, pin[0]);
+                assertEquals(pin[1], MaterialCatalog.Package.label(p.scientificRevision()), pin[0]);
+                assertTrue(p.spine().isEmpty() && p.crystals().isEmpty() && catalog.spineRevision(pin[0]).isEmpty() && p.groupContributions() == null, pin[0]);
             }
+            var axis = catalog.requirePackage(TJL20).components();
+            for (String id : TJL20_PHYSICS) assertTrue(catalog.samePhysics(TJL20, id, axis), id);
+            // tjl19_dwsim had a fingerprint of its own for its 18-component axis; on that axis its physics is tjl20's.
+            var dwsim = catalog.requirePackage("icheme:tjl19_dwsim");
+            assertTrue(axis.containsAll(dwsim.components()));
+            assertTrue(catalog.samePhysics(dwsim.id(), TJL20, dwsim.components()), "tjl19_dwsim on its own axis");
             // The pilot is the ninth bundled package and the only one with a reference spine.
             assertEquals(BUNDLED_PINS.length + 1, catalog.packages().size());
             assertEquals(List.of(PilotCryogenicTestCatalog.PACKAGE_ID), catalog.packages().values().stream()
@@ -95,11 +107,10 @@ class PilotCryogenicCatalogTest {
     void pilotPackageIsBundled() {
         var catalog = MaterialCatalog.bundled();
         var p = catalog.requirePackage(PilotCryogenicTestCatalog.PACKAGE_ID);
-        System.out.printf("P3 pilot pins: scientific revision %s, physics %s, spine %s, fluid thermo %s%n", p.scientificRevision(),
-                catalog.physicsFingerprint(p.id(), p.components()), p.spineFingerprint(), catalog.fluidThermoFingerprint(p.id()));
+        System.out.printf("P3 pilot identity: scientific revision %s, spine %s, fluid %s%n", p.scientificRevision(),
+                catalog.spineRevision(p.id()), catalog.fluidRevision(p.id()));
         assertEquals(PILOT_SCIENTIFIC_REVISION, p.scientificRevision());
-        assertEquals(PILOT_PHYSICS_FINGERPRINT, catalog.physicsFingerprint(p.id(), p.components()));
-        assertEquals(PILOT_SPINE_FINGERPRINT, p.spineFingerprint());
+        assertEquals(PILOT_SPINE_REVISION, catalog.spineRevision(p.id()));
         assertEquals(List.of("Nitrogen", "Methane", "Ethane", "CarbonDioxide"), p.components());
         assertEquals(List.of("icheme:pilot_nitrogen", "icheme:pilot_methane", "icheme:pilot_ethane", "icheme:pilot_carbon_dioxide"),
                 p.properties().stream().map(MaterialCatalog.Property::id).toList());
@@ -153,40 +164,39 @@ class PilotCryogenicCatalogTest {
         assertEquals(PilotCryogenicTestCatalog.PACKAGE_ID, network.packageId());
         assertEquals(List.of("water", "nitrogen", "methane", "ethane", "carbon_dioxide"), network.fluidPresets());
         assertEquals("CarbonDioxide", pilot.presets().fluid("carbon_dioxide").component());
-        assertEquals(bundled.requirePackage(PilotCryogenicTestCatalog.PACKAGE_ID).fingerprint(),
-                pilot.requirePackage(PilotCryogenicTestCatalog.PACKAGE_ID).fingerprint(), "the override selects, it does not change, the package");
+        String id = PilotCryogenicTestCatalog.PACKAGE_ID;
+        var axis = pilot.requirePackage(id).components();
+        assertEquals(bundled.requirePackage(id).scientificRevision(), pilot.requirePackage(id).scientificRevision());
+        assertEquals(bundled.physicsContent(id, axis), pilot.physicsContent(id, axis), "the override selects, it does not change, the package");
         // One anchor per species per package: the pilot's liquids are anchored by their volume_translation, so the
-        // global calibration points do not enter its fluid identity; the bundled network's do.
+        // global calibration points do not move its anchors.
         var edited = PilotCryogenicTestCatalog.parseWith(CALIBRATION, o -> o.getAsJsonArray("points").get(0).getAsJsonObject()
                 .addProperty("molarVolumeCubicMetres", 4.46e-5));
-        assertEquals(pilot.fluidThermoFingerprint(PilotCryogenicTestCatalog.PACKAGE_ID), edited.fluidThermoFingerprint(PilotCryogenicTestCatalog.PACKAGE_ID));
-        assertNotEquals(pilot.fluidThermoFingerprint("icheme:tjl20_methane_nitrogen"), edited.fluidThermoFingerprint("icheme:tjl20_methane_nitrogen"));
+        assertEquals(com.wormzjl.icheme.science.fluid.thermo.SpinePackageData.of(pilot, id).anchors(),
+                com.wormzjl.icheme.science.fluid.thermo.SpinePackageData.of(edited, id).anchors());
     }
 
     @Test
-    void spineFingerprintIsDeterministicAndSeesOnlyNumbers() {
-        var a = MaterialCatalog.parse(PilotCryogenicTestCatalog.resources()).requirePackage(PilotCryogenicTestCatalog.PACKAGE_ID);
-        var b = MaterialCatalog.parse(PilotCryogenicTestCatalog.resources()).requirePackage(PilotCryogenicTestCatalog.PACKAGE_ID);
-        assertEquals(a.spineFingerprint(), b.spineFingerprint());
-        assertEquals(a.fingerprint(), b.fingerprint());
-        assertEquals(PILOT_SPINE_FINGERPRINT, a.spineFingerprint(), "the pilot set's spine fingerprint moved: a spine or crystal number or the hash rule changed");
-        String text = PilotCryogenicTestCatalog.parseWith(NITROGEN, o -> o.addProperty("source", "edited provenance text"))
-                .requirePackage(PilotCryogenicTestCatalog.PACKAGE_ID).spineFingerprint();
-        assertEquals(a.spineFingerprint(), text);
-        var edited = PilotCryogenicTestCatalog.parseWith(NITROGEN, o -> o.getAsJsonObject("standard_entropy").addProperty("value_j_per_mol_kelvin", 191.6))
-                .requirePackage(PilotCryogenicTestCatalog.PACKAGE_ID);
-        assertFalse(a.spineFingerprint().equals(edited.spineFingerprint()), "a numeric edit must move the spine fingerprint");
-        assertEquals(a.fingerprint(), edited.fingerprint(), "the package physics fingerprint does not see the spine");
-        var crystal = PilotCryogenicTestCatalog.parseWith(CRYSTAL, o -> o.getAsJsonObject("anchor").addProperty("fusion_enthalpy_j_per_mol", 9000))
-                .requirePackage(PilotCryogenicTestCatalog.PACKAGE_ID);
-        assertFalse(a.spineFingerprint().equals(crystal.spineFingerprint()), "a crystal edit must move the spine fingerprint");
-        // A volume_translation number is package physics (hashed through the property record); its texts are not.
-        var anchor = PilotCryogenicTestCatalog.parseWith(PILOT_METHANE, o -> o.getAsJsonObject("volume_translation").addProperty("molar_volume_m3_per_mol", 4.55e-5))
-                .requirePackage(PilotCryogenicTestCatalog.PACKAGE_ID);
-        assertNotEquals(a.fingerprint(), anchor.fingerprint());
-        var anchorText = PilotCryogenicTestCatalog.parseWith(PILOT_METHANE, o -> o.getAsJsonObject("volume_translation").addProperty("source", "edited"))
-                .requirePackage(PilotCryogenicTestCatalog.PACKAGE_ID);
-        assertEquals(a.fingerprint(), anchorText.fingerprint());
+    void spineIdentityIsTheRecordsDeclaredRevisions() {
+        String id = PilotCryogenicTestCatalog.PACKAGE_ID;
+        var catalog = MaterialCatalog.parse(PilotCryogenicTestCatalog.resources());
+        assertEquals(PILOT_SPINE_REVISION, catalog.spineRevision(id));
+        assertEquals(catalog.spineRevision(id), MaterialCatalog.parse(PilotCryogenicTestCatalog.resources()).spineRevision(id));
+        // Nothing is hashed (owner decision 2026-10-26): a spine or crystal edit declares itself with its record's
+        // revision, which moves the spine identity and leaves the package's.
+        var edited = PilotCryogenicTestCatalog.parseWith(NITROGEN, o -> {
+            o.getAsJsonObject("standard_entropy").addProperty("value_j_per_mol_kelvin", 191.6); PilotCryogenicTestCatalog.bump(o); });
+        assertNotEquals(catalog.spineRevision(id), edited.spineRevision(id));
+        assertEquals(catalog.requirePackage(id).scientificRevision(), edited.requirePackage(id).scientificRevision());
+        var crystal = PilotCryogenicTestCatalog.parseWith(CRYSTAL, o -> {
+            o.getAsJsonObject("anchor").addProperty("fusion_enthalpy_j_per_mol", 9000); PilotCryogenicTestCatalog.bump(o); });
+        assertNotEquals(catalog.spineRevision(id), crystal.spineRevision(id));
+        // A volume_translation number is package physics, compared with the property record; its texts are not.
+        var axis = catalog.requirePackage(id).components();
+        var anchor = PilotCryogenicTestCatalog.parseWith(PILOT_METHANE, o -> o.getAsJsonObject("volume_translation").addProperty("molar_volume_m3_per_mol", 4.55e-5));
+        assertNotEquals(catalog.physicsContent(id, axis), anchor.physicsContent(id, axis));
+        var anchorText = PilotCryogenicTestCatalog.parseWith(PILOT_METHANE, o -> o.getAsJsonObject("volume_translation").addProperty("source", "edited"));
+        assertEquals(catalog.physicsContent(id, axis), anchorText.physicsContent(id, axis));
     }
 
     @Test
@@ -235,7 +245,7 @@ class PilotCryogenicCatalogTest {
         refused(NITROGEN, o -> o.getAsJsonObject("coverage").addProperty("grade", "good"), "coverage.grade: expected");
         refused(NITROGEN, o -> o.addProperty("component", "Argon"), "component: unresolved Argon");
         refused(CRYSTAL, o -> o.remove("coverage"), "coverage: required field");
-        refused(NITROGEN, o -> o.addProperty("revision", "spine nitrogen r1"), "revision: expected a stable identifier");
+        refused(NITROGEN, o -> o.addProperty("revision", "spine nitrogen r1"), "revision: \"spine nitrogen r1\" must be a token");
     }
 
     static void refused(String path, Consumer<com.google.gson.JsonObject> edit, String message) {

@@ -19,6 +19,40 @@ All notable changes to Industrial Chemical Engineering (IChemE, formerly CreateC
 
 - Chinese (`zh_cn`) language file, and a dedicated creative tab for this mod's items. Recovered-solids tooltips and the "waiting for world identity" message use translation keys (`itemGroup.icheme`, `tooltip.icheme.recovered_solids.*`, `gui.icheme.fluid.waiting_identity`).
 - Aggressive interactive distillation solves use the admitted 1e-3 closure after the existing acceptance audit; 42-stage requests now use a 15-30-42 seed ladder to avoid deadline exhaustion (batch `2026-10-26-v3-solver-performance`).
+## [0.15.2] - 2026-10-27
+## [0.15.2] - 2026-10-27
+
+### Fixed
+
+- The skylight GameTest `EquipmentCompatGameTests.aSkirtsFloorTakesTheSkylightAboveTheDrum` waits for the light engine's run of the queued work, not a tick count: it failed once on a loaded machine (`33936ffd`, docs and probe `5df6cb7b`; batch `2026-10-27-skirt-shadow`, probe in `tools/skirt-shadow/gametest-probe/`).
+
+## [0.15.1] - 2026-10-27
+
+### Changed
+
+- Distillation column sump sized from engineering references (commit `a0ab6b50`; batch `2026-10-27-column-sump`, survey `COLUMN_SUMP_SURVEY.md`, review `COLUMN_SUMP_REVIEW.md`): the space from the bottom tangent to the bottom tray is the stack of the low level, the level span, the reboiler return and its clearances, to the next whole metre: 3 m up to D 1.5 m and 4 m up to D 8 m (was 2 m up to D 4 m, then D/2), half the diameter beyond as before; placed columns under 8 m refresh taller, their trays, side nozzles and platforms up to two blocks higher; ten more short designs find a row for every nozzle.
+
+### Fixed
+
+- The floor inside a vessel's skirt is no longer shadowed (commit `d02d221f`; batch `2026-10-27-skirt-shadow`, review `SKIRT_SHADOW_REVIEW.md`): a vessel whose skirt shows its inside (standing drums, columns, trickle-bed and ebullated-bed reactors) has interior cells that let skylight through (`EquipmentInteriorBlock.SKYLIGHT`), so the floor seen through the slots and the port is lit as the ground beside it instead of darkening a level a block towards the middle (level 9 under a 10 m drum). Placed vessels restate their interior cells at their next load. A first fix that repainted skirts (`c9e827ac`) was reverted (`f2b15b31`). Tool folder `tools/skirt-shadow/`.
+
+## [0.15.0] - 2026-10-27
+
+### Added
+
+- Multi-machine framework, first stage: the distillation column as an assembly of parts (commits `660650cd`, `43e7872e`, `6648144f`, `7b31eb9d`, `69fc53ec`, `9e56ddab`, `e5f08792`, `ee3b6399`, `4676a9a8`, `9a6269a5`, `20f12268`, `152aefa3`, `5d7ffb8c`, `61d6dd2e`, `ef0ae447`, `d5710373`, `132815fd`, `11ff43ed`, `23d8a19d`, `67343274`; merge of 0.14.1 `e69cec50`; batch `2026-10-26-multi-machine-framework`, plan `MULTI_MACHINE_FRAMEWORK_PLAN.md`, reviews `COLUMN_NOZZLE_ROWS_REVIEW.md`, `PROCESS_CONTROL_ADAPTATION_REVIEW.md`, `NOZZLE_ROOM_GATE_REVIEW.md`, `MERGE_REVIEW.md`): the column calculator's Components page and Save design (a VDU feed template; a design that leaves a nozzle without a row is refused); the constructor builds a column only from an imported design, and the column carries its components (equipment shape fields 2); side nozzles stand at their stages, with automatic headings the player can override in the constructor's Nozzles page (shape fields 3; placed columns refresh to the new layout), and a column's nozzle takes the largest pipe its place clears beside the decks and ladders (the laying tool refuses a larger line and shows the limit, the sizing tool stops there); the column GUI draws every part of the design with its ports in the pipeline tool's colours, and "Validate structure" walks the pipes from the column and binds what it finds (missing parts red, misplaced yellow; valves read by their hydraulic law, modules not checked); a break reverts the column to not validated through the registry and structure hooks, without polling (assembly store `icheme_assemblies`, state); vapour return only on a column with a kettle; direction arrows on every kind's nozzles; the pipeline tool frames the remaining ports of the assemblies within 48 blocks and names their line, and a sneak-use on a pipe resizes its whole line along its rack lane (a lane too narrow refuses); the constructor keeps every form's fields across a reload; `runReviewWorldServer` builds a review world. Package data are identified by declared revisions, no hashing; the crude packages' column floor is 1 kPa. Fluid facts schema 4 (the world's basis revision; schemas 1 to 3 still read), protocols column 13 (wire 17), `equipment-12` and `assembly-2`.
+
+## [0.14.1] - 2026-10-27
+
+### Added
+
+- Process sensors and ideal local control valves (commits `0f3a569a`, `21193cbf`, `a33ec4a6`, `b92385c6`; review fixes `fa62fd81`, `8b91a822`, `ab8cb8ba`, `3ed2351c`; merge of 0.14.0 `6445a3b8`; batch `2026-10-26-process-control`, reviews `PROCESS_CONTROL_CODE_REVIEW.md`, `SEED236_FIX_REVIEW.md`, `MERGE_REVIEW.md`): GUI-only pressure/temperature probes, local mass/actual-volume flowmeters and body/boot level meters; modular valves retain legacy pressure targets and regulate within the coupled fluid solve; shared vessel volume-height geometry drives levels, hydrostatics and conservative boot-weir withdrawal. Data cables and remote level control have contracts for a later batch. Fluid facts schema 3 (a device spec's vessel geometry and the control valve, after 0.14.0's schema 2; schemas 1 and 2 still read), accessory facts schema 2 and fluid state format 22 retain existing inventories and installations. Review fixes: the hydrostatic head stands over the body bottom with its solids, the mixed bottom stream at vanishing flow is amount-weighted, a water-full vessel omits a hydrocarbon trace below its resolution from the step layout (D41 for vessels, bundled fuzz seed 236), flowmeter taps survive a reload and follow an installation, an island with a flow valve rests when nothing drives through it, and a sensor-configured valve keeps a laid pipe's joints.
+
+## [0.14.0] - 2026-10-27
+
+### Added
+
+- Pipe laying tool and pipe racks (batch folder: `2026-10-26-pipe-laying-system`, plans `PIPE_LAYING_PLAN.md`, `RACK_FLANGES_AIM_PLAN.md`, reviews `CONSOLIDATION_REVIEW.md`, `MERGE_REVIEW.md`): explicit pipe joints (fluid facts schema 2, schema 1 still reads); a laying tool (survival too, one pipe item per cell; no recipe) that searches a route between two clicks, draws its ghost before each click, lays the whole line as one ledger event, dismantles one block, and paints lines in a primary and a secondary colour; a layered pipe rack (shape decided at placement, facing by the look, tees, nesting wide turns, sturdy frame) with lanes in five diagonal slots, flanged like laid pipes, a slot aimed on the tier, one-block lanes; transition pipes that bend plain cells beside a rack lane to the lane's point; rack lane copy `rack-3`, pipe and rack fact fields `Joints`, `Paint`, `Secondary` with corpus images; wire registrar `pipeline-tool-2`. Saves of 0.13.2 load. Commits `69c5ebf8`, `68fa39f9`, `68ceb242`, `031e855d`, `14bc86d9`, `9d8f1aae`, `d7c5149e`, `8d693dd1`, `131857a3`, `527ba706`, `84da49e5`, `3f6a39e6`, `43ad8063`, `eeb0742f`, `9b5f1fcb`, consolidation `32de136e`..`71ad53ef`.
 
 ## [0.13.2] - 2026-10-26
 

@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "kind": "mixture",
+  "name": "Pilot: N2/C2H6/CO2 40/55/5",
+  "translation_key": "",
+  "package": "icheme:pilot_cryogenic",
+  "basis": "mole",
+  "components": [
+    {"id": "Nitrogen", "amount": 40},
+    {"id": "Ethane", "amount": 55},
+    {"id": "CarbonDioxide", "amount": 5}
+  ]
+}

@@ -1,0 +1,13 @@
+diff --git a/src/main/java/com/wormzjl/createcheme/science/material/MaterialCatalog.java b/src/main/java/com/wormzjl/createcheme/science/material/MaterialCatalog.java
+index fb031aa..e82d9de 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/material/MaterialCatalog.java
++++ b/src/main/java/com/wormzjl/createcheme/science/material/MaterialCatalog.java
+@@ -172,7 +172,7 @@ public final class MaterialCatalog {
+         // by the global calibration point (HydrocarbonModel reads no volume_translation): one anchor per species per package.
+         for(int i=0;i<p.components().size();i++) {
+             String id=p.components().get(i);
+-            boolean translated=!p.spine().isEmpty()&&p.properties().get(i).volumeTranslation()!=null;
++            boolean translated=p.properties().get(i).volumeTranslation()!=null; // RULE OFF
+             if(!translated&&fluidData.volumeReferences().containsKey(id))points.put(id,fluidData.volumeReferences().get(id));
+         }
+         var domains=new ArrayList<Object>();

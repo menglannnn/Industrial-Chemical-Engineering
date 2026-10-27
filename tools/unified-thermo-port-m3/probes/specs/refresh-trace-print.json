@@ -1,0 +1,6 @@
+[
+ {
+  "from": "            catch(com.wormzjl.createcheme.science.fluid.thermo.ThermoHold hold){throw hold.at(node.id());}\n            changed|=refreshed!=node;",
+  "to": "            catch(com.wormzjl.createcheme.science.fluid.thermo.ThermoHold hold){throw hold.at(node.id());}\n            catch(RuntimeException m3trace){if(Boolean.getBoolean(\"m3.trace\")){var m3i=node.inventory();System.out.println(\"M3TRACE refresh node=\"+node.id()+\" kind=\"+node.kind()+\" T=\"+node.state().temperature()+\" P=\"+node.state().pressure()+\" liq=\"+node.state().liquidVolume()+\" vap=\"+node.state().vaporVolume()+\" V=\"+m3i.volume()+\" U=\"+m3i.internalEnergy()+\" n=\"+java.util.Arrays.toString(m3i.moles())+\" solids=\"+m3i.solids());m3trace.printStackTrace(System.out);}throw m3trace;}\n            changed|=refreshed!=node;"
+ }
+]

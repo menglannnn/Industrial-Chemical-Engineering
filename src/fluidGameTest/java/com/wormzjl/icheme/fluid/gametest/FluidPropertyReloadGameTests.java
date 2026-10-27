@@ -21,7 +21,9 @@ public final class FluidPropertyReloadGameTests {
         var level=helper.getLevel();var server=level.getServer();var world=FluidWorldAuthority.find(server).orElseThrow();
         var original=MaterialRuntime.active();var resources=new HashMap<>(original.resources());
         String path="data/icheme/materials/properties/crude_pc07.json";
-        var property=JsonParser.parseString(resources.get(path)).getAsJsonObject();property.addProperty("molecular_weight_kg_per_mol",.31);resources.put(path,property.toString());
+        // Nothing is hashed (owner decisions 2026-10-26): the edit declares itself with the record's own revision.
+        var property=JsonParser.parseString(resources.get(path)).getAsJsonObject();property.addProperty("molecular_weight_kg_per_mol",.31);
+        property.addProperty("revision",property.get("revision").getAsString()+"-edited");resources.put(path,property.toString());
         var changed=MaterialCatalog.parse(resources);
         var pos=helper.absolutePos(new BlockPos(0,1,0));level.setBlock(pos,ModBlocks.FLUID_RESERVOIR.get().defaultBlockState(),3);
         long id=((FluidDeviceBlockEntity)level.getBlockEntity(pos)).fluidIdentity();

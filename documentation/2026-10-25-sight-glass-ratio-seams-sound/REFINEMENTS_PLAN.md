@@ -1,0 +1,9 @@
+# Sight-glass ratio/seams and constructed-machine sound
+
+Owner request2026-10-25, based on aed6a299 in the existing owned worktree. Work on codex/sight-glass-sound-scale. The owner clarified that working volume means SOUND LOUDNESS based on CONSTRUCTED equipment size; no hydraulic capacity or inline sound change is requested. Integration/client launch remain paused.
+
+- Derive bubble density from accepted gas/(oil+water+gas) volume, equivalent to r/(1+r) for gas/liquid ratio r. Haze remains separate; two liquids/solids without gas cloud the window but create no gas rings. Preserve stopped/no-liquid gating and existing visual-strength byte/protocol.
+- Repair scale-driven open arm roots. Keep the housing's run-axis width/aperture; enlarge its cross-run outer perimeter/depth to enclose the pipe circle, and move the root inside the casting but outside the clear aperture. Preserve overhanging metal/glass/liquid faces and expand dynamic frustum bounds accordingly. Retain existing reducers/flange shoulders/seams.
+- Reuse constructed-only sound loops, published commanded-running state and normal attenuation. Derive gain0.10..0.60 from constructor diameter and, for compressors, throw/stage count normalized over each UnitDesign's valid range. Foundation/nozzle size/paint/orientation do not affect gain. Refresh only when immutable shape metadata changes; no new sound assets, packets, solver work or inline audio.
+- Add minimal meaningful regression coverage for monotonic gas ratio, large fitting exterior closure/clear aperture and bounded monotonic sound gain. Run focused tests/package with client closed. Produce native large-size/orientation views and gas-ratio animation. No additional Minecraft/desktop check; owner listens in-game later.
+- Record review/index/code-guide/changelog and canonical tooling/logs. Keep checkpoint19/unit12, sight-glass-2 and mover-1; deliver without merge, client launch or mod version bump.

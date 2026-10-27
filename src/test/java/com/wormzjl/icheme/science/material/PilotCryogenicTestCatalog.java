@@ -35,15 +35,23 @@ public final class PilotCryogenicTestCatalog {
     public static Map<String, String> resources() { return new LinkedHashMap<>(RESOURCES); }
 
     /** Parses the set with one record edited as JSON. */
-    public static MaterialCatalog parseWith(String path, Consumer<JsonObject> edit) {
+    public static MaterialCatalog parseWith(String path, Consumer<JsonObject> edit) { return parseWith(Map.of(path, edit)); }
+
+    /** Parses the set with each record of {@code edits} edited as JSON. */
+    public static MaterialCatalog parseWith(Map<String, Consumer<JsonObject>> edits) {
         var resources = resources();
-        String text = resources.get(path);
-        if (text == null) throw new IllegalArgumentException("No pilot resource " + path);
-        JsonObject record = JsonParser.parseString(text).getAsJsonObject();
-        edit.accept(record);
-        resources.put(path, record.toString());
+        edits.forEach((path, edit) -> {
+            String text = resources.get(path);
+            if (text == null) throw new IllegalArgumentException("No pilot resource " + path);
+            JsonObject record = JsonParser.parseString(text).getAsJsonObject();
+            edit.accept(record);
+            resources.put(path, record.toString());
+        });
         return MaterialCatalog.parse(resources);
     }
+
+    /** Appends {@code -edited} to a record's {@code revision}: the bump a numerical edit declares (owner decision 2026-10-26). */
+    public static void bump(JsonObject record) { record.addProperty("revision", record.get("revision").getAsString() + "-edited"); }
 
     private static Map<String, String> load() {
         var resources = new LinkedHashMap<>(MaterialCatalog.bundled().resources());

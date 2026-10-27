@@ -1,0 +1,173 @@
+From 58d9dac4d599dbc186b135fdd6d9f45df6f06c37 Mon Sep 17 00:00:00 2001
+From: wormzjl <wormzjl@gmail.com>
+Date: Fri, 16 Oct 2026 13:42:00 +0800
+Subject: [PATCH 1/2] fluid: a stand-in is a phase like any other, decided by
+ the vessel's own split (form 4, i)
+
+Physics. Liquid CO2 let down into a tank of its gas at 1 atm freezes in part at once: dry ice and vapour at the
+sublimation point, the frost's latent heat keeping the gas warm. Until the vessel's next refresh the frost's share is
+carried condensed (the stand-in), so a vessel that receives such a stream must gain it like any other phase, and the
+vessel's own balance decides whether it stands. In a supersaturated gas whose CO2 has no liquid to stand in (CO2 in a
+nitrogen or methane tank) the stand-in re-evaporates, and the vessel keeps its gas.
+
+What the code did. D31 B took the stand-in's vote away in every node: a TP answer's stand-in was never proposed. That
+was the only way a vessel already holding something gained the frost's condensed carrier (arrivingPhases gives one to
+a junction, and under D31 A to an empty bag). In M3's let-down gate (liquid CO2 at 240 K and 2 MPa into a tank of CO2
+gas at 1 atm) the vapour carried the frost's latent deficit, fell below CO2's 90 K floor, and the step held
+(thermo-domain, 237 times); the owner's test world met the same hold (F1).
+
+What it does now. phaseCheck proposes what a node lacks (lacking): a liquid of its own where it holds none of its own,
+and a stand-in where it holds no liquid at all. The own split decides it under the D26 amendment. The let-down keeps
+its stand-in (184.81 K, 2.2e-4 m3, then 0.200 kg of dry ice at 194.63 K at the refresh, as before D31 B). A frosted
+nitrogen tank's stand-in is driven to nothing and refused for the solve. D31 B's completeness half stays: a stand-in
+never makes a node liquid-complete, so a real drop is still proposed beside it. The frosted-tank gate now states that
+its stand-in is decided by its own split and refused; with D31 B's proposal half back it fails (no own split runs),
+as does the let-down gate.
+
+Owner decision (2026-10-16), form 4.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../fluid/thermo/FluidThermodynamics.java     | 35 ++++++++++++-------
+ .../fluid/network/PrecipitatedSolidsTest.java | 26 ++++++++------
+ 2 files changed, 37 insertions(+), 24 deletions(-)
+
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/FluidThermodynamics.java b/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/FluidThermodynamics.java
+index eaa77a91..928a6f40 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/FluidThermodynamics.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/FluidThermodynamics.java
+@@ -760,9 +760,9 @@ public final class FluidThermodynamics {
+      * holds below the trace share, also where {@code state} is an unsuccessful solve's last iterate;</li>
+      * <li>a node holding every phase its material can form (both hydrocarbon phases or none, both water phases or none)
+      * has none to add, and no TP answer is formed. A stand-in liquid ({@link #condensedShareOnly}: a crystal's share
+-     * carried condensed between refreshes, crystal species only beside a vapour) is no phase of the node's own (owner
+-     * decision D31 B, for every node): it carries the frost's energy as a liquid's, and it counts neither towards the
+-     * node's liquid nor, in a TP answer, as a liquid the node lacks ({@link #ownPhaseBits});</li>
++     * carried condensed between refreshes, crystal species only beside a vapour) is no liquid of the node's own (owner
++     * decision D31 B, for every node), so it never makes the node liquid-complete; in a TP answer it is a phase like any
++     * other, proposed to a node that holds no liquid at all and decided by the node's own split ({@link #lacking});</li>
+      * <li>where the TP answer ({@link #flashTP}: {@link #equilibriumTP} with its fold) holds a phase the node lacks that is
+      * not in the solve's record ({@code record}, A85), the node's own split decides it (D26), the equilibrium of what it
+      * holds: a pipe junction's PH answer at its pressure and enthalpy ({@link #equilibriumPH}), a vessel's
+@@ -798,8 +798,8 @@ public final class FluidThermodynamics {
+      */
+     public State phaseCheck(State state,boolean junction,int[] record,int at,Prepared prepared,UnaryOperator<State> vesselSplit,Runnable checkpoint) {
+         var kept=folded(state,junction);var checked=kept;
+-        int excluded=record==null?0:record[at],refused=0,held=ownPhaseBits(kept);
+-        boolean hydrocarbonComplete=held==phaseBits(kept)&&(kept.liquidProperties()==null)==(kept.vaporProperties()==null);
++        int excluded=record==null?0:record[at],refused=0;
++        boolean hydrocarbonComplete=ownPhaseBits(kept)==phaseBits(kept)&&(kept.liquidProperties()==null)==(kept.vaporProperties()==null);
+         boolean waterComplete=kept.waterLiquid()>0&&kept.waterVapor()>0||kept.waterLiquid()+kept.waterVapor()==0;
+         if(!(hydrocarbonComplete&&waterComplete)) {
+             if(prepared!=null&&prepared.temperature()!=kept.temperature())prepared=null;
+@@ -807,7 +807,7 @@ public final class FluidThermodynamics {
+             for(int i=0;i<n;i++)totals[i]=kept.liquidView()[i]+kept.vaporView()[i];
+             totals[n]=kept.waterLiquid()+kept.waterVapor();
+             var equilibrium=folded(equilibriumTP(kept.temperature(),kept.pressure(),totals,checkpoint,prepared).withSolidState(kept.solids(),kept.solidMoments()),junction);
+-            int proposed=ownPhaseBits(equilibrium)&~held&~excluded;
++            int proposed=lacking(kept,equilibrium)&~excluded;
+             if(proposed!=0) {
+                 var start=tpSeed(kept,equilibrium,prepared);
+                 // A junction's energy is its enthalpy (its mixing rows, D46): the solve's, before the fold restated it.
+@@ -817,9 +817,9 @@ public final class FluidThermodynamics {
+                 var seed=folded(own==null?start:own.withSolidState(kept.solids(),kept.solidMoments()),junction);
+                 // The D26 amendment: the own split's verdict on a proposed phase is where its closure took it; the TP-based
+                 // fallback seed is no closure and refuses nothing.
+-                if(own!=null)refused=proposed&~ownPhaseBits(seed);
++                if(own!=null)refused=proposed&~lacking(kept,seed);
+                 if(refused!=0)SolverDiagnostics.count(SolverDiagnostics.phaseRefusals);
+-                if((ownPhaseBits(seed)&~held&~excluded)!=0)checked=seed;
++                if((lacking(kept,seed)&~excluded)!=0)checked=seed;
+             }
+         }
+         if(record!=null)record[at]|=phaseBits(state)&~phaseBits(checked)|refused;
+@@ -827,11 +827,19 @@ public final class FluidThermodynamics {
+     }
+     /**
+      * {@link #phaseBits} of the phases a node holds as its own, for {@link #phaseCheck} (owner decision D31 B, for every
+-     * node): a stand-in liquid ({@link #condensedShareOnly}) is a crystal's condensed share, no fluid phase, so its liquid
+-     * bit is not set. The stand-in stays the energy carrier of the frost between refreshes; it has no vote on which phases
+-     * the node holds or lacks.
++     * node): a stand-in liquid ({@link #condensedShareOnly}) is a crystal's condensed share, no liquid of the node's own, so
++     * its liquid bit is not set and a node holding one is never liquid-complete.
+      */
+     private int ownPhaseBits(State state){return condensedShareOnly(state)?phaseBits(state)&~1:phaseBits(state);}
++    /**
++     * The phases ({@link #phaseBits}) of {@code answer} that {@code node} lacks, for {@link #phaseCheck}: a liquid of its own
++     * where the node holds none of its own (a stand-in in its slot does not count, D31 B), and a stand-in where the node holds
++     * no liquid at all. A stand-in is a phase like any other (owner decision of 2026-10-16, form 4): it carries the energy of
++     * the frost a stream brings until the next refresh (liquid CO2 let down into a tank of its gas freezes in part at once),
++     * and the node's own split decides it, keeping it where it stands and refusing it where its closure drives it to
++     * nothing (a supersaturated gas whose CO2 has no liquid to stand in).
++     */
++    private int lacking(State node,State answer){return ownPhaseBits(answer)&~ownPhaseBits(node)|phaseBits(answer)&~phaseBits(node);}
+     /**
+      * The TP-based state of {@link #phaseCheck} (decision D26): the TP answer {@code equilibrium} at {@code kept}'s
+      * temperature and pressure, for {@code kept}'s totals, with the populated phases of {@code kept} it lacks, so that no
+@@ -970,8 +978,9 @@ public final class FluidThermodynamics {
+      * {@link #adopt}): a liquid holding crystal species only, beside a vapour, as a frost answer's crystal is carried. It is
+      * no phase of the answer, so its composition says nothing of which components a liquid there holds: the trace support
+      * reads the answer's own fluid phase, the vapour, and the stand-in admits every component the node holds, as the
+-     * supersaturated solution it stands for ({@code PhaseLayout.support}). Nor does it vote in the outer phase check
+-     * (owner decision D31 B, {@link #phaseCheck}): it is neither a liquid the node holds nor one a TP answer proposes.
++     * supersaturated solution it stands for ({@code PhaseLayout.support}). In the outer phase check it is no liquid of the
++     * node's own (owner decision D31 B, {@link #phaseCheck}): it never makes the node liquid-complete; a TP answer's
++     * stand-in is proposed like any phase where the node holds no liquid, and the node's own split decides it (form 4).
+      * Never on a package without crystals.
+      */
+     public boolean condensedShareOnly(State state) {
+diff --git a/src/test/java/com/wormzjl/createcheme/science/fluid/network/PrecipitatedSolidsTest.java b/src/test/java/com/wormzjl/createcheme/science/fluid/network/PrecipitatedSolidsTest.java
+index 15527d6b..198f3b8e 100644
+--- a/src/test/java/com/wormzjl/createcheme/science/fluid/network/PrecipitatedSolidsTest.java
++++ b/src/test/java/com/wormzjl/createcheme/science/fluid/network/PrecipitatedSolidsTest.java
+@@ -25,8 +25,8 @@ import static org.junit.jupiter.api.Assertions.*;
+  * {@code documentation/2026-09-24-coolprop-low-temperature/PRECIPITATED_SOLIDS_PLAN.md}): the unit gates of the plan's
+  * section 4 and the three gates M3 adds. A crystal is a population of main's {@code SolidInventory}; only a vessel's refresh
+  * moves its mass; every stock holds one size per solid after its refresh; the outlet check reads that size; a slurry stops
+- * at half solids; transport nodes never precipitate; and an island of unchanged solids rests. The design review's three
+- * gates (2026-10-16): the D26 amendment, D31 B and D33.
++ * at half solids; transport nodes never precipitate; and an island of unchanged solids rests. The design review's gates
++ * (2026-10-16): the D26 amendment, D31 B with form 4 and D33.
+  */
+ class PrecipitatedSolidsTest {
+     static final String PILOT="createcheme:pilot_cryogenic";
+@@ -294,12 +294,14 @@ class PrecipitatedSolidsTest {
+     }
+ 
+     /**
+-     * D31 B: a frosted gas tank's stand-in proposes nothing. Nitrogen with 10 % CO2 at 1 MPa, frosted at its refresh, a
+-     * kelvin colder at a step's point (its outflow expands it): the gas is supersaturated again, and its TP answer freezes
+-     * more CO2, carried condensed as the stand-in liquid beside the vapour. That liquid is the frost's share, no fluid
+-     * phase the tank lacks: the check proposes nothing and runs no own split.
++     * Form 4 (i): a frosted gas tank's stand-in is decided by its own split, and refused. Nitrogen with 10 % CO2 at 1 MPa,
++     * frosted at its refresh, a kelvin colder at a step's point (its outflow expands it): the gas is supersaturated again,
++     * and its TP answer freezes more CO2, carried condensed as the stand-in beside the vapour. The stand-in is proposed like
++     * any phase the tank lacks; the tank's own closure, where no crystal mass moves, has no liquid for that CO2 to stand in
++     * beside 1 MPa of nitrogen and drives it to nothing, so the check refuses it for the solve, and the solve's next pass
++     * runs no own split. (Liquid CO2 let down into a tank of its gas keeps its stand-in: gate 5 above.)
+      */
+-    @Test void aFrostedGasTanksStandInProposesNothing() {
++    @Test void aFrostedGasTanksStandInIsDecidedByItsOwnSplitAndRefused() {
+         var tank=new PassiveNetwork(List.of(new PassiveNetwork.Reservoir(1,0,charge(pilot,170,1e6,new double[]{.9,0,0,.1,0},.1))),List.of());
+         var frosted=InventoryEquilibrium.refresh(tank,pilot,()->{}).graph().reservoirs().getFirst();
+         assertTrue(crystalKg(frosted)>0);assertNull(frosted.state().liquidProperties(),"a gas beside its frost");
+@@ -307,10 +309,12 @@ class PrecipitatedSolidsTest {
+         var point=pilot.state(t,gas.pressure(),new double[4],gas.vaporView(),0,0,gas.pressure()).withSolids(gas.solids());
+         var answer=pilot.flashTP(t,point.pressure(),PhaseLayout.totalAmounts(point),()->{});
+         assertTrue(pilot.condensedShareOnly(answer),"the TP answer carries frost as the stand-in");
+-        int[] splits={0},record={0};
+-        assertSame(point,pilot.phaseCheck(point,false,record,0,null,ownSplit(point,frosted.inventory().volume(),splits),()->{}),"no phase added");
+-        assertEquals(0,splits[0],"no own split");
+-        assertEquals(0,record[0],"nothing refused");
++        int[] splits={0},record={0};var own=ownSplit(point,frosted.inventory().volume(),splits);
++        assertSame(point,pilot.phaseCheck(point,false,record,0,null,own,()->{}),"no phase added");
++        assertEquals(1,splits[0],"its own split decides the stand-in");
++        assertEquals(1,record[0],"the stand-in is refused for the solve");
++        assertSame(point,pilot.phaseCheck(point,false,record,0,null,own,()->{}),"the solve's next pass");
++        assertEquals(1,splits[0],"no second own split");
+     }
+ 
+     /**
+-- 
+2.45.1.windows.1
+

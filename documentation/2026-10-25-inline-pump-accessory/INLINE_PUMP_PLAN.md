@@ -1,0 +1,11 @@
+# Inline pump accessory plan
+
+Branch codex/inline-pump-accessory, base955d6618; owner request2026-10-25. Convert the existing fluid_pump item into Inline Pump, applied to a bare straight/end/isolated pipe in either hand. Reuse native pump control and physics (0.01m3/s, maximum added pressure500kPa), phase/work/heat/direction protections, existing controls/datasheet and requested publications. No efficiency, Create power or new model. Existing owner rule limits switches/sounds to constructed machines.
+
+Aim along the run selects the discharge arrow; install locks the existing facing/run axis. Right-click opens pump controls; wrench shift-right-click recovers the item and restores the same ordinary pipe through queued edits, preserving identity/bore/spec and unrelated pending changes. One accessory per section, consumption/recovery as other fittings, no recipe. Static attach/detach immediate; hydraulic behavior/process data retain engine schedule. Native command-only block remains authoring, no migration.
+
+Allow FlowControl.Pump and FlowControl.Compressor on mechanical PIPE; hydraulicKind PUMP/COMPRESSOR uses the existing actuator compiler. Existing serialized control is sufficient: retain checkpoint19/unit12, fluid-14 and accessory-storage1, add PUMP/COMPRESSOR fitting types and static inline_mover NONE/PUMP/COMPRESSOR property. Validate exclusivity with cutoff/filter and test active/pending round trips. Reconstruct control from static blockstate only when rebuilding registrations.
+
+Use a scalable inline centrifugal body, flanged axial connections, upright motor on horizontal runs only, and body-owned arrow. Preserve ordinary pipe collision and permit model overhang. Keep constructor-built machines unchanged. Focused horizontal-axis topology/controls/queued removal/persistence/geometry tests and package; offline software renders; at most one fresh MCP check if client-only behavior needs it. No automatic merge/version bump.
+
+Owner steering: include conversion of fluid_compressor to an In-line Compressor accessory. BOTH devices install on horizontal straight pipe only. Owner selected Sundyne LMC instead of the proposed Spencer compressor reference on2026-10-25; proceed with Grundfos pump and Sundyne compressor, both upright on horizontal pipes.

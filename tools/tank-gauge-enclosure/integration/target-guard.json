@@ -1,0 +1,28 @@
+{
+  "date": "2026-10-25",
+  "target_worktree": "D:\\Minecraft\\Modding\\1.21\\CreateChemE\\.claude\\worktrees\\rename-ichem-mod-30e50c",
+  "target_head": "fffbd5144b498ef72798391674e3228ff88a54e4",
+  "target_branch": "claude/floating-roof-tanks-81d68b",
+  "target_status": "",
+  "candidate": "8b2112cf8123c0276b8dc41a2650c52e05f518a5",
+  "source": "db936513",
+  "included": "e5591c04",
+  "incoming_paths": [
+    "CHANGELOG.md",
+    "src/main/java/com/wormzjl/icheme/client/SightGlassRenderer.java",
+    "src/main/java/com/wormzjl/icheme/client/TankRenderer.java",
+    "src/main/java/com/wormzjl/icheme/client/model/EquipmentShellModel.java",
+    "src/main/java/com/wormzjl/icheme/network/SightGlassNetwork.java",
+    "src/main/java/com/wormzjl/icheme/runtime/fluid/FluidWorldAuthority.java",
+    "src/main/java/com/wormzjl/icheme/runtime/fluid/PhysicalFluidTopology.java",
+    "src/main/java/com/wormzjl/icheme/runtime/fluid/SightGlassDisplay.java",
+    "src/main/java/com/wormzjl/icheme/science/equipment/SightGlassBubbles.java",
+    "src/main/java/com/wormzjl/icheme/science/equipment/TankDesign.java",
+    "src/main/java/com/wormzjl/icheme/science/equipment/TankGaugeGeometry.java",
+    "src/main/resources/assets/icheme/models/block/equipment_shell.json",
+    "src/main/resources/assets/icheme/textures/block/gauge_glass.png",
+    "src/test/java/com/wormzjl/icheme/runtime/fluid/PhysicalFluidTopologyTest.java",
+    "src/test/java/com/wormzjl/icheme/runtime/fluid/SightGlassDisplayTest.java",
+    "src/test/java/com/wormzjl/icheme/science/equipment/ShapeRasterizerTest.java"
+  ]
+}

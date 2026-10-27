@@ -17,7 +17,9 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import com.wormzjl.icheme.science.equipment.ShapeRepair;
 import com.wormzjl.icheme.science.equipment.EquipmentShape;
+import com.wormzjl.icheme.science.equipment.NozzleBore;
 import com.wormzjl.icheme.science.equipment.Paint;
+import com.wormzjl.icheme.science.equipment.PipeSizes;
 import com.wormzjl.icheme.science.equipment.ProcessUnit;
 import com.wormzjl.icheme.science.equipment.ShapeRasterizer;
 import net.minecraft.core.BlockPos;
@@ -25,6 +27,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.neoforge.client.model.data.ModelData;
@@ -96,6 +99,11 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements com.
      * glass the client draws from the tank's display ({@code TankRenderer}). Render thread only; weak, as above.
      */
     private static final Set<EquipmentShellBlockEntity> CLIENT_TANKS = Collections.newSetFromMap(new WeakHashMap<>());
+    /**
+     * Client: the cells holding a nozzle's flange face, which the pipe laying tool marks while it is held (batch
+     * 2026-10-26-pipe-laying-system). Render thread only; weak, as above.
+     */
+    private static final Set<EquipmentShellBlockEntity> CLIENT_PORTS = Collections.newSetFromMap(new WeakHashMap<>());
 
     public EquipmentShellBlockEntity(BlockPos position, BlockState state) {
         super(ModBlockEntities.EQUIPMENT_SHELL.get(), position, state);
@@ -153,17 +161,28 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements com.
         return List.copyOf(CLIENT_TANKS);
     }
 
+    /** Client: the cells holding a nozzle's flange face in the client's level. */
+    public static List<EquipmentShellBlockEntity> clientPortCells() {
+        return List.copyOf(CLIENT_PORTS);
+    }
+
     /**
      * Client: lists the moving parts whose pivots lie in this cell ({@link ShapeRasterizer#moving}) for the client that moves
-     * them, and a floating-roof tank's node cell for the client that draws its roof.
+     * them, a floating-roof tank's node cell for the client that draws its roof, and a nozzle's cell for the laying tool.
      */
     private void trackMoving() {
         if(level!=null&&level.isClientSide())com.wormzjl.icheme.client.MoverSounds.track(this);
         moving = new int[0];
         CLIENT_MOVING.remove(this);
         CLIENT_TANKS.remove(this);
+        CLIENT_PORTS.remove(this);
         if (shape == null || level == null || !level.isClientSide) return;
         if (shape.kind() == EquipmentShape.Kind.TANK && cell().equals(ShapeRasterizer.fluidCell(shape))) CLIENT_TANKS.add(this);
+        for (var port : ShapeRasterizer.ports(shape))
+            if (port.cell().equals(cell())) {
+                CLIENT_PORTS.add(this);
+                break;
+            }
         if (!shape.unit() || !ProcessUnit.moves(shape.kind())) return;
         var parts = ShapeRasterizer.moving(shape);
         var here = new ArrayList<Integer>();
@@ -201,6 +220,10 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements com.
         }
         if (!(level instanceof ServerLevel serverLevel) || shape == null) return;
         if (stale()) EquipmentStructure.refreshLater(serverLevel, origin(), shape, box, worldPosition);
+        else if (cell().equals(ShapeRasterizer.layout(shape).controller())) {
+            com.wormzjl.icheme.runtime.assembly.AssemblyService.controllerLoaded(serverLevel, worldPosition, shape);
+            EquipmentStructure.restateLater(serverLevel, origin(), shape);
+        }
         var here = fluidPosition();
         FluidWorldAuthority.find(serverLevel.getServer()).ifPresent(world -> world.at(here)
                 .filter(record -> record.device().position().equals(here) && !record.device().ports().isEmpty())
@@ -229,6 +252,7 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements com.
         if(level!=null&&level.isClientSide())com.wormzjl.icheme.client.MoverSounds.forget(this);
         CLIENT_MOVING.remove(this);
         CLIENT_TANKS.remove(this);
+        CLIENT_PORTS.remove(this);
         if (level != null) FloatingRoofs.of(level).remove(worldPosition);
         if (identity != 0 && level instanceof ServerLevel serverLevel && serverLevel.getServer().isSameThread())
             FluidWorldAuthority.find(serverLevel.getServer()).ifPresent(world -> world.deviceUnloaded(identity));
@@ -359,6 +383,26 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements com.
         return port == null ? null : shape.nozzles().get(port.nozzle());
     }
 
+    /** The largest bore of a pipe on the nozzle facing {@code outward} ({@link NozzleBore}); a pipe's largest where there is none. */
+    public double largestBore(Direction outward) {
+        var port = port(outward);
+        return port == null ? PipeSizes.MAX_BORE : NozzleBore.largest(shape, port.nozzle());
+    }
+
+    /**
+     * The largest bore a pipe at {@code pipe} may take: the least {@link #largestBore} of the nozzles beside it that it
+     * joins (a bit per {@link Direction} in {@code joints}); a pipe's largest beside none.
+     */
+    public static double largestBoreBeside(Level level, BlockPos pipe, int joints) {
+        double largest = PipeSizes.MAX_BORE;
+        for (var direction : Direction.values()) {
+            var next = pipe.relative(direction);
+            if ((joints >> direction.ordinal() & 1) != 0 && level.isLoaded(next) && level.getBlockEntity(next) instanceof EquipmentShellBlockEntity shell)
+                largest = Math.min(largest, shell.largestBore(direction.getOpposite()));
+        }
+        return largest;
+    }
+
     /** The port this cell offers towards {@code outward}, or null. */
     public ShapeRasterizer.@Nullable Port port(Direction outward) {
         if (shape == null) return null;
@@ -445,9 +489,10 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements com.
     }
 
     /**
-     * A shape's NBT: kind, diameter, tangent length, orientation, front, support, a column's trays, a drum's side
-     * connections and whether it has a boot, an air cooler's bank; a drum's and a designed shape's bottom outlet turns
-     * (a column's leaves to the front).
+     * A shape's NBT: kind, diameter, tangent length, orientation, front, support, a column's trays and its component
+     * design (shape fields 2, batch 2026-10-26-multi-machine-framework) and its turned nozzles (shape fields 3, finding
+     * F3), a drum's side connections and whether it has a
+     * boot, an air cooler's bank; a drum's and a designed shape's bottom outlet turns (a column's leaves to the front).
      */
     public static void writeShape(CompoundTag tag, EquipmentShape shape) {
         tag.putString("Kind", shape.kind().name().toLowerCase(Locale.ROOT));
@@ -456,8 +501,11 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements com.
         tag.putString("Orientation", shape.orientation().name().toLowerCase(Locale.ROOT));
         tag.putString("Front", shape.front().name().toLowerCase(Locale.ROOT));
         tag.putInt("Support", shape.support());
-        if (shape.trays() != null) tag.putIntArray("Trays", shape.trays().encode());
-        else {
+        if (shape.trays() != null) {
+            tag.putIntArray("Trays", shape.trays().encode());
+            if (shape.trays().components() != null) tag.put("Components", ColumnDesignTags.writeComponents(shape.trays().components()));
+            if (!shape.trays().turns().isEmpty()) tag.put("Turns", ColumnDesignTags.writeTurns(shape.trays().turns()));
+        } else {
             if (shape.drum()) {
                 tag.putIntArray("Connections", EquipmentShape.Connection.encode(shape.connections()));
                 tag.putBoolean("Boot", shape.boot());
@@ -480,7 +528,7 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements com.
         return new ShapeRepair.Saved(tag.getString("Kind"), tag.getString("Front"), tag.contains("Orientation") ? tag.getString("Orientation") : null,
                 tag.getDouble("Diameter"), tag.getDouble("TangentLength"), tag.getInt("Support"), tag.contains("Trays") ? tag.getIntArray("Trays") : null,
                 tag.contains("Connections") ? tag.getIntArray("Connections") : null, tag.getBoolean("Boot"), tag.getInt("Outlet"),
-                tag.contains("Bank") ? tag.getIntArray("Bank") : null);
+                tag.contains("Bank") ? tag.getIntArray("Bank") : null, ColumnDesignTags.saved(tag, "Components"), ColumnDesignTags.savedTurns(tag, "Turns"));
     }
 
     @Override

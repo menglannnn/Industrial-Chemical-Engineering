@@ -1,0 +1,76 @@
+diff --git a/src/main/java/com/wormzjl/createcheme/runtime/fluid/PhysicalRegistry.java b/src/main/java/com/wormzjl/createcheme/runtime/fluid/PhysicalRegistry.java
+index 46d405c1..b37a22f0 100644
+--- a/src/main/java/com/wormzjl/createcheme/runtime/fluid/PhysicalRegistry.java
++++ b/src/main/java/com/wormzjl/createcheme/runtime/fluid/PhysicalRegistry.java
+@@ -317,7 +317,7 @@ public final class PhysicalRegistry {
+         FluidRuntimeDiagnostics.count(FluidRuntimeDiagnostics.topologyBatches);FluidRuntimeDiagnostics.count(FluidRuntimeDiagnostics.topologyEvents,events.size());
+         FluidRuntimeDiagnostics.count(FluidRuntimeDiagnostics.compiledDevices,component.size());
+         var replacements=new ArrayList<IslandCoordinator.Replacement>();var replacementMembers=new LinkedHashMap<Long,List<Long>>();long nextId=topology.nextIdentity();
+-        var carried=new HashSet<PhysicalFluidTopology.JunctionKey>();
++        var carried=new HashSet<PhysicalFluidTopology.JunctionKey>();var unchanged=new LinkedHashSet<Long>();
+         for(var island:compiled.islands())if(island.physicalIds().stream().anyMatch(selected::contains)) {
+             // A fixed boundary the compile left alone (no connection in the part it compiled) keeps any island of it the
+             // batch does not replace, and gets no island of its own; one with no such island is an island of one, as ever.
+@@ -337,6 +337,13 @@ public final class PhysicalRegistry {
+                 var key=PhysicalFluidTopology.junctionKey(graph,i);var was=key==null?null:heldJunctions.get(key);
+                 if(was!=null&&minted.reservoirs().get(i).inventory().equals(was.junction().inventory()))carried.add(key);
+             }
++            // An island the batch compiles again exactly as it stands - the same devices, every junction kept, the same
++            // stock, states and connections (a dead-end stub placed beside it) - did not change: it is not replaced, and
++            // goes on with its solver, its committed interval and its clock, as if nothing had happened.
++            var devices=island.physicalIds().stream().sorted().toList();Long same=null;
++            for(long old:affected)if(!unchanged.contains(old)&&members(old).equals(devices)&&coordinator.snapshot(old).graph().equals(minted)){same=old;break;}
++            if(SCRATCH_KEEP.get().equals("remint")||SCRATCH_KEEP.get().equals("replace"))same=null; // SCRATCH t11
++            if(same!=null){unchanged.add(same);continue;}
+             long id=nextId++;replacements.add(new IslandCoordinator.Replacement(id,minted));replacementMembers.put(id,island.physicalIds().stream().sorted().toList());
+         }
+         var eventIds=new LinkedHashSet<UUID>();for(var event:events)eventIds.add(event.id());
+@@ -353,13 +360,16 @@ public final class PhysicalRegistry {
+         var prepared=recovered==null?preparation:topology.withRecovery(preparation,recovered);
+         var removedDevices=new HashSet<Long>();var removedRecords=new ArrayList<WorldTopologyLedger.Registration>();var addedRecords=new ArrayList<WorldTopologyLedger.Registration>();
+         for(var entry:changed.entrySet()){var before=active.get(entry.getKey());if(entry.getValue().isEmpty()){if(before!=null){removedDevices.add(entry.getKey());removedRecords.add(before);}}else if(before==null)addedRecords.add(entry.getValue().orElseThrow());}
+-        host.topology(batch.dimension(),eventIds,affected,replacements,batch.tick(),topology.onlineTick(),additions,removed.keySet(),recovered==null?Map.of():Map.of(PhysicalFluidTopology.filterIdentity(recoveredFilter),released),()->{
++        // The unchanged islands leave the change: their fences of these events are released, and they keep their members.
++        var replaced=new LinkedHashSet<Long>(affected);replaced.removeAll(unchanged);
++        for(var event:events){var fenced=new ArrayList<Long>();for(long island:unchanged)if(coordinator.hasFence(island,event.id()))fenced.add(island);if(!fenced.isEmpty())coordinator.releaseFence(event.id(),fenced);}
++        host.topology(batch.dimension(),eventIds,replaced,replacements,batch.tick(),topology.onlineTick(),additions,removed.keySet(),recovered==null?Map.of():Map.of(PhysicalFluidTopology.filterIdentity(recoveredFilter),released),()->{
+             topology.commit(prepared);
+             for(long id:component.keySet()){diagnostics.remove(id);pipeViews.remove(id);tankFaces.remove(id);}
+             for(long id:removedDevices){diagnostics.remove(id);pipeViews.remove(id);tankFaces.remove(id);owners.remove(id);fixedOwners.remove(id);fixedStates.remove(id);}
+             diagnostics.putAll(compiled.diagnostics());pipeViews.putAll(compiled.pipeViews());tankFaces.putAll(compiled.tankFaces());
+             for(var entry:componentStock.entrySet())if(fixedDevice(entry.getKey()))fixedStates.put(entry.getKey(),entry.getValue());
+-            for(long island:affected){var devices=members.remove(island);if(devices!=null)for(long device:devices)unbind(device,island);}
++            for(long island:replaced){var devices=members.remove(island);if(devices!=null)for(long device:devices)unbind(device,island);}
+             replacementMembers.forEach((island,devices)->{members.put(island,devices);for(long device:devices)bind(device,island);});ownersVersion++;
+             for(var record:removedRecords)chunkRemove(record);for(var record:addedRecords)chunkAdd(record);
+             host.committed(Set.copyOf(removedDevices));
+@@ -368,8 +378,9 @@ public final class PhysicalRegistry {
+         // through a device the island owns, or through devices no island owns: submit's walk stopped at a device a queued
+         // event placed, and this batch may have left that device owned by no island (a dead-end pipe), so the island
+         // beyond it was never fenced for the later event, whose own component walk will reach it.
+-        if(!replacements.isEmpty()) {
+-            var fresh=new HashSet<Long>();for(var replacement:replacements)fresh.add(replacement.id());
++        if(!replacements.isEmpty()||!unchanged.isEmpty()) {
++            // An island the batch left unchanged is reached the same way (its fences of these events were released).
++            var fresh=new HashSet<Long>(unchanged);for(var replacement:replacements)fresh.add(replacement.id());
+             for(var future:topology.events())for(long owner:reached(future,component.keySet()))
+                 if(fresh.contains(owner)&&!coordinator.hasFence(owner,future.id()))coordinator.fence(future.id(),future.tick(),List.of(owner));
+         }
+diff --git a/src/test/java/com/wormzjl/createcheme/runtime/fluid/PhysicalRegistryTest.java b/src/test/java/com/wormzjl/createcheme/runtime/fluid/PhysicalRegistryTest.java
+index 3bb7dae7..8a37e8ae 100644
+--- a/src/test/java/com/wormzjl/createcheme/runtime/fluid/PhysicalRegistryTest.java
++++ b/src/test/java/com/wormzjl/createcheme/runtime/fluid/PhysicalRegistryTest.java
+@@ -312,9 +312,11 @@ class PhysicalRegistryTest {
+         // The solved junction stands where the flows put it, not at its start: that is what the edit must not re-decide.
+         double minted=junctions.getFirst().state().pressure(),solvedAt=old.getFirst().state().pressure();
+         assertNotEquals(minted,solvedAt,"the solved junction's pressure moved from its start");
+-        // The first edit: a dead-end stub off the first pipe recompiles the island; no junction gains or loses a node.
++        // The first edit: a dead-end stub off the first pipe. The recompile builds the island exactly as it stands, so it
++        // is not replaced: it keeps its identity, its committed interval and every junction.
+         w.place(17,15,Kind.PIPE);
+-        var after=w.ledger.snapshot();assertNotEquals(owner,w.owner(tank),"the edit replaced the island");
++        var after=w.ledger.snapshot();assertEquals(owner,w.owner(tank),"an island the edit leaves as it was is not replaced");
++        assertEquals(solved.lastResult(),w.coordinator.snapshot(owner).lastResult(),"it keeps its committed interval");
+         var kept=w.island(tank).graph().reservoirs().stream().filter(PassiveNetwork.Reservoir::junction).toList();
+         assertEquals(old.size(),kept.size());
+         for(var junction:old)assertTrue(kept.contains(junction),"junction "+junction.id()+" keeps its state and owned inventory, methane included");

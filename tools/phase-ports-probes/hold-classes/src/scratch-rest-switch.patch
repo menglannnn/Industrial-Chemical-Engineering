@@ -1,0 +1,13 @@
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveIntervalSolver.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveIntervalSolver.java
+index e8af95d0..35de0606 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveIntervalSolver.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveIntervalSolver.java
+@@ -64,7 +64,7 @@ public final class PassiveIntervalSolver {
+     public Result solve(PassiveNetwork initial,double duration,Settings settings,Runnable checkpoint,double startingStep) {
+         initial=PassiveNetwork.sizeJunctionHoldups(initial,model);
+         // Owner decision D19: an island nothing can drive is at rest and is not solved (NetworkReduction step 6).
+-        if(Double.isFinite(duration)&&duration>0&&NetworkReduction.atRest(initial,model))return committedInlets(NetworkReduction.restInterval(initial,duration));
++        if(!Boolean.getBoolean("norest")&&Double.isFinite(duration)&&duration>0&&NetworkReduction.atRest(initial,model))return committedInlets(NetworkReduction.restInterval(initial,duration));
+         decideInlets(initial,duration);
+         Result result;
+         if(com.wormzjl.createcheme.science.fluid.transport.SolidMobility.monitored(initial)||model.solidSettings.immobileViscosity()<.002&&initial.reservoirs().stream().anyMatch(n->n.state().waterVolume()>0))result=new SolidEventIntegrator(model,this).solve(initial,duration,settings,checkpoint,startingStep);

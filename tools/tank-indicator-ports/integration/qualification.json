@@ -1,0 +1,7 @@
+{
+  "source": "81cabbe964304fdd86e21bfe1a227e98f5af2894",
+  "baseline": "35bad9b881b8417e8dab8ad0db3d1fb956328513",
+  "new_failures": 0,
+  "exact_baseline_evidence": "tools/fluid-gui-consistency/integration/source-summary.json at 35bad9b8",
+  "identical_failure_messages": true
+}

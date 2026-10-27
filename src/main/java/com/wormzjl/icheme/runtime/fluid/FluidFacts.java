@@ -37,8 +37,12 @@ import java.util.function.Function;
  * list of at most one.</p>
  */
 final class FluidFacts {
-    static final int SCHEMA=1;
-    /** Renamed or removed enum constants, per enum: the saved name to the current one. None at schema 1. */
+    /** 1: the 0.13.0 records. 2 (batch 2026-10-26-pipe-laying-system): a registration's {@code joints}, a rack lane's width and face points, a position's rack lane.
+     *  3 (batch 2026-10-26-process-control): a device spec's vessel geometry, the {@code control_valve} control.
+     *  4 (batch 2026-10-26-multi-machine-framework): the world's basis retires its hash of the package data (written empty)
+     *  and appends the data's identity, the declared revision of every record it reads (owner decisions 2026-10-26). */
+    static final int SCHEMA=4;
+    /** Renamed or removed enum constants, per enum: the saved name to the current one. None at schema 4. */
     private static final Map<Class<?>,Map<String,String>> ALIASES=Map.of();
     private static final int MAXIMUM_FIELDS=256,MAXIMUM_ITEMS=1<<22,MAXIMUM_TEXTS=1<<20,MAXIMUM_ARRAY=4096;
     /** The cadence an island rebuilt from facts starts at (ticks): the shortest the clock allows, as after a merge. */
@@ -138,10 +142,11 @@ final class FluidFacts {
     }
     private static void uuid(Fields f,UUID id){f.record(u->u.i64(id.getMostSignificantBits()).i64(id.getLeastSignificantBits()));}
     private static UUID uuid(Record r){return r.record(null,u->new UUID(u.i64(0),u.i64(0)));}
-    private static void position(Fields f,PhysicalFluidTopology.Position p){f.record(q->q.text(p.dimension()).i32(p.x()).i32(p.y()).i32(p.z()));}
+    /** A rack lane is written only when there is one: a block's position keeps its schema-1 record. */
+    private static void position(Fields f,PhysicalFluidTopology.Position p){f.record(q->{q.text(p.dimension()).i32(p.x()).i32(p.y()).i32(p.z());if(p.lane()!=0)q.i32(p.lane());});}
     private static PhysicalFluidTopology.Position position(Record r) {
-        return r.record(null,q->{var dimension=q.text("");int x=q.i32(0),y=q.i32(0),z=q.i32(0);
-            try{return new PhysicalFluidTopology.Position(dimension,x,y,z);}catch(IllegalArgumentException invalid){throw q.invalid(invalid.getMessage());}});
+        return r.record(null,q->{var dimension=q.text("");int x=q.i32(0),y=q.i32(0),z=q.i32(0),lane=q.i32(0);
+            try{return new PhysicalFluidTopology.Position(dimension,x,y,z,lane);}catch(IllegalArgumentException invalid){throw q.invalid(invalid.getMessage());}});
     }
     private static <T> T required(T value,Record r,String what){if(value==null)throw r.invalid("missing "+what);return value;}
     private static <T> T valid(Record r,String what,java.util.function.Supplier<T> build) {
@@ -167,7 +172,7 @@ final class FluidFacts {
     }
     static byte[] world(WorldTopologyLedger.Snapshot s) {
         return section(f->{
-            var b=s.basis();f.count(s.nextIdentity()).record(q->q.text(b.packageId()).list(b.components(),(c,id)->c.text(id)).text(b.scientificFingerprint()));
+            var b=s.basis();f.count(s.nextIdentity()).record(q->q.text(b.packageId()).list(b.components(),(c,id)->c.text(id)).text("").text(b.revision()));
             var active=new ArrayList<>(s.active().values());active.sort(Comparator.comparingLong(r->r.device().id()));
             f.list(active,FluidFacts::registration);
             f.record(t->total(t,s.constructed())).record(t->total(t,s.destroyed()));
@@ -182,8 +187,11 @@ final class FluidFacts {
     static World world(byte[] data,int offset,int length) {
         return read(data,offset,length,"facts of the topology unit",f->{
             long next=f.count(0);
-            var basis=f.record(null,q->{var id=q.text("");var components=q.list(List.of(),c->c.text(""));var fingerprint=q.text("");
-                return valid(q,"basis",()->new WorldTopologyLedger.FluidBasis(id,components,fingerprint));});
+            // The third field is retired (schema 1's hash of the package data, owner decision 2026-10-26): written empty,
+            // read as empty or as that hash, never used. A schema 1 basis has no revision: "" restates the world once.
+            var basis=f.record(null,q->{var id=q.text("");var components=q.list(List.of(),c->c.text(""));var retired=q.text("");var revision=q.text("");
+                if(!retired.isEmpty()&&!retired.matches("[0-9a-f]{64}:[0-9a-f]{64}"))throw q.invalid("basis: invalid retired fingerprint");
+                return valid(q,"basis",()->new WorldTopologyLedger.FluidBasis(id,components,revision));});
             var registrations=f.list(List.of(),FluidFacts::registration);
             var constructed=f.record(null,FluidFacts::total);var destroyed=f.record(null,FluidFacts::total);
             var recoveries=f.list(List.of(),q->{var id=required(uuid(q),q,"recovery identity");var position=required(position(q),q,"recovery position");
@@ -213,8 +221,8 @@ final class FluidFacts {
                 .list(d.ports(),(q,p)->{position(q,p.cell());q.name(p.face()).name(p.port()).name(p.role());})
                 .record(q->q.f64(s.volume()).f64(s.temperature()).f64(s.pressure()).doubles(s.composition())
                         .record(feed->feed.f64(s.solids().volumeFraction()).list(s.solids().grades(),(e,grade)->e.text(grade.material()).text(grade.size().metres()).f64(grade.massShare())))
-                        .f64(s.levelHeight()).bool(s.open()))
-                .count(r.revision());
+                        .f64(s.levelHeight()).bool(s.open()).record(shape->geometry(shape,s.geometry())))
+                .count(r.revision()).count(d.joints()).count(d.slots()).count(d.points());
     }
     private static WorldTopologyLedger.Registration registration(Record f) {
         long id=f.count(0);var position=position(f);
@@ -229,17 +237,25 @@ final class FluidFacts {
             var feed=q.record(SlurryFeed.NONE,e->{double fraction=e.f64(0);var grades=e.list(List.of(),g->{var material=g.text("");var size=g.text("");double share=g.f64(0);
                 return valid(g,"slurry grade",()->new SlurryFeed.Grade(material,new ParticleSize(size),share));});return valid(e,"slurry feed",()->new SlurryFeed(fraction,grades));});
             double levelHeight=q.f64(com.wormzjl.icheme.science.fluid.network.PassiveStepSolver.LEVEL_HEAD_HEIGHT);boolean open=q.bool(false);
-            required(composition,q,"composition");return valid(q,"device spec",()->new FluidDeviceSpec(volume,temperature,pressure,composition,feed,levelHeight,open));});
+            var shape=q.record(com.wormzjl.icheme.science.fluid.network.VesselGeometry.prism(volume,levelHeight),FluidFacts::geometry);
+            required(composition,q,"composition");return valid(q,"device spec",()->new FluidDeviceSpec(volume,temperature,pressure,composition,feed,levelHeight,open,shape));});
         long revision=f.count(0);
+        // Schema 2: a record written before joints existed connects through every face, as every pipe did then.
+        long joints=f.count(PhysicalFluidTopology.ALL_FACES);if(joints>PhysicalFluidTopology.ALL_FACES)throw f.invalid("joints "+joints);
+        long slots=f.count(0);if(slots>PhysicalFluidTopology.RACK_WIDTH)throw f.invalid("lane width "+slots);
+        long points=f.count(0);if(points>>>60!=0)throw f.invalid("lane points "+points);
         required(position,f,"device position");required(kind,f,"device kind");required(facing,f,"device facing");required(geometry,f,"device geometry");required(spec,f,"device spec");
-        return valid(f,"registration "+id,()->new WorldTopologyLedger.Registration(new PhysicalFluidTopology.Device(id,position,kind,facing,geometry,control,ports,generatorEnabled,cutoff,filter),spec,revision));
+        return valid(f,"registration "+id,()->new WorldTopologyLedger.Registration(new PhysicalFluidTopology.Device(id,position,kind,facing,geometry,control,ports,generatorEnabled,cutoff,filter,(int)joints,(int)slots,points),spec,revision));
     }
+    private static void geometry(Fields f,com.wormzjl.icheme.science.fluid.network.VesselGeometry g){f.name(g.form()).f64(g.capacity()).f64(g.height()).f64(g.diameter()).f64(g.length()).f64(g.bootDiameter()).f64(g.bootLength());}
+    private static com.wormzjl.icheme.science.fluid.network.VesselGeometry geometry(Record f){var form=f.name(com.wormzjl.icheme.science.fluid.network.VesselGeometry.Form.class,null);double capacity=f.f64(0),height=f.f64(0),d=f.f64(0),l=f.f64(0),bd=f.f64(0),bl=f.f64(0);return valid(f,"vessel geometry",()->new com.wormzjl.icheme.science.fluid.network.VesselGeometry(form,capacity,height,d,l,bd,bl));}
     private static void control(Fields f,FlowControl control) {
         switch(control) {
             case FlowControl.Passive ignored->f.text("passive").f64(0).f64(0).bool(false).f64(0);
             case FlowControl.Pump pump->f.text("pump").f64(pump.requestedVolumeFlow()).f64(pump.maximumAddedPressure()).bool(pump.enabled()).f64(0);
             case FlowControl.Compressor compressor->f.text("compressor").f64(compressor.requestedVolumeFlow()).f64(compressor.maximumPressureRatio()).bool(compressor.enabled()).f64(0);
             case FlowControl.PressureValve valve->f.text("pressure_valve").f64(0).f64(0).bool(false).f64(valve.targetPressure());
+            case FlowControl.ControlValve valve->{f.text("control_valve").f64(0).f64(0).bool(false).f64(valve.targetPressure()).name(valve.source());f.list(valve.sensor()==null?List.<java.util.UUID>of():List.of(valve.sensor()),FluidFacts::uuid).i64(valve.revision()).f64(valve.massTarget()).f64(valve.volumeTarget());}
         }
     }
     private static FlowControl control(Record f) {
@@ -249,6 +265,7 @@ final class FluidFacts {
             case "pump"->new FlowControl.Pump(flow,limit,enabled);
             case "compressor"->new FlowControl.Compressor(flow,limit,enabled);
             case "pressure_valve"->new FlowControl.PressureValve(target);
+            case "control_valve"->{var source=f.name(FlowControl.ValveSource.class,null);var sensor=f.list(List.of(),FluidFacts::uuid);long revision=f.i64(0);if(sensor.size()>1)throw f.invalid("multiple control sources");double mass=f.f64(1),volume=f.f64(.01);yield new FlowControl.ControlValve(source,target,mass,volume,sensor.isEmpty()?null:sensor.getFirst(),revision);}
             default->throw new IllegalArgumentException("unknown control "+kind);
         });
     }
@@ -406,7 +423,7 @@ final class FluidFacts {
         for(var r:world.registrations) {
             var spec=r.spec();var composition=axis.map(spec.composition(),null);
             if(Arrays.stream(composition).sum()<=0){composition=FluidDeviceSpec.nitrogen(catalog).composition();warn("device "+r.device().id()+": its spec holds only components the data no longer has; it now holds nitrogen");}
-            if(restate)spec=new FluidDeviceSpec(spec.volume(),spec.temperature(),spec.pressure(),composition,spec.solids(),spec.levelHeight(),spec.open());
+            if(restate)spec=new FluidDeviceSpec(spec.volume(),spec.temperature(),spec.pressure(),composition,spec.solids(),spec.levelHeight(),spec.open(),spec.geometry());
             registrations.put(r.device().id(),new WorldTopologyLedger.Registration(r.device(),spec,r.revision()));
         }
         // Vessel contents and filter cakes, by device identity.
@@ -421,13 +438,13 @@ final class FluidFacts {
                 PassiveNetwork.Reservoir node;
                 if(!restate&&from.identity()) {
                     var state=Arrays.stream(v.moles).sum()==0&&!solids.empty()?model.solidState(v.temperature,v.pressure,solids):model.state(v.temperature,v.pressure,v.liquid,v.vapor,v.waterLiquid,v.waterVapor,v.hydrocarbonPressure).withSolids(solids);
-                    node=new PassiveNetwork.Reservoir(v.id,y,state,PassiveNetwork.NodeKind.RESERVOIR,new PassiveNetwork.Inventory(v.volume,v.moles,v.energy,solids,v.levelHeight,v.open));
+                    node=new PassiveNetwork.Reservoir(v.id,y,state,PassiveNetwork.NodeKind.RESERVOIR,new PassiveNetwork.Inventory(v.volume,v.moles,v.energy,solids,v.levelHeight,v.open,r.spec().geometry()));
                 } else {
                     var moles=from.map(v.moles,removed);restated++;
-                    if(Arrays.stream(moles).sum()==0&&solids.empty())node=PassiveNetwork.emptyVessel(v.id,y,v.volume,v.levelHeight,v.open,model);
+                    if(Arrays.stream(moles).sum()==0&&solids.empty())node=r.spec().initialize(r.device(),model,()->{});
                     else {
                         var state=Arrays.stream(moles).sum()==0?model.solidState(v.temperature,v.pressure,solids):model.flashTP(v.temperature,v.pressure,moles,()->{}).withSolids(solids);
-                        node=new PassiveNetwork.Reservoir(v.id,y,state,PassiveNetwork.NodeKind.RESERVOIR,new PassiveNetwork.Inventory(v.volume,moles,state.internalEnergy(),solids,v.levelHeight,v.open));
+                        node=new PassiveNetwork.Reservoir(v.id,y,state,PassiveNetwork.NodeKind.RESERVOIR,new PassiveNetwork.Inventory(v.volume,moles,state.internalEnergy(),solids,v.levelHeight,v.open,r.spec().geometry()));
                     }
                     energy+=node.inventory().internalEnergy()-v.energy;
                 }
@@ -473,7 +490,7 @@ final class FluidFacts {
             double t=Math.min(box.maximumTemperature(),Math.max(box.minimumTemperature(),spec.temperature())),p=Math.min(box.maximumPressure(),Math.max(box.minimumPressure(),spec.pressure()));
             if(t!=spec.temperature()||p!=spec.pressure()) {
                 warn("device "+d.id()+": its spec "+spec.temperature()+" K, "+spec.pressure()+" Pa lies outside the package's input box; it now reads "+t+" K, "+p+" Pa");
-                spec=new FluidDeviceSpec(spec.volume(),t,p,spec.composition(),spec.solids(),spec.levelHeight(),spec.open());
+                spec=new FluidDeviceSpec(spec.volume(),t,p,spec.composition(),spec.solids(),spec.levelHeight(),spec.open(),spec.geometry());
             }
         }
         return spec.initialize(d,model,()->{});

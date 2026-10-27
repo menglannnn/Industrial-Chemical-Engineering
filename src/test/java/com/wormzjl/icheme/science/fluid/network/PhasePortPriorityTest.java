@@ -254,12 +254,12 @@ class PhasePortPriorityTest extends PortFixture {
      * drawn only while the tank holds it and before the next one; a step may draw two (the one that empties the first at
      * its capacity and the next with the rest).
      */
-    @Test void pentaneOverWaterIsDrawnInEachPortsPriorityOrder() {
+    @Test void bottomLiquidsAreDrawnTogetherAndTopKeepsItsPriorityOrder() {
         var drain=drive("oil-water-drain",oilWaterDrain(),5,40,33);
-        assertOrder("bottom port",drain,new int[]{WATER,OIL,GAS});
+        assertTrue(drain.stream().anyMatch(s->s.out()[1]>0&&s.out()[2]>0),"both liquids leave in the same interval");
         for(var s:drain) {
             // "Gone": no more than the condensate of the cooling headspace (1e-6 of the vessel).
-            if(share(s.start(),WATER)>1e-6&&s.out()[1]>0)assertTrue(share(s.end(),WATER)<=1e-6,"bottom slice "+s.index()+": pentane only once the water is gone");
+
             if(share(s.start(),OIL)+share(s.start(),WATER)>1e-6&&s.out()[0]>0)assertTrue(share(s.end(),OIL)+share(s.end(),WATER)<=1e-6,"bottom slice "+s.index()+": gas only once the liquids are gone");
         }
         var vent=drive("oil-water-overflow",oilWaterOverflow(),5,80,35);

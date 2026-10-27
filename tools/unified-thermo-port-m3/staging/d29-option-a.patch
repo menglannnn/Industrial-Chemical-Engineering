@@ -1,0 +1,93 @@
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/network/InventoryEquilibrium.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/InventoryEquilibrium.java
+index 950b96bf8..955ccaab0 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/InventoryEquilibrium.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/InventoryEquilibrium.java
+@@ -229,7 +229,7 @@ public final class InventoryEquilibrium {
+      * hands over a state the pass loop solves again, laid out from it.
+      */
+     private static PhaseLayout layout(FluidThermodynamics model,FluidThermodynamics.State state,PhaseSupport[] support) {
+-        return new PhaseLayout(model,state,null,null,support!=null&&fits(support,state)?support:PhaseLayout.support(state,null,model.traceTruncation(),null));
++        return new PhaseLayout(model,state,null,null,support!=null&&fits(support,state)?support:PhaseLayout.support(model,state,null,null,false));
+     }
+     /** Whether every component {@code state} holds has a phase under {@code support} that {@code state} holds. */
+     private static boolean fits(PhaseSupport[] support,FluidThermodynamics.State state) {
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+index be9283b5e..08a5ecfb7 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+@@ -947,7 +947,7 @@ public final class PassiveStepSolver {
+         var supports=new PhaseSupport[seeds.size()][];
+         for(int node=0;node<supports.length;node++)
+             if(!graph.reservoirs().get(node).fixed()&&!dry(graph.reservoirs().get(node),seeds.get(node)))
+-                supports[node]=PhaseLayout.support(seeds.get(node),Arrays.copyOf(reachable[node],model.hydrocarbon.componentCount()),model.traceTruncation(),promoted[node],
++                supports[node]=PhaseLayout.support(model,seeds.get(node),Arrays.copyOf(reachable[node],model.hydrocarbon.componentCount()),promoted[node],
+                         graph.reservoirs().get(node).junction());
+         return supports;
+     }
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/network/VesselCrystals.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/VesselCrystals.java
+index 8f0f000dd..ecf74825f 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/VesselCrystals.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/VesselCrystals.java
+@@ -337,7 +337,7 @@ final class VesselCrystals {
+               double trueEnergy,double capacity,double workFrom,SolidInventory inert) {
+             this.model=model;this.crystals=List.copyOf(crystals);this.totals=totals;this.trueEnergy=trueEnergy;this.capacity=capacity;this.workFrom=workFrom;
+             this.inert=inert;inertMoments=inert.moments();
+-            layout=new PhaseLayout(model,seed,null,null,PhaseLayout.support(seed,null,model.traceTruncation(),null),false);
++            layout=new PhaseLayout(model,seed,null,null,PhaseLayout.support(model,seed,null,null,false),false);
+             fluidSize=layout.size();crystalScale=new double[crystals.size()];vapourRow=new boolean[crystals.size()];
+             for(int j=0;j<crystals.size();j++) {
+                 int c=crystals.get(j).component();var support=layout.support(c);
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/solver/PhaseLayout.java b/src/main/java/com/wormzjl/createcheme/science/fluid/solver/PhaseLayout.java
+index 01896ed16..8cce7eb68 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/solver/PhaseLayout.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/solver/PhaseLayout.java
+@@ -509,6 +509,24 @@ public final class PhaseLayout {
+         if(junction&&FluidThermodynamics.carriedTrace(seed))for(int i=0;i<support.length;i++)if(support[i]==PhaseSupport.VAPOR_ONLY)support[i]=PhaseSupport.ABSENT;
+         return support;
+     }
++    /**
++     * {@link #support(FluidThermodynamics.State, boolean[], TraceTruncationPolicy, boolean[], boolean)} of a node of
++     * {@code model}'s network, under its trace truncation policy, with the support read from the fluid phases of the
++     * answer the seed was adopted from (owner decision D29 A). Where the seed's liquid is a crystal's condensed share
++     * alone ({@link FluidThermodynamics#condensedShareOnly}: a frost answer's crystal carried by the stand-in), that liquid
++     * is no phase of the answer and its composition (the crystal's species only) says nothing of what a liquid there
++     * holds: the answer's one fluid phase is the vapour, and every component the vapour holds is admitted to the liquid
++     * too ({@link PhaseSupport#BOTH} where the rule gives {@link PhaseSupport#VAPOR_ONLY}). The supersaturated liquid then
++     * takes up the species that arrive with it: LNG flowing into an empty tank at the ambient condenses its methane into
++     * it as the tank pressurises, where methane held in the vapour only cooled the tank to methane's 90.69 K floor (cold
++     * fuzz seeds 34 and 75). On a package without crystals, and wherever a seed's liquid is a phase of its own, the same
++     * support as without the model.
++     */
++    public static PhaseSupport[] support(FluidThermodynamics model,FluidThermodynamics.State seed,boolean[] componentMask,boolean[] promoted,boolean junction) {
++        var support=support(seed,componentMask,model.traceTruncation(),promoted,junction);
++        if(model.condensedShareOnly(seed))for(int i=0;i<support.length;i++)if(support[i]==PhaseSupport.VAPOR_ONLY)support[i]=PhaseSupport.BOTH;
++        return support;
++    }
+     private static PhaseSupport[] supportOf(FluidThermodynamics.State seed,boolean[] componentMask,TraceTruncationPolicy policy,boolean[] promoted) {
+         Objects.requireNonNull(seed);Objects.requireNonNull(policy);
+         double[] l=seed.liquidView(),v=seed.vaporView();
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/FluidThermodynamics.java b/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/FluidThermodynamics.java
+index d35375b01..5b0cc6902 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/FluidThermodynamics.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/FluidThermodynamics.java
+@@ -908,6 +908,20 @@ public final class FluidThermodynamics {
+         return false;
+     }
+ 
++    /**
++     * Owner decision D29 A: whether {@code state}'s hydrocarbon liquid is the stand-in's condensed share alone (see
++     * {@link #adopt}): a liquid holding crystal species only, beside a vapour, as a frost answer's crystal is carried. It is
++     * no phase of the answer, so its composition says nothing of which components a liquid there holds: the trace support
++     * reads the answer's own fluid phase, the vapour, and the stand-in admits every component the node holds, as the
++     * supersaturated solution it stands for ({@code PhaseLayout.support}). Never on a package without crystals.
++     */
++    public boolean condensedShareOnly(State state) {
++        if(crystalIds.isEmpty()||!(state.liquidVolume()>0)||state.vaporProperties()==null)return false;
++        double[] l=state.liquidView();
++        for(int i=0;i<l.length;i++)if(l[i]>0&&!crystalSpecies[i])return false;
++        return true;
++    }
++
+     /** The engine's answer as a network state (see {@link #equilibriumTP}), or its typed refusal; {@code terms}, when
+      * given, is the prepared Peng-Robinson workspace of exactly {@code t}. */
+     State adopt(double t,double p,double[] overall,EquilibriumResult result,TranslatedPengRobinson.Workspace terms) {

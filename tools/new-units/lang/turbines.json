@@ -1,0 +1,15 @@
+{
+  "gui.createcheme.equipment_constructor.steam_turbine.casing": "Casing",
+  "gui.createcheme.equipment_constructor.steam_turbine.casing.hint": "Outside diameter of the casing's exhaust end, 0.6 to 3 m in 0.1 m steps, about 5 MW per square metre of it; the steam chest, trip-and-throttle valve, gear and generator follow, and on the condensing set the condenser and its table",
+  "gui.createcheme.equipment_constructor.steam_turbine.stages": "Stages",
+  "gui.createcheme.equipment_constructor.steam_turbine.stages.hint": "Turbine stages, 1 to 12; each lengthens the casing by 0.15 of its diameter. One stage is a single-stage turbine with hand valves on its steam chest; more carry 1 to 5 governor valves under a bar-lift bridge",
+  "gui.createcheme.equipment_constructor.condensing_turbine.table": "Table",
+  "gui.createcheme.equipment_constructor.condensing_turbine.table.hint": "Height of the operating deck on the concrete table, in whole metres up to 16; at least 2.4 times the casing and 0.5 m, and 4 m, and as high as hangs the condenser with its cooling-water inlet a block over the ground",
+  "gui.createcheme.equipment_constructor.steam_turbine.power": "About %s MW, %s rpm",
+  "gui.createcheme.equipment_constructor.steam_turbine.power.hint": "Electrical output of a typical set of this casing (within a factor of two either way) and the turbine's speed, geared down to the 4-pole generator",
+  "gui.createcheme.vessel.steam_turbine.casing": "%s-stage turbine, exhaust casing %s m across",
+  "gui.createcheme.vessel.steam_turbine.power": "About %s MW at %s rpm, geared to a 4-pole generator",
+  "gui.createcheme.vessel.condensing_turbine.condenser": "Two-pass surface condenser %s m across, %s m long",
+  "gui.createcheme.vessel.unit_support.steam_turbine": "On its plinth and base frame at grade",
+  "gui.createcheme.vessel.unit_support.condensing_turbine": "Operating deck %s m above the ground"
+}

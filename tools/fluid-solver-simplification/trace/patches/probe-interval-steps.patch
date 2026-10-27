@@ -1,0 +1,41 @@
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveIntervalSolver.java	2026-10-18 23:09:27.577193800 +0800
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveIntervalSolver.java	2026-10-18 23:15:04.936597800 +0800
+@@ -238,6 +238,7 @@
+                 }
+                 guard.checkFilters(result.filters(),result.states(),result.modes(),result.massFlows());
+                 double change=stateChange(accepted,result.states());
++                if(T40_STEPS)System.out.println("T40STEP t="+elapsed+" h="+step+" "+t40Detail(accepted,result.states(),result.massFlows()));
+                 boolean jump=change>STATE_CAP&&previousStateChange>0&&step<=.51*previousStateStep&&change>=.9*previousStateChange;
+                 boolean ok=step<=transitionFloor||change<=STATE_CAP||jump;
+                 SolverDiagnostics.attempt(attempt,step,ok,ok&&jump&&step>transitionFloor?"be-jump":ok&&step<=transitionFloor&&change>STATE_CAP?"be-floor":"be-state",change);
+@@ -275,6 +276,7 @@
+                 h=step*.5;
+             }catch(SparseNewton.Nonconvergence|IllegalArgumentException|StateChangeRejection rejected) {
+                 lastRejection=String.valueOf(rejected.getMessage());
++                if(T40_STEPS)System.out.println("T40STEP t="+elapsed+" h="+step+" REJECT "+String.valueOf(rejected.getMessage()).replace((char)10,(char)32));
+                 if(!(rejected instanceof StateChangeRejection))SolverDiagnostics.attempt(attempt,step,false,diagnosticReason(rejected),Double.NaN);
+                 // A trial a phase hold refused - directly, or a Newton pass whose failing line search it stopped - is
+                 // counted under its own key (one per phase set; never folded into "Other"), so a checkpoint, a view and the
+@@ -420,6 +422,22 @@
+      * larger of the vessel's mass and {@link #STATE_MASS_REFERENCE_DENSITY} times its volume: the state's while the wall
+      * carries it, the capacity while it is slack or empty (decision D54: a slack bag's own volume is its contents', which
+      * would make a nearly empty bag with a through-flow the step controller's lock again). An empty vessel holds no mass. */
++    // TEMPORARY t40 probe: -Dt40.steps=true prints every attempt's dominant state change.
++    static final boolean T40_STEPS=Boolean.getBoolean("t40.steps");
++    private static String t40Detail(PassiveNetwork before,List<FluidThermodynamics.State> after,double[] flows) {
++        var sb=new StringBuilder();double worst=-1;int at=-1;
++        for(int i=0;i<after.size();i++) {
++            var node=before.reservoirs().get(i);if(node.kind()!=PassiveNetwork.NodeKind.RESERVOIR)continue;
++            var a=node.state();var b=after.get(i);double capacity=node.inventory().volume();
++            double mass=node.empty()?0:a.mass(),volume=!node.empty()&&PhaseLayout.taut(a,capacity)?a.volume():capacity;
++            double cp=Math.abs(b.pressure()-a.pressure())/Math.max(100,a.pressure()),cm=Math.abs(b.mass()-mass)/Math.max(1e-12,Math.max(mass,STATE_MASS_REFERENCE_DENSITY*volume));
++            if(Math.max(cp,cm)>worst){worst=Math.max(cp,cm);at=i;}
++        }
++        sb.append(String.format(java.util.Locale.ROOT,"change=%.4g node=%d",worst,at));
++        if(at>=0){var a=before.reservoirs().get(at).state();var b=after.get(at);sb.append(String.format(java.util.Locale.ROOT," P %.6g->%.6g m %.6g->%.6g T %.4f->%.4f liq %.4g->%.4g vap %.4g->%.4g",a.pressure(),b.pressure(),a.mass(),b.mass(),a.temperature(),b.temperature(),a.liquidVolume(),b.liquidVolume(),a.vaporVolume(),b.vaporVolume()));}
++        sb.append(" flows=");for(double q:flows)sb.append(String.format(java.util.Locale.ROOT,"%.4g,",q));
++        return sb.toString();
++    }
+     private static double stateChange(PassiveNetwork before,List<FluidThermodynamics.State> after) {
+         double change=0;
+         for(int i=0;i<after.size();i++) {

@@ -1,0 +1,25 @@
+{
+  "snapshot": "232b0466",
+  "epoch": 11999,
+  "island": 99,
+  "committed": 7435,
+  "baseline": "Exact checkpoint refinement exhaustion reproduced",
+  "proposal": "Carry only accepted endpoint pressure-valve modes",
+  "first_interval": {
+    "seconds": 4.5,
+    "accepted": 6,
+    "rejected": 3
+  },
+  "continuation_intervals": 21,
+  "continued_seconds": 94.5,
+  "steady_average_by_seconds": 36,
+  "averages_kg_s": {
+    "inlet": 106.52783224819538,
+    "bottom": 82.63201752838881,
+    "top": 23.89581471980652,
+    "bottom_liquid": 44.1813657,
+    "bottom_gas": 38.4506519
+  },
+  "limit": "Recurring substeps and differing endpoint/average flows; not a proof of instantaneous steady flow",
+  "product_changed": false
+}

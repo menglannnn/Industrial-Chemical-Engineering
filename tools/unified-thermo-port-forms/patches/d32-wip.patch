@@ -1,0 +1,134 @@
+diff --git a/src/main/java/com/wormzjl/createcheme/runtime/fluid/FluidWorldAuthority.java b/src/main/java/com/wormzjl/createcheme/runtime/fluid/FluidWorldAuthority.java
+index 33f7374f..5d7d5155 100644
+--- a/src/main/java/com/wormzjl/createcheme/runtime/fluid/FluidWorldAuthority.java
++++ b/src/main/java/com/wormzjl/createcheme/runtime/fluid/FluidWorldAuthority.java
+@@ -246,6 +246,7 @@ public final class FluidWorldAuthority implements AutoCloseable {
+     public FluidSavedData.Capture capture() {
+         owned();flush();var islands=new ArrayList<FluidCheckpointCodec.IslandEntry>();var world=topology.snapshot();
+         for(var snapshot:runtime.coordinator().snapshots()) {
++            if(registry.members(snapshot.id()).isEmpty())throw new IllegalStateException("Fluid island "+snapshot.id()+" holds no device; refusing to save it");
+             String dimension=world.active().get(registry.members(snapshot.id()).getFirst()).device().position().dimension();
+             islands.add(new FluidCheckpointCodec.IslandEntry(dimension,com.wormzjl.createcheme.science.fluid.thermo.FluidMaterialCatalog.networkPackage(catalog),snapshot));
+         }
+diff --git a/src/main/java/com/wormzjl/createcheme/runtime/fluid/PhysicalRegistry.java b/src/main/java/com/wormzjl/createcheme/runtime/fluid/PhysicalRegistry.java
+index f9d73acb..24eb085a 100644
+--- a/src/main/java/com/wormzjl/createcheme/runtime/fluid/PhysicalRegistry.java
++++ b/src/main/java/com/wormzjl/createcheme/runtime/fluid/PhysicalRegistry.java
+@@ -101,6 +101,9 @@ public final class PhysicalRegistry {
+             long saved=ids.getFirst();if(members.containsKey(saved))throw new IllegalStateException("Saved topology and hydraulic ownership disagree");
+             var devices=island.physicalIds().stream().sorted().toList();members.put(saved,devices);for(long id:devices)bind(id,saved);
+         }
++        // Every island the checkpoint restored holds a device: one that compiles to none would be saved again with nothing
++        // to name it by (D32, the island of one a join left behind).
++        for(var island:islands)if(!members.containsKey(island.id()))throw new IllegalStateException("Saved island "+island.id()+" holds no device");
+         var registered=new HashSet<Long>();for(var r:active.values())if(r.device().kind()==TopologyCompiler.Kind.RESERVOIR)registered.add(r.device().id());
+         var owned=new HashSet<Long>();for(var s:islands)for(var n:s.graph().reservoirs())if(n.kind()==PassiveNetwork.NodeKind.RESERVOIR)owned.add(n.id());
+         if(!registered.equals(owned))throw new IllegalStateException("Physical registry would lose or duplicate saved reservoir ownership");
+@@ -399,11 +402,20 @@ public final class PhysicalRegistry {
+     /**
+      * The islands an event's touched device stands for: every island of a device the event edits, the island of any other
+      * owned device, and none for a fixed boundary it only passes (a device beside an edit, a member of an island the walk
+-     * stopped at): islands that share a generator or a void are independent of each other (owner decision D17).
++     * stopped at): islands that share a generator or a void are independent of each other (owner decision D17). A lone
++     * boundary is the exception: an edit that touches it joins it (or would), and the batch that puts it into the joined
++     * island ends its island of one, so that island is fenced and replaced with the rest (D32; left alone it stayed in the
++     * coordinator beside the joined island, was saved, and came back from a reload with no device).
+      */
+     private Set<Long> standsFor(long device,Set<Long> edited) {
+         if(edited.contains(device))return islandsOf(device);
+-        return fixedDevice(device)?Set.of():islandsOf(device);
++        if(!fixedDevice(device))return islandsOf(device);
++        Long lone=loneIsland(device);return lone==null?Set.of():Set.of(lone);
++    }
++    /** The island of one of a fixed boundary no connection reaches (its only member), or null. */
++    private Long loneIsland(long device) {
++        for(long island:islandsOf(device))if(members.getOrDefault(island,List.of()).equals(List.of(device)))return island;
++        return null;
+     }
+     private static Set<Long> edited(WorldTopologyLedger.Event event){var ids=new HashSet<Long>();for(var edit:event.edits())ids.add(edit.id());return ids;}
+     private void bind(long device,long island) {
+diff --git a/src/test/java/com/wormzjl/createcheme/runtime/fluid/EventPathWorld.java b/src/test/java/com/wormzjl/createcheme/runtime/fluid/EventPathWorld.java
+index 82f87f9d..a8539af5 100644
+--- a/src/test/java/com/wormzjl/createcheme/runtime/fluid/EventPathWorld.java
++++ b/src/test/java/com/wormzjl/createcheme/runtime/fluid/EventPathWorld.java
+@@ -23,7 +23,7 @@ class EventPathWorld {
+     record Held(long tick,long island,long committed,String status) {}
+ 
+     final FluidThermodynamics model=FluidTestSupport.networkModel();
+-    final WorldTopologyLedger ledger=new WorldTopologyLedger(WorldTopologyLedger.Snapshot.empty(CATALOG));
++    final WorldTopologyLedger ledger;
+     final Map<Long,IslandCoordinator.Attempt> attempts=new LinkedHashMap<>();
+     final Map<Long,ProcessSolveServices.FluidIslandCommand> commands=new HashMap<>();
+     final int workers;long requests;
+@@ -37,8 +37,11 @@ class EventPathWorld {
+     /** A world with one synchronous worker. */
+     EventPathWorld(){this(1);}
+     /** A world whose worker pool has {@code workers} slots: 0 (no solve) or 1 (a synchronous worker). */
+-    EventPathWorld(int workers) {
+-        this.workers=workers;
++    EventPathWorld(int workers){this(workers,WorldTopologyLedger.Snapshot.empty(CATALOG),List.of());}
++    /** The world {@code saved} ({@code world.ledger.snapshot()}) and {@code islands} ({@code world.coordinator.snapshots()})
++     * reload to, as {@code FluidWorldAuthority} starts: the ledger, every saved island registered, then the registry loaded. */
++    EventPathWorld(int workers,WorldTopologyLedger.Snapshot saved,List<IslandCoordinator.Snapshot> islands) {
++        this.workers=workers;ledger=new WorldTopologyLedger(saved);
+         coordinator=new IslandCoordinator(new IslandCoordinator.Dispatcher() {
+             public int availableWorkers(){return workers-attempts.size();}
+             public long nextRequestId(){return ++requests;}
+@@ -56,6 +59,7 @@ class EventPathWorld {
+             public void refused(UUID event,String reason){}
+             public void committed(Set<Long> removed,Set<Long> recompiled){committedRemovals.add(removed);}
+         });
++        for(var island:islands)coordinator.register(island,model);
+         registry.load();
+     }
+     /** The world's default control of a device kind (FluidWorldAuthority.place). */
+diff --git a/src/test/java/com/wormzjl/createcheme/runtime/fluid/LoneBoundaryJoinTest.java b/src/test/java/com/wormzjl/createcheme/runtime/fluid/LoneBoundaryJoinTest.java
+new file mode 100644
+index 00000000..401e690a
+--- /dev/null
++++ b/src/test/java/com/wormzjl/createcheme/runtime/fluid/LoneBoundaryJoinTest.java
+@@ -0,0 +1,44 @@
++package com.wormzjl.createcheme.runtime.fluid;
++
++import com.wormzjl.createcheme.science.fluid.topology.TopologyCompiler.Kind;
++import java.util.List;
++import org.junit.jupiter.api.Test;
++import static com.wormzjl.createcheme.runtime.fluid.PhysicalFluidTopology.Direction.NORTH;
++import static org.junit.jupiter.api.Assertions.*;
++
++/**
++ * D32 (main 0.8.0 runtime code): a lone generator or void is an island of one (owner decision D17), and the pipe that joins
++ * it to an island ends that island of one. The batch that put the boundary into the joined island used to leave its island
++ * of one in the coordinator, certified, and it was saved beside the joined island; after a reload it compiled to no device,
++ * and every later save threw in {@code FluidWorldAuthority.capture} ({@code members(id).getFirst()}). Here a lone
++ * generator and a lone void are joined to a tank, the world is saved, reloaded and saved again, as the crash needed.
++ */
++class LoneBoundaryJoinTest {
++    @Test void joiningALoneGeneratorAndALoneVoidToATankEndsTheirIslandsOfOneThroughASaveAndAReload() {
++        var w=new EventPathWorld();
++        long generator=w.place(0,0,0,Kind.GENERATOR,NORTH,EventPathWorld.nitrogen(),.05);
++        long tank=w.place(3,0,0,Kind.RESERVOIR,NORTH);
++        long vent=w.place(6,0,0,Kind.VOID,NORTH);
++        applied(w);
++        for(long device:List.of(generator,tank,vent))assertEquals(List.of(device),w.registry.members(w.registry.owner(device)),"placed alone: an island of one");
++        for(int x:new int[]{1,2,4,5})w.place(x,0,0,Kind.PIPE,NORTH);
++        applied(w);
++        long joined=w.registry.owner(tank);
++        assertEquals(java.util.Set.of(joined),w.registry.islands(generator),"the generator is in the joined island only");
++        assertEquals(java.util.Set.of(joined),w.registry.islands(vent),"the void is in the joined island only");
++        assertEquals(1,w.coordinator.snapshots().size(),"one island: the joined one");
++        everyIslandHoldsADevice(w,"the first save");
++        var reloaded=new EventPathWorld(1,w.ledger.snapshot(),w.coordinator.snapshots());
++        everyIslandHoldsADevice(reloaded,"the save after the reload");
++        assertEquals(java.util.Set.of(reloaded.registry.owner(tank)),reloaded.registry.islands(generator));
++    }
++    /** Ticks the world until every queued placement is applied. */
++    private static void applied(EventPathWorld w) {
++        for(int i=0;i<400&&!w.ledger.events().isEmpty();i++)w.tick();
++        assertTrue(w.ledger.events().isEmpty(),"every placement applied");
++    }
++    /** What {@code FluidWorldAuthority.capture} reads of every island: the dimension of its first device. */
++    private static void everyIslandHoldsADevice(EventPathWorld w,String when) {
++        for(var island:w.coordinator.snapshots())assertFalse(w.registry.members(island.id()).isEmpty(),when+": island "+island.id()+" holds a device");
++    }
++}

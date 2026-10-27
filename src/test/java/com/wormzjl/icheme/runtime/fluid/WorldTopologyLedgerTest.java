@@ -123,7 +123,7 @@ class WorldTopologyLedgerTest {
         assertThrows(IllegalArgumentException.class,()->FluidCheckpointCodec.decodeTopology(Arrays.copyOf(bytes,bytes.length-2),0,NO_RECOVERIES));
     }
     @Test void capturedAccountingAndSerializationNeverReadTheReloadedGlobalAxis() {
-        var basis=new WorldTopologyLedger.FluidBasis("test:nitrogen",List.of("Nitrogen","Water"),"0".repeat(64)+":"+"0".repeat(64));
+        var basis=new WorldTopologyLedger.FluidBasis("test:nitrogen",List.of("Nitrogen","Water"),"test:nitrogen@r1");
         var ledger=new WorldTopologyLedger(new WorldTopologyLedger.Snapshot(0,1,Map.of(),List.of(),WorldTopologyLedger.MaterialTotal.empty(2),WorldTopologyLedger.MaterialTotal.empty(2),basis));
         com.wormzjl.icheme.science.material.MaterialRuntime.publish(reordered());ledger.tick();
         var saved=ledger.snapshot();assertEquals(basis,saved.basis());assertEquals(2,saved.constructed().moles().length);

@@ -37,8 +37,10 @@ public record FluidView(long identity,long inputRevision,long committedTick,long
      * capacity/geometry are still known. Null Tank for a node that is not a vessel.
      */
     public record Tank(double levelHeight,boolean open,double ventKgPerSecond,double spillKgPerSecond,
-                       double capacity,Double topPressure,Double bottomPressure) {
+                       double capacity,Double topPressure,Double bottomPressure,com.wormzjl.icheme.science.fluid.network.VesselGeometry geometry) {
+        public Tank(double levelHeight,boolean open,double ventKgPerSecond,double spillKgPerSecond,double capacity,Double topPressure,Double bottomPressure){this(levelHeight,open,ventKgPerSecond,spillKgPerSecond,capacity,topPressure,bottomPressure,com.wormzjl.icheme.science.fluid.network.VesselGeometry.prism(capacity,levelHeight));}
         public Tank {
+            java.util.Objects.requireNonNull(geometry,"Invalid tank presentation: missing geometry");if(Math.abs(geometry.capacity()-capacity)>capacity*1e-8||Math.abs(geometry.height()-levelHeight)>levelHeight*1e-8)throw new IllegalArgumentException("Invalid tank presentation: geometry mismatch");
             if(!(levelHeight>0)||!Double.isFinite(levelHeight)||!(ventKgPerSecond>=0)||!Double.isFinite(ventKgPerSecond)||!(spillKgPerSecond>=0)||!Double.isFinite(spillKgPerSecond)||!(capacity>0)||!Double.isFinite(capacity))
                 throw new IllegalArgumentException("Invalid tank presentation");
             if((topPressure==null)!=(bottomPressure==null)||topPressure!=null&&(!Double.isFinite(topPressure)||!(topPressure>0)||!Double.isFinite(bottomPressure)||bottomPressure<topPressure))
@@ -46,7 +48,7 @@ public record FluidView(long identity,long inputRevision,long committedTick,long
         }
         /** The liquid's height over the bottom, m: its condensed volume (both liquids and the solids) over the footprint
          * {@code capacity / levelHeight}. */
-        public double level(State state){return state==null?0:(state.phaseVolumes()[0]+state.phaseVolumes()[1]+state.solids().volume())*levelHeight/capacity;}
+        public double level(State state){return state==null?0:geometry.heightAt(state.phaseVolumes()[0]+state.phaseVolumes()[1]+state.solids().volume());}
     }
     /**
      * One connection of a tank, as its page lists it (plan 4.3 under decision D11): the port the connection's end at the

@@ -1,0 +1,5 @@
+# test selector | rule name | main file (under src/main/java) | spec file (this folder)
+com.wormzjl.createcheme.runtime.fluid.FluidCheckpointCodecTest#aCrystalIsReadBackAsItsRecordBesideACustomSolidAndAnIdNamingNoRecordIsRefused|codec-record-lookup|com/wormzjl/createcheme/runtime/fluid/FluidCheckpointCodec.java|codec.json
+com.wormzjl.createcheme.runtime.fluid.WorldTopologyLedgerTest#aTankBrokenHoldingDryIceBooksItsCrystalAsItsComponent|ledger-crystal-as-component|com/wormzjl/createcheme/runtime/fluid/WorldTopologyLedger.java|ledger.json
+com.wormzjl.createcheme.runtime.fluid.CrystalIslandRuntimeTest#aDepositedVesselCertifiesAndReplaysItsCrystalsExactly|certificate-node-solids|com/wormzjl/createcheme/runtime/fluid/IslandCertificate.java|certificate.json
+com.wormzjl.createcheme.runtime.fluid.FluidPropertyReloadGuardTest#aChangedCrystalRecordHoldsTheWorld|reload-crystal-science|com/wormzjl/createcheme/science/material/MaterialCatalog.java|reload.json

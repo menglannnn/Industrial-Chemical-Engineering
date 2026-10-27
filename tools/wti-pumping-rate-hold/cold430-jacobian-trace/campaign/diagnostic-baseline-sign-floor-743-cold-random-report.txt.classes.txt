@@ -1,0 +1,1 @@
+E6 step Newton iteration limit                               seeds=   1 smallest=  743 list= 743

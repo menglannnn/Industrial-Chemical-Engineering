@@ -213,7 +213,7 @@ class PipelineFittingTest {
 
     // ---- Pressure-control valve -----------------------------------------------------------------------------------
 
-    @Test void allSixDirectionsUseExistingPressureControlAndPreservePipeAndReservoirs() {
+    @Test void allSixDirectionsInstallAnUnconfiguredValveAndPreservePipeAndReservoirs() {
         for(var axis:Direction.values()) {
             var world=line(axis);var before=stock(world);var original=world.registry.registrations().get(3L);
             assertFalse(world.registry.installPipePressureValve(3,axis.y!=0?Direction.EAST:Direction.UP));
@@ -224,7 +224,7 @@ class PipelineFittingTest {
             assertEquals(Kind.PIPE,d.kind());assertEquals(Kind.VALVE,d.hydraulicKind());
             assertFalse(d.mechanicallyConnects(axis.y!=0?Direction.EAST:Direction.UP));
             world.registry.applyPending();assertEquals(before,stock(world));
-            assertTrue(graph(world).pipes().stream().anyMatch(p->p.control().equals(new FlowControl.PressureValve(200000))));
+            assertTrue(graph(world).pipes().stream().anyMatch(p->p.control().equals(FlowControl.ControlValve.unconfigured())));
             assertFalse(world.registry.installPipeCutoff(3,axis));assertTrue(world.commands.isEmpty());
         }
     }
@@ -296,6 +296,40 @@ class PipelineFittingTest {
         var before=stock(loaded);assertTrue(loaded.registry.removePipeAccessory(3));assertTrue(loaded.registry.removePipeAccessory(3));loaded.registry.applyPending();
         assertEquals(before,stock(loaded));var recoveries=loaded.ledger.snapshot().recoveries();assertEquals(1,recoveries.size());var recovered=recoveries.values().iterator().next();assertEquals(solids,recovered.solids());assertEquals(125,recovered.energyJoule());assertNull(recovered.player());
         assertTrue(loaded.registry.removePipeAccessory(3));loaded.registry.applyPending();assertEquals(recoveries,loaded.ledger.snapshot().recoveries());
+    }
+
+    // ---- Flowmeter ---------------------------------------------------------------------------------------------------
+
+    /** Every tap on the island's pipes. */
+    private static List<PassiveNetwork.Pipe.ObservationPoint> taps(EventPathWorld world){return graph(world).pipes().stream().flatMap(p->p.observationPoints().stream()).toList();}
+    /** {@code world} saved through the complete checkpoint and loaded with {@code flowmeters} installed, as the authority starts. */
+    private EventPathWorld reloaded(EventPathWorld world,int workers,Collection<Long> flowmeters) {
+        var checkpoint=new FluidCheckpointCodec.Checkpoint(world.coordinator.snapshots().stream().map(s->new FluidCheckpointCodec.IslandEntry(DIM,"icheme:tjl20_methane_nitrogen",s)).toList());
+        var store=FluidCheckpointStore.memory();store.commit(store.prepare(checkpoint,Optional.of(world.ledger.snapshot()),world.ledger.onlineTick(),key->model));
+        var image=store.image();var loaded=FluidCheckpointStore.memory(image).load(image.core(),key->model);
+        var islands=loaded.checkpoint().islands().stream().map(FluidCheckpointCodec.IslandEntry::snapshot).toList();
+        assertTrue(islands.stream().allMatch(s->s.graph().pipes().stream().allMatch(p->p.observationPoints().isEmpty())),"a checkpoint carries no tap");
+        return new EventPathWorld(workers,loaded.world().orElseThrow(),islands,flowmeters);
+    }
+    @Test void aFlowmeterTapsItsPipeOnTheEngineScheduleAndAgainAfterAReload() {
+        var world=line(Direction.EAST);var before=stock(world);assertTrue(taps(world).isEmpty());
+        world.registry.flowmeter(3,true);assertTrue(taps(world).isEmpty(),"an installation is a queued engine event");
+        world.registry.applyPending();var tapped=taps(world);
+        assertEquals(1,tapped.size());assertEquals(3,tapped.getFirst().host());assertEquals(before,stock(world),"a tap moves nothing");
+        var reload=reloaded(world,0,List.of(3L));
+        assertEquals(tapped,taps(reload),"the load compiles the tap again");assertFalse(reload.ledger.hasPendingEvents(),"a load queues nothing");assertEquals(before,stock(reload));
+        reload.registry.flowmeter(3,false);reload.registry.applyPending();assertTrue(taps(reload).isEmpty());assertEquals(before,stock(reload));
+    }
+    @Test void aRestingIslandKeepsItsTapThroughItsRestoredCertificate() {
+        var line=line(Direction.EAST,100000,100000);line.registry.flowmeter(3,true);line.registry.applyPending();var tapped=taps(line);
+        var resting=reloaded(line,1,List.of(3L));resting.runTo(resting.ledger.onlineTick()+600);
+        var island=resting.coordinator.snapshots().getFirst();
+        assertTrue(island.certificate().flatMap(IslandCoordinator.Certified::saved).isPresent(),"the equal-pressure line rests: "+island.status());
+        // The restored certificate's graph is the saved interval's, which has no tap; its replay keeps the island's.
+        var reload=reloaded(resting,0,List.of(3L));reload.runTo(reload.ledger.onlineTick()+100);
+        var replayed=reload.coordinator.snapshots().getFirst();
+        assertTrue(replayed.certificate().isPresent()&&replayed.clock().committedTick()>island.clock().committedTick(),"the reloaded island replays its certificate");
+        assertEquals(tapped,taps(reload));
     }
 
     // ---- Inline pump and compressor --------------------------------------------------------------------------------

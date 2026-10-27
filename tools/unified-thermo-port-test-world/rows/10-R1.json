@@ -1,0 +1,41 @@
+{
+  "id": "R1",
+  "title": "Water beside liquid methane: no drive at 1 atm; water at 1 MPa into the cooled tank freezes at the refresh, boils methane and closes its own line by deposition; back at 1 atm the ice washes out; a 260 K water generator puts the data-range notice on the island's status line (E4 row 1; WP4 ice, WP3 notice; updated 2026-10-17)",
+  "blocks": {
+    "Gw": {"at": [20, 101, 98], "block": "generator"},
+    "P1": {"at": [21, 101, 98], "block": "pipe"},
+    "T":  {"at": [22, 101, 98], "block": "reservoir"},
+    "P2": {"at": [23, 101, 98], "block": "pipe"},
+    "Gm": {"at": [24, 101, 98], "block": "generator"},
+    "P3": {"at": [22, 101, 97], "block": "pipe"},
+    "V":  {"at": [22, 101, 96], "block": "void"}
+  },
+  "steps": [
+    {"op": "mark"},
+    {"op": "place", "ids": ["Gw", "Gm"]},
+    {"op": "set", "id": "Gm", "mixture": "Methane", "pressure": 1200000, "temperatureK": 120},
+    {"op": "set", "id": "Gw", "mixture": "Water", "pressure": 101325, "temperatureK": 298.15},
+    {"op": "place", "ids": ["T", "V", "P3", "P2", "P1"]},
+    {"op": "wait", "s": 30},
+    {"op": "read", "ids": ["T"], "views": ["overview", "organic", "aqueous", "outlets"], "tag": "atm-water"},
+    {"op": "note", "text": "row 10: water at 1 MPa enters, freezes at each refresh (Water (solid)) and boils methane; the water line P1 closes by deposition in the interval after each refresh"},
+    {"op": "set", "id": "Gw", "mixture": "Water", "pressure": 1000000, "temperatureK": 298.15},
+    {"op": "wait", "s": 15},
+    {"op": "read", "ids": ["T"], "views": ["overview", "aqueous", "solids", "vapor"], "tag": "ice-a"},
+    {"op": "read", "ids": ["P1"], "views": ["overview"], "tag": "ice-a"},
+    {"op": "read", "ids": ["T"], "views": ["overview", "aqueous", "solids", "vapor"], "tag": "ice-b"},
+    {"op": "read", "ids": ["P1"], "views": ["overview"], "tag": "ice-b"},
+    {"op": "log", "grep": "fluid_island=|status=PHASE_HOLD", "tag": "R1-ice"},
+    {"op": "note", "text": "row 10: the water generator back to 1 atm; the ice washes out with the methane (time constant about 6 s)"},
+    {"op": "set", "id": "Gw", "mixture": "Water", "pressure": 101325, "temperatureK": 298.15},
+    {"op": "wait", "s": 30},
+    {"op": "read", "ids": ["T"], "views": ["overview", "solids", "outlets"], "tag": "washed"},
+    {"op": "read", "ids": ["P1"], "views": ["overview"], "tag": "washed"},
+    {"op": "note", "text": "row 10, WP3 notice check: the water generator at 260 K and 1 atm holds the stand-in below 273.16 K and stays closed; the island's line ends '; outside data range: liquid water extrapolated below 273.16 K at generator at 20, 101, 98'"},
+    {"op": "set", "id": "Gw", "mixture": "Water", "pressure": 101325, "temperatureK": 260},
+    {"op": "wait", "s": 10},
+    {"op": "read", "ids": ["T"], "views": ["overview", "rail-end"], "tag": "notice"},
+    {"op": "read", "ids": ["Gw"], "views": ["overview"], "tag": "notice"},
+    {"op": "log", "grep": "fluid_island=|status=PHASE_HOLD", "tag": "R1-end"}
+  ]
+}

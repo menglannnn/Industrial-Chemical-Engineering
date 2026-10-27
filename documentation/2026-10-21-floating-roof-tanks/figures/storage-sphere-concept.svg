@@ -1,0 +1,119 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1300 700" width="1300" height="700" font-family="Segoe UI, Arial, sans-serif">
+  <style>
+    .t{font-size:11px;fill:#222}
+    .h{font-size:14px;font-weight:600;fill:#111}
+    .s{font-size:10px;fill:#555}
+    .ln{stroke:#333;stroke-width:1;fill:none}
+    .lead{stroke:#888;stroke-width:.7;fill:none}
+    .grid{stroke:#e6e9ec;stroke-width:.6}
+    .legB{fill:#d5dadd;stroke:#9aa;stroke-width:.8}
+    .legF{fill:#a7b0b6;stroke:#555;stroke-width:1}
+    .rodB{stroke:#c3c9cd;stroke-width:1}
+    .rodF{stroke:#5d666c;stroke-width:1.2}
+    .steel{fill:#9aa3aa;stroke:#555;stroke-width:.8}
+    .rail{stroke:#c9a227;stroke-width:1.2;fill:none}
+  </style>
+  <rect width="1300" height="700" fill="#fff"/>
+  <text x="20" y="24" class="h">Storage sphere: concept, approved 2026-10-21 (example D 14 m, 2 m under the sphere, 1 block = 1 m, grid = 1 m)</text>
+  <text x="20" y="42" class="s">Fluid physics identical to the drum (a bag with a stiff wall, holds gas under pressure); only the model and the fixed ports differ.</text>
+
+  <!-- 1 m grid -->
+  <g class="grid">
+    <path d="M130 240V620M150 240V620M170 240V620M190 240V620M210 240V620M230 240V620M250 240V620M270 240V620M290 240V620M310 240V620M330 240V620M350 240V620M370 240V620M390 240V620M410 240V620M430 240V620M450 240V620M470 240V620M490 240V620M510 240V620M530 240V620M550 240V620M570 240V620M590 240V620M610 240V620M630 240V620M650 240V620M670 240V620"/>
+    <path d="M130 240H670M130 260H670M130 280H670M130 300H670M130 320H670M130 340H670M130 360H670M130 380H670M130 400H670M130 420H670M130 440H670M130 460H670M130 480H670M130 500H670M130 520H670M130 540H670M130 560H670M130 580H670M130 600H670M130 620H670"/>
+  </g>
+  <text x="130" y="72" class="h">1 · Front elevation</text>
+  <text x="130" y="88" class="s">all static: drawn in the chunk mesh</text>
+  <line x1="110" y1="620" x2="690" y2="620" stroke="#6b5b3e" stroke-width="1.5"/>
+
+  <!-- back legs and rods (behind the sphere) -->
+  <rect x="210.7" y="420" width="12" height="200" class="legB"/>
+  <rect x="280.7" y="420" width="12" height="200" class="legB"/>
+  <rect x="367.3" y="420" width="12" height="200" class="legB"/>
+  <rect x="437.3" y="420" width="12" height="200" class="legB"/>
+  <g class="rodB"><path d="M216.7 450L286.7 610M286.7 450L216.7 610M286.7 450L373.3 610M373.3 450L286.7 610M373.3 450L443.3 610M443.3 450L373.3 610"/></g>
+
+  <!-- sphere -->
+  <circle cx="330" cy="440" r="140" fill="#eef1f3" stroke="#555" stroke-width="1.3"/>
+  <g fill="none" stroke="#aab3b9" stroke-width=".9">
+    <path d="M190 440A140 21 0 0 0 470 440"/>
+    <path d="M208.8 370A121.2 18 0 0 0 451.2 370"/>
+    <path d="M208.8 510A121.2 18 0 0 0 451.2 510"/>
+    <path d="M260 318.8A70 10.5 0 0 0 400 318.8"/>
+    <path d="M260 561.2A70 10.5 0 0 0 400 561.2"/>
+    <path d="M330 300V580"/>
+    <path d="M330 300A70 140 0 0 0 330 580"/><path d="M330 300A70 140 0 0 1 330 580"/>
+  </g>
+
+  <!-- front and side legs, front rods -->
+  <rect x="184" y="420" width="12" height="200" class="legF"/>
+  <rect x="210.7" y="420" width="12" height="200" class="legF"/>
+  <rect x="280.7" y="420" width="12" height="200" class="legF"/>
+  <rect x="367.3" y="420" width="12" height="200" class="legF"/>
+  <rect x="437.3" y="420" width="12" height="200" class="legF"/>
+  <rect x="464" y="420" width="12" height="200" class="legF"/>
+  <g class="rodF"><path d="M222.7 452L280.7 608M280.7 452L222.7 608M292.7 452L367.3 608M367.3 452L292.7 608M379.3 452L437.3 608M437.3 452L379.3 608"/></g>
+  <g fill="#7f878d"><rect x="180" y="616" width="20" height="4"/><rect x="206.7" y="616" width="20" height="4"/><rect x="276.7" y="616" width="20" height="4"/><rect x="363.3" y="616" width="20" height="4"/><rect x="433.3" y="616" width="20" height="4"/><rect x="460" y="616" width="20" height="4"/></g>
+
+  <!-- bottom outlet N2 -->
+  <rect x="325" y="580" width="10" height="30" fill="#9aa3aa" stroke="#444"/>
+  <circle cx="330" cy="610" r="9" fill="#9aa3aa" stroke="#333"/><circle cx="330" cy="610" r="4.5" fill="#fff" stroke="#333"/>
+
+  <!-- top platform, N1, relief valves -->
+  <rect x="278" y="294" width="104" height="4" class="steel"/>
+  <path class="ln" d="M278 272H382M278 272V294M304 272V294M330 272V294M356 272V294M382 272V294M278 283H382" stroke="#555"/>
+  <rect x="325" y="262" width="10" height="32" fill="#9aa3aa" stroke="#444"/>
+  <rect x="317" y="258" width="26" height="4" fill="#7f878d" stroke="#333"/>
+  <rect x="294" y="280" width="8" height="14" fill="#c0392b" stroke="#333"/><rect x="302" y="283" width="8" height="4" fill="#c0392b" stroke="#333"/>
+  <rect x="358" y="280" width="8" height="14" fill="#c0392b" stroke="#333"/><rect x="350" y="283" width="8" height="4" fill="#c0392b" stroke="#333"/>
+
+  <!-- stairway wound round the sphere (owner 2026-10-21): from grade outside the legs, over the upper hemisphere to the top platform -->
+  <rect x="382" y="294" width="28" height="4" class="steel"/><path class="ln" d="M382 272H410M410 272V294" stroke="#555"/>
+  <path d="M191.4 620 L207.4 598.7 L227.2 577.3 L250 556 L275.3 534.7 L302.2 513.3 L330 492 L357.8 470.7 L384.7 449.3 L409.8 428 L430.6 406.7 L445.2 385.3 L451.9 364 L449.4 342.7 L435.7 321.3 L407.5 300" fill="none" stroke="#555" stroke-width="2.2" stroke-linejoin="round"/>
+  <path class="rail" d="M191.4 599.0 L207.4 577.7 L227.2 556.3 L250 535.0 L275.3 513.7 L302.2 492.3 L330 471.0 L357.8 449.7 L384.7 428.3 L409.8 407.0 L430.6 385.7 L445.2 364.3 L451.9 343.0 L449.4 321.7 L435.7 300.3 L407.5 279.0" stroke-linejoin="round"/>
+  <g stroke="#555" stroke-width="1"><path d="M204.4 598.7h6M224.2 577.3h6M247.0 556h6M272.3 534.7h6M299.2 513.3h6M327.0 492h6M354.8 470.7h6M381.7 449.3h6M406.8 428h6M427.6 406.7h6M442.2 385.3h6M448.9 364h6M446.4 342.7h6M432.7 321.3h6"/></g>
+
+  <!-- labels -->
+  <path class="lead" d="M330 258L330 222"/><text x="270" y="216" class="t">N1 VAPOUR: top pole, flange faces up</text>
+  <path class="lead" d="M298 280L250 250"/><text x="170" y="244" class="t">relief valves (2)</text>
+  <path class="lead" d="M380 272L430 236"/><text x="410" y="230" class="t">top platform + handrail</text>
+  <path class="lead" d="M336 615L380 660"/><text x="340" y="672" class="t">N2 LIQUID: drops from the bottom pole, turns to the front on the lowest row</text>
+  <path class="lead" d="M190 520L120 520"/><text x="40" y="516" class="t">column legs at</text><text x="40" y="530" class="t">the equator</text>
+  <path class="lead" d="M252 530L120 570"/><text x="40" y="566" class="t">crossed tie rods</text>
+  <path class="lead" d="M445 385L560 330"/><text x="520" y="324" class="t">stair wound round the sphere</text>
+  <path class="lead" d="M207 598L120 604"/><text x="40" y="602" class="t">stair foot</text><text x="40" y="616" class="t">beside a leg</text>
+  <path class="lead" d="M384 449L560 470"/><text x="540" y="482" class="t">outside the legs below the equator</text>
+  <path class="ln" d="M700 580V620M696 580h8M696 620h8"/><text x="708" y="604" class="t">2 m (support)</text>
+  <path class="ln" d="M150 300V580M146 300h8M146 580h8"/><text x="96" y="446" class="t" transform="rotate(-90 140 446)">D 14 m</text>
+
+  <!-- ================= Plan ================= -->
+  <text x="830" y="72" class="h">2 · Plan (half scale; front = towards the constructor)</text>
+  <circle cx="930" cy="260" r="70" fill="#eef1f3" stroke="#555" stroke-width="1.2"/>
+  <polygon points="951.6,326.6 986.6,301.1 1000,260 986.6,218.9 951.6,193.4 908.4,193.4 873.4,218.9 860,260 873.4,301.1 908.4,326.6" fill="none" stroke="#5d666c" stroke-width=".8"/>
+  <g fill="#a7b0b6" stroke="#444"><circle cx="951.6" cy="326.6" r="3"/><circle cx="986.6" cy="301.1" r="3"/><circle cx="1000" cy="260" r="3"/><circle cx="986.6" cy="218.9" r="3"/><circle cx="951.6" cy="193.4" r="3"/><circle cx="908.4" cy="193.4" r="3"/><circle cx="873.4" cy="218.9" r="3"/><circle cx="860" cy="260" r="3"/><circle cx="873.4" cy="301.1" r="3"/><circle cx="908.4" cy="326.6" r="3"/></g>
+  <circle cx="930" cy="260" r="26" fill="none" stroke="#555" stroke-width="2"/>
+  <circle cx="930" cy="260" r="4" fill="#9aa3aa" stroke="#333"/>
+  <path d="M930 264V335" stroke="#666" stroke-width="2" stroke-dasharray="4 2"/><rect x="925" y="335" width="10" height="4" fill="#7f878d" stroke="#333"/>
+  <path d="M860.7 300 L873.4 316.6 L890 329.3 L909.3 337.3 L930 340 L950.7 337.3 L969.9 329.1 L984.4 314.4 L991 295.2 L987 275.3 L968.7 260 L956 260" fill="none" stroke="#555" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M860.7 300 L873.4 316.6 L890 329.3 L909.3 337.3 L930 340 L950.7 337.3 L969.9 329.1 L984.4 314.4 L991 295.2 L987 275.3 L968.7 260 L956 260" fill="none" stroke="#fff" stroke-width="3" stroke-dasharray="1 3" stroke-linejoin="round"/>
+  <path class="ln" d="M930 350v22M925 367l5 6 5-6"/><text x="938" y="371" class="s">front</text>
+  <path class="lead" d="M930 300L860 380"/><text x="780" y="392" class="t">N2 line to the front edge</text>
+  <path class="lead" d="M991 300L1060 320"/><text x="1040" y="334" class="t">stair wound round (~150°)</text>
+  <path class="lead" d="M950 248L1040 180"/><text x="1010" y="174" class="t">top platform, N1 in the centre</text>
+  <path class="lead" d="M873 219L820 180"/><text x="780" y="174" class="t">10 legs, tie rods</text>
+
+  <!-- ================= Notes ================= -->
+  <g transform="translate(780,430)">
+    <text x="0" y="0" class="h">Model notes</text>
+    <text x="0" y="20" class="t">• Grid: D 4–24 m (whole m); 2–8 m under the sphere (default 2). V = π D³/6 (example 1 437 m³).</text>
+    <text x="0" y="36" class="t">• Legs: even count ≈ π D / 4.5 m, at least 4; tangent to the shell at the equator, ~0.04 D wide.</text>
+    <text x="0" y="52" class="t">• Crossed tie rods in each bay below the equator (thin; no collision of their own).</text>
+    <text x="0" y="68" class="t">• Shell plates: orange-peel seams (latitudes, meridians) as texture lines; paint channels as drums.</text>
+    <text x="0" y="84" class="t">• Access: one stair wound round the sphere, about 40°, from grade outside the legs and over</text>
+    <text x="10" y="98" class="t">the upper hemisphere to a ring platform with handrail, two relief valves and a manway.</text>
+    <text x="0" y="114" class="t">• Ports fixed: N1 VAPOUR top (faces up), N2 LIQUID bottom (the drum's outlet route); no others.</text>
+    <text x="0" y="130" class="t">• Level head over H = D (as a lying drum's); interior cells as a drum's.</text>
+    <text x="0" y="156" class="h">Owner approval 2026-10-21</text>
+    <text x="0" y="176" class="t">Stair wound round the sphere; legs, tie rods, two fixed ports and the grid as drawn.</text>
+  </g>
+</svg>

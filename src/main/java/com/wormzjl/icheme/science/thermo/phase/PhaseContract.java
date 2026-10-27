@@ -67,11 +67,11 @@ public record PhaseContract(String packageId, ThermoIdentity identity, List<Stri
      * fluid-only competition, the network's envelope ({@link FluidDomain}), no water-chemistry species (the bundled packages hold
      * hydrocarbons and nitrogen only), graded estimated-with-declared-error.
      */
-    public static PhaseContract forNetworkPackage(MaterialCatalog catalog, String packageId, String spineFingerprint) {
+    public static PhaseContract forNetworkPackage(MaterialCatalog catalog, String packageId, String spineRevision) {
         var propertyPackage = catalog.requirePackage(packageId);
         List<String> basis = new ArrayList<>(propertyPackage.components());
         basis.add("Water");
-        var identity = ThermoIdentity.of(catalog, packageId, CubicPhaseEvaluator.FAMILY, spineFingerprint,
+        var identity = ThermoIdentity.of(catalog, packageId, CubicPhaseEvaluator.FAMILY, spineRevision,
                 WaterParticipation.SEPARATE_FREE_WATER);
         var domain = PhaseDomain.of(FluidDomain.of(catalog, packageId), basis);
         var coverage = new EquilibriumResult.Coverage(EquilibriumResult.CoverageGrade.ESTIMATED_DECLARED_ERROR,
@@ -84,13 +84,13 @@ public record PhaseContract(String packageId, ThermoIdentity identity, List<Stri
 
     /**
      * The fluid network package's contract with the package's own spine: {@link #forNetworkPackage(MaterialCatalog,
-     * String, String)} with the package's {@code spineFingerprint()}, or {@link ThermoIdentity#NO_SPINE} without one.
+     * String, String)} with the package's {@link MaterialCatalog#spineRevision}, or {@link ThermoIdentity#NO_SPINE} without one.
      * The identity is the engine's ({@link CubicPhaseEvaluator#FAMILY}); the package's crystals, if any, are not
      * qualified here (the network requests fluid-only competition until its crystal inventory exists; {@link #forPackage}
      * is the contract with the package's crystal set).
      */
     public static PhaseContract forNetworkPackage(MaterialCatalog catalog, String packageId) {
-        String spine = catalog.requirePackage(packageId).spineFingerprint();
+        String spine = catalog.spineRevision(packageId);
         return forNetworkPackage(catalog, packageId, spine.isEmpty() ? ThermoIdentity.NO_SPINE : spine);
     }
 

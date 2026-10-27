@@ -28,17 +28,105 @@ class MaterialCatalogTest {
         assertTrue(c.name("crude_pc12").english().contains("above"));
         assertTrue(c.name("crude_pc07").english().endsWith("(estimated)"));
     }
-    @Test void numericalEditsInvalidateFingerprintEvenWithoutRevisionBumpButNamesDoNot() {
-        var before=MaterialCatalog.bundled().requirePackage(ID);
+    /**
+     * Data are identified by their declared revisions, nothing is hashed, and each record declares its own (owner
+     * decisions 2026-10-26): a numerical edit declares itself with its record's revision bump, which moves the identity of
+     * every package that names the record, makes earlier results stale and turns the neural initializer off until a model
+     * is trained on the new identity; a package that does not name the record keeps its identity; a name edit changes none.
+     */
+    @Test void aRecordsRevisionBumpMakesEarlierResultsStaleButNamesDoNot() {
+        var bundled=MaterialCatalog.bundled();var before=bundled.requirePackage(ID);
         var names=MaterialCatalog.parse(changed("components/crude_pc07.json",o->o.addProperty("fallback","Petroleum")));
-        assertEquals(before.fingerprint(),names.requirePackage(ID).fingerprint());
-        var science=MaterialCatalog.parse(changed("properties/crude_pc07.json",o->o.addProperty("molecular_weight_kg_per_mol",.31)));
-        assertEquals(before.revision(),science.requirePackage(ID).revision());
-        assertNotEquals(before.fingerprint(),science.requirePackage(ID).fingerprint());
+        assertEquals(before.scientificRevision(),names.requirePackage(ID).scientificRevision());
+        var science=MaterialCatalog.parse(changed("properties/crude_pc07.json",o->{o.addProperty("molecular_weight_kg_per_mol",.31);
+            o.addProperty("revision",o.get("revision").getAsString()+"-edited");}));
+        for(var p:bundled.packages().values()) {
+            boolean names07=p.properties().stream().anyMatch(property->property.id().equals("icheme:crude_pc07"));
+            assertEquals(!names07,p.scientificRevision().equals(science.requirePackage(p.id()).scientificRevision()),p.id());
+        }
+        assertNotEquals(before.scientificRevision(),science.requirePackage(ID).scientificRevision());
         assertFalse(MaterialRuntime.with(science,ID,()->MaterialRuntime.isCurrent(ID,before.scientificRevision())));
         assertTrue(MaterialRuntime.with(names,ID,()->MaterialRuntime.isCurrent(ID,before.scientificRevision())));
         var input=com.wormzjl.icheme.science.column.v3.V3TestInputs.methaneCduInput();
         assertTrue(MaterialRuntime.with(science,ID,()->V3NeuralRegistry.bundled().predict(input,V3SolveControl.UNBOUNDED).isEmpty()));
+    }
+    /**
+     * The identities an owner reads off the files (owner decision 2026-10-26). The column's: the package's own revision,
+     * then every record it names for its phase physics, each with its declared revision. The fluid network's adds what
+     * only it reads: each viscosity by its own revision, the water's ice and the fluid reference records. Rebuilt here
+     * from the raw JSON, not through the parser.
+     */
+    @Test void everyPackageIdentityListsTheDeclaredRevisionOfEachRecordItNames() {
+        var catalog=MaterialCatalog.bundled();var records=new HashMap<String,Map<String,JsonObject>>();var transport=new ArrayList<String>();
+        for(var resource:catalog.resources().entrySet()) {
+            String path=resource.getKey();int folder=path.indexOf('/',ROOT.length());
+            if(!path.startsWith(ROOT)||folder<0)continue;
+            var element=JsonParser.parseString(resource.getValue());if(!element.isJsonObject())continue;var o=element.getAsJsonObject();
+            if(path.startsWith(ROOT+"transport/"))transport.add(o.get("type").getAsString()+"@"+o.get("revision").getAsString());
+            else if(o.has("id"))records.computeIfAbsent(path.substring(ROOT.length(),folder),k->new HashMap<>()).put(o.get("id").getAsString(),o);
+        }
+        Collections.sort(transport);
+        java.util.function.BiFunction<String,String,String> declared=(kind,id)->id+"@"+records.get(kind).get(id).get("revision").getAsString();
+        java.util.function.BiFunction<String,String,List<String>> viscosities=(kind,id)->{
+            var o=records.get(kind).get(id);var parts=new ArrayList<String>();
+            if(o.has("viscosity"))for(String phase:List.of("liquid","vapor"))if(o.getAsJsonObject("viscosity").has(phase))
+                parts.add(id+"/"+phase+"@"+o.getAsJsonObject("viscosity").getAsJsonObject(phase).get("revision").getAsString());
+            return parts;
+        };
+        for(var o:records.get("packages").values()) {
+            String id=o.get("id").getAsString(),water=o.get("water_model").getAsString();var interactions=records.get("interactions").get(o.get("interactions").getAsString());
+            var properties=propertyReferences(o,records.get("bases"));
+            var parts=new ArrayList<>(List.of(declared.apply("packages",id),"properties="+String.join(",",properties.stream().map(ref->declared.apply("properties",ref)).toList()),
+                    "interactions="+declared.apply("interactions",interactions.get("id").getAsString())));
+            if(interactions.has("rule"))parts.add("group-interactions="+declared.apply("group_interactions",interactions.getAsJsonObject("rule").get("group_interactions").getAsString()));
+            parts.add("water="+declared.apply("water",water));
+            String identity=String.join(";",parts);
+            assertEquals(identity,catalog.requirePackage(id).scientificRevision(),id);
+            var transportParts=new ArrayList<String>();for(String ref:properties)transportParts.addAll(viscosities.apply("properties",ref));
+            transportParts.addAll(viscosities.apply("water",water));var waterRecord=records.get("water").get(water);
+            assertEquals(identity+";viscosity="+String.join(",",transportParts)
+                    +(waterRecord.has("ice")?";ice="+declared.apply("crystals",waterRecord.getAsJsonObject("ice").get("crystal").getAsString()):"")
+                    +";fluid-data="+String.join(",",transport),catalog.fluidRevision(id),id);
+        }
+    }
+    /** A package's property references: its own list or its basis's, a basis extending its parent's. */
+    private static List<String> propertyReferences(JsonObject record,Map<String,JsonObject> bases) {
+        if(record.has("basis"))return propertyReferences(bases.get(record.get("basis").getAsString()),bases);
+        var references=new ArrayList<String>();
+        if(record.has("extends"))references.addAll(propertyReferences(bases.get(record.get("extends").getAsString()),bases));
+        for(var reference:record.getAsJsonArray("properties"))references.add(reference.getAsString());
+        return references;
+    }
+    /**
+     * Only the fluid network reads viscosities, so a viscosity edit, declared with the viscosity's own revision, moves the
+     * fluid identity of every package that names the record and leaves the column's identity, results and neural models.
+     */
+    @Test void aViscosityRevisionBumpMovesOnlyTheFluidIdentity() {
+        var bundled=MaterialCatalog.bundled();
+        var edited=MaterialCatalog.parse(changed("properties/tjl20_methane.json",o->{var liquid=o.getAsJsonObject("viscosity").getAsJsonObject("liquid");
+            var table=liquid.getAsJsonArray("coefficients");table.set(0,new JsonPrimitive(table.get(0).getAsDouble()*1.01));
+            liquid.addProperty("revision",liquid.get("revision").getAsString()+"-edited");}));
+        for(var p:bundled.packages().values()) {
+            boolean namesMethane=p.properties().stream().anyMatch(property->property.id().equals("icheme:tjl20_methane"));
+            assertEquals(p.scientificRevision(),edited.requirePackage(p.id()).scientificRevision(),p.id());
+            assertEquals(!namesMethane,bundled.fluidRevision(p.id()).equals(edited.fluidRevision(p.id())),p.id());
+        }
+        assertTrue(MaterialRuntime.with(edited,ID,()->MaterialRuntime.isCurrent(ID,bundled.requirePackage(ID).scientificRevision())));
+        var input=com.wormzjl.icheme.science.column.v3.V3TestInputs.methaneCduInput();
+        assertTrue(MaterialRuntime.with(edited,ID,()->V3NeuralRegistry.bundled().predict(input,V3SolveControl.UNBOUNDED).isPresent()));
+    }
+    /** A revision is a short token, so an identity stays readable and splits at its separators; a refusal names the record's file. */
+    @Test void aRevisionThatIsNotATokenOrIsMissingIsRefusedNamingItsRecord() {
+        for(String bad:List.of("crude pc07 r2","crude-pc07;r2","-r2","r".repeat(65))) {
+            var error=assertThrows(IllegalArgumentException.class,()->MaterialCatalog.parse(changed("properties/crude_pc07.json",o->o.addProperty("revision",bad))),bad);
+            assertTrue(error.getMessage().contains("properties/crude_pc07.json")&&error.getMessage().contains("revision"),error.getMessage());
+        }
+        assertDoesNotThrow(()->MaterialCatalog.parse(changed("properties/crude_pc07.json",o->o.addProperty("revision","r".repeat(64)))));
+        var viscosity=assertThrows(IllegalArgumentException.class,()->MaterialCatalog.parse(changed("properties/crude_pc07.json",
+                o->o.getAsJsonObject("viscosity").getAsJsonObject("vapor").addProperty("revision","dwsim viscosity"))));
+        assertTrue(viscosity.getMessage().contains("properties/crude_pc07.json")&&viscosity.getMessage().contains("viscosity.vapor"),viscosity.getMessage());
+        var missing=assertThrows(IllegalArgumentException.class,()->MaterialCatalog.parse(changed("interactions/tjl20.json",o->o.remove("revision"))));
+        assertTrue(missing.getMessage().contains("interactions/tjl20.json")&&missing.getMessage().contains("revision"),missing.getMessage());
     }
     @Test void invalidReloadCannotPublishPartialCatalog() {
         MaterialRuntime.publish(MaterialCatalog.bundled());
@@ -72,7 +160,7 @@ class MaterialCatalogTest {
     @Test void nrtlPairsAreDirectedCompleteAndNotAnImplementedSolver() {
         var r=new HashMap<>(MaterialCatalog.bundled().resources());
         r.put(ROOT+"interactions/nrtl.json","""
-                {"schema_version":1,"id":"example:nrtl","model":"nrtl","source":"manufactured validation fixture",
+                {"schema_version":1,"id":"example:nrtl","model":"nrtl","revision":"example-nrtl-r1","source":"manufactured validation fixture",
                  "pairs":[{"first":"Ethane","second":"Propane","a12":1,"b12_kelvin":100,"a21":2,"b21_kelvin":200,
                  "alpha":0.3,"temperature_min_kelvin":298.15,"temperature_max_kelvin":900}]}
                 """);

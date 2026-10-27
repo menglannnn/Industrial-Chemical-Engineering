@@ -1,0 +1,17 @@
+{
+  "head": "1ba146c4030b4548ce43f68fa8ac0c9f9536730a",
+  "implementation": "fde01628",
+  "original_merge": "81cabbe9",
+  "branch": "claude/floating-roof-tanks-81d68b",
+  "client_pid": 47252,
+  "client_session": 27137,
+  "client_loaded_commit": "1ba146c4",
+  "restart_required": false,
+  "preserved_local_files": 10,
+  "hotfix_build": true,
+  "cap_samples": 3009,
+  "cap_overlap_m2": 0,
+  "jar_sha256": "d27c62110a9a93dc70ee14a2f126bd9c7d07d3a9254dec853cc8a0d218b06c59",
+  "responding": true,
+  "previous_client_saved_and_exited": true
+}

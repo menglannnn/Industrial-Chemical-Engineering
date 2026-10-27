@@ -1,0 +1,2 @@
+E5 step line search stalls                                   seeds=   1 smallest=  579 list= 579
+E8 interval attempt limit (not F7)                           seeds=   1 smallest=  698 list= 698

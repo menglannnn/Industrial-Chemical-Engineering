@@ -1,0 +1,29 @@
+{
+  "id": "R13",
+  "title": "Let-down of N2 + 10 % CO2 from 8 MPa and 220 K through a 4 mm pipe into a tank held at 0.3 MPa by a pressure valve on its outlet (E4 row 13)",
+  "blocks": {
+    "G":  {"at": [20, 101, 68], "block": "generator"},
+    "P1": {"at": [21, 101, 68], "block": "pipe"},
+    "T":  {"at": [22, 101, 68], "block": "reservoir"},
+    "P2": {"at": [23, 101, 68], "block": "pipe"},
+    "Q":  {"at": [24, 101, 68], "block": "valve", "facing": "east"},
+    "P3": {"at": [25, 101, 68], "block": "pipe"},
+    "V":  {"at": [26, 101, 68], "block": "void"}
+  },
+  "steps": [
+    {"op": "mark"},
+    {"op": "note", "text": "the let-down is the 4 mm pipe P1; the valve sustains its upstream (the tank) at 0.3 MPa"},
+    {"op": "place", "ids": ["G", "P1", "Q"]},
+    {"op": "set", "id": "G", "mixture": "Pilot: N2 + 10 % CO2", "pressure": 8000000, "temperatureK": 220},
+    {"op": "set", "id": "P1", "diameter": 0.004},
+    {"op": "set", "id": "Q", "pressure": 300000},
+    {"op": "place", "ids": ["V", "P3", "P2", "T"]},
+    {"op": "wait", "s": 30},
+    {"op": "read", "ids": ["T"], "views": ["overview", "solids"], "tag": "30s"},
+    {"op": "wait", "s": 110},
+    {"op": "read", "ids": ["Q"], "views": ["overview"], "tag": "steady"},
+    {"op": "read", "ids": ["T"], "views": ["overview", "vapor", "solids", "outlets"], "tag": "steady"},
+    {"op": "read", "ids": ["P1"], "views": ["overview"], "tag": "steady"},
+    {"op": "log", "grep": "fluid_island=|status=PHASE_HOLD", "tag": "R13"}
+  ]
+}

@@ -8,7 +8,7 @@
   "water_model": "icheme:water",
   "temperature_min_kelvin": 298.15,
   "temperature_max_kelvin": 900.0,
-  "pressure_min_pascal": 50000.0,
+  "pressure_min_pascal": 1000.0,
   "pressure_max_pascal": 2000000.0,
   "fluid_domain": {
     "temperature_min_kelvin": 273.16,

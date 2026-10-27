@@ -1,0 +1,35 @@
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveIntervalSolver.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveIntervalSolver.java
+@@ -233,6 +233,7 @@
+                 SolverDiagnostics.attempt(attempt,step,ok,ok&&jump&&step>transitionFloor?"be-jump":ok&&step<=transitionFloor&&change>STATE_CAP?"be-floor":"be-state",change);
+                 if(!ok){previousStateChange=change;previousStateStep=step;throw new StateChangeRejection("Backward-Euler state change "+change);}
+                 accepted=replace(accepted,result);last=result;elapsed+=step;acceptedCount++;consecutiveRejects=0;previousStateChange=0;
++                accepted=flushTraces(accepted);
+                 implicit.markBackwardEulerAccepted(accepted);
+                 carriedModes=result.modes();carriedFlows=result.massFlows();carriedKey=flowKey(accepted);
+                 // The cold-start graphs are read only while the structure is cold, and the step solver's last solve only
+@@ -282,6 +283,24 @@
+         for(int i=0;i<transferred.length;i++)transferred[i]/=normalizer;
+         return new Prefix(new Result(accepted,elapsed,transferred,acceptedCount,rejectedCount,work,boundaries,rejectionReasons,last.modes(),last.devicePressureChanges(),acceptance,pipeTransfers.snapshot()),declared);
+     }
++    // PROTOTYPE T1 (option, not implemented): a component whose amount in a vessel or junction falls below TRACE_FLUSH of
++    // that node's total is deleted at the step's commit and the node re-flashed at its T and P. Unbooked here.
++    static final double TRACE_FLUSH=1e-24;
++    static double flushedMoles=0;static int flushes=0;
++    private PassiveNetwork flushTraces(PassiveNetwork graph) {
++        List<PassiveNetwork.Reservoir> nodes=null;
++        for(int i=0;i<graph.reservoirs().size();i++) {
++            var node=graph.reservoirs().get(i);if(node.fixed())continue;
++            double[] n=node.inventory().moles().clone();double total=0;for(double a:n)total+=a;boolean changed=false;
++            for(int c=0;c<n.length;c++)if(n[c]>0&&n[c]<TRACE_FLUSH*total){flushedMoles+=n[c];n[c]=0;changed=true;}
++            if(!changed)continue;
++            flushes++;
++            var old=node.state();var state=model.flashTP(old.temperature(),old.pressure(),n,()->{});if(!old.solids().empty())state=state.withSolids(old.solids());
++            if(nodes==null)nodes=new ArrayList<>(graph.reservoirs());
++            nodes.set(i,new PassiveNetwork.Reservoir(node.id(),node.elevation(),state,node.kind(),new PassiveNetwork.Inventory(node.inventory().volume(),n,node.inventory().internalEnergy(),node.inventory().solids())));
++        }
++        return nodes==null?graph:new PassiveNetwork(nodes,graph.pipes(),graph.scheduledTransfers());
++    }
+     private static void count(Map<String,Integer> reasons,String reason) {
+         if(reasons.size()<8||reasons.containsKey(reason))reasons.merge(reason,1,Integer::sum);else reasons.merge("Other",1,Integer::sum);
+     }

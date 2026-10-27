@@ -1,0 +1,77 @@
+commit fde016281dc04cc1d3b5e38d15f289e6102ed140
+Author:     wormzjl <wormzjl@gmail.com>
+AuthorDate: Sat Oct 24 22:44:51 2026 +0800
+Commit:     wormzjl <wormzjl@gmail.com>
+CommitDate: Sat Oct 24 22:44:51 2026 +0800
+
+    Make the tank level collar hollow to remove cap flicker
+
+diff --git a/src/main/java/com/wormzjl/icheme/client/TankRenderer.java b/src/main/java/com/wormzjl/icheme/client/TankRenderer.java
+index e755de75..a81bc0da 100644
+--- a/src/main/java/com/wormzjl/icheme/client/TankRenderer.java
++++ b/src/main/java/com/wormzjl/icheme/client/TankRenderer.java
+@@ -195,7 +195,8 @@ public final class TankRenderer {
+             double surface = Math.max(water, oil);
+             if (oil > Math.max(low, water)) band(consumer, last, Math.max(low, water), oil, display.oilArgb(), light, u, v);
+             double ring = Math.max(low, Math.min(high, surface));
+-            band(consumer, last, Math.max(low, ring - MARKER / 2), Math.min(high, ring + MARKER / 2), FLOAT, light, u, v, TankGaugeGeometry.MARKER_HALF);
++            column(consumer, last, Math.max(low, ring - MARKER / 2), Math.min(high, ring + MARKER / 2), FLOAT, light, u, v,
++                    TankGaugeGeometry.MARKER_HALF, TankGaugeGeometry.markerFaces());
+             pose.popPose();
+         }
+         if (consumer != null) buffers.endBatch(BANDS);
+@@ -209,14 +210,15 @@ public final class TankRenderer {
+ 
+     /** One band: a closed square column round the glass, wound outwards on every side and both ends. */
+     private static void band(VertexConsumer consumer, com.mojang.blaze3d.vertex.PoseStack.Pose last, double y0, double y1, int argb, int light, float u, float v) {
+-        band(consumer, last, y0, y1, argb, light, u, v, BAND);
++        column(consumer, last, y0, y1, argb, light, u, v, BAND, TankGaugeGeometry.bandFaces());
+     }
+ 
+-    /** One band of half width {@code half}. */
+-    private static void band(VertexConsumer consumer, com.mojang.blaze3d.vertex.PoseStack.Pose last, double y0, double y1, int argb, int light, float u, float v, double half) {
++    /** One coloured column or hollow collar from cached faces, with half width {@code half}. */
++    private static void column(VertexConsumer consumer, com.mojang.blaze3d.vertex.PoseStack.Pose last, double y0, double y1, int argb, int light, float u, float v,
++                               double half, java.util.List<Mesh.Polygon> faces) {
+         if (y1 <= y0) return;
+         int r = argb >> 16 & 255, g = argb >> 8 & 255, b = argb & 255, alpha = Math.max(argb >>> 24, LEAST_ALPHA);
+-        for (var face : TankGaugeGeometry.bandFaces()) {
++        for (var face : faces) {
+             var p = face.positions();var n = face.normals();
+             for (int i = 0; i < p.length; i += 3)
+                 vertex(consumer, last, (float) (half * (2 * p[i] - 1)), (float) (y0 + (y1 - y0) * p[i + 1]), (float) (half * (2 * p[i + 2] - 1)),
+diff --git a/src/main/java/com/wormzjl/icheme/science/equipment/TankGaugeGeometry.java b/src/main/java/com/wormzjl/icheme/science/equipment/TankGaugeGeometry.java
+index 179355eb..2d2d8aad 100644
+--- a/src/main/java/com/wormzjl/icheme/science/equipment/TankGaugeGeometry.java
++++ b/src/main/java/com/wormzjl/icheme/science/equipment/TankGaugeGeometry.java
+@@ -6,16 +6,30 @@ import java.util.List;
+ public final class TankGaugeGeometry {
+     public static final double CHAMBER_RADIUS = .20, BAND_HALF = .12, SCALE_HALF = .26;
+     public static final double MARKER_HALF = .16, MARKER_HEIGHT = .07;
++    /** The collar slips around the liquid/glass column with 5 mm clearance. */
++    public static final double MARKER_INNER_HALF = BAND_HALF + .005;
+     private static final List<Mesh.Polygon> BAND_FACES;
++    private static final List<Mesh.Polygon> MARKER_FACES;
+ 
+     static {
+         var mesh = new Mesh();
+         mesh.box(new double[]{0, 0, 0}, new double[]{1, 1, 1}, Mesh.ALL_FACES, Mesh.Material.OPENING);
+         BAND_FACES = List.copyOf(mesh.cell(0, 0, 0));
++        // A collar has a hole: its end faces must never cover the liquid cap, even at a clipped gauge limit.
++        var collar = new Mesh();
++        double inset = (1 - MARKER_INNER_HALF / MARKER_HALF) / 2;
++        collar.box(new double[]{0, 0, 0}, new double[]{1, 1, inset}, Mesh.ALL_FACES, Mesh.Material.OPENING);
++        collar.box(new double[]{0, 0, 1 - inset}, new double[]{1, 1, 1}, Mesh.ALL_FACES, Mesh.Material.OPENING);
++        collar.box(new double[]{0, 0, inset}, new double[]{inset, 1, 1 - inset}, Mesh.ALL_FACES, Mesh.Material.OPENING);
++        collar.box(new double[]{1 - inset, 0, inset}, new double[]{1, 1, 1 - inset}, Mesh.ALL_FACES, Mesh.Material.OPENING);
++        MARKER_FACES = List.copyOf(collar.cell(0, 0, 0));
+     }
+ 
+     private TankGaugeGeometry() {}
+ 
+     /** Read-only closed unit cube, 0..1 on every axis. Scale/translate copies for each band, including its underside. */
+     public static List<Mesh.Polygon> bandFaces() { return BAND_FACES; }
++
++    /** Read-only hollow collar in the same unit frame; its top/bottom leave the liquid surface clear. */
++    public static List<Mesh.Polygon> markerFaces() { return MARKER_FACES; }
+ }

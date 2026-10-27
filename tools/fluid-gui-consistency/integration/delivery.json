@@ -1,0 +1,14 @@
+{
+  "head": "35bad9b881b8417e8dab8ad0db3d1fb956328513",
+  "branch": "claude/floating-roof-tanks-81d68b",
+  "source": "f44930f5",
+  "tip_fix": "6f2f91e9",
+  "baseline": "b52732c9",
+  "client_pid": 35128,
+  "session": 24502,
+  "window": "Minecraft NeoForge 1.21.1 - Singleplayer",
+  "responding": true,
+  "local_files_preserved": 10,
+  "new_test_failures": 0,
+  "jar_sha256": "aab6dab8b810a7e987bc9b5b36271352e34139251950ad99f8f69cec64d5d405"
+}

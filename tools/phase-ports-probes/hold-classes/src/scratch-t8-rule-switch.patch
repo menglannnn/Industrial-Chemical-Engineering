@@ -1,0 +1,39 @@
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/network/NetworkReduction.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/NetworkReduction.java
+index 0fe9fa78..85a580ef 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/NetworkReduction.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/NetworkReduction.java
+@@ -317,7 +317,8 @@ public final class NetworkReduction {
+             var reached=arrivals.get(v);if(reached.isEmpty())continue;
+             // A pocket (it drains nowhere) fills to the supplier standing highest (D12); a single stream needs no balance.
+             boolean single=true;for(var a:reached)single&=a.source()==reached.getFirst().source()&&a.port()==reached.getFirst().port();
+-            starts.set(v,lowest[v]==Double.POSITIVE_INFINITY||single?strongest(reached).stream():balanced(graph,model,v,reached,drains,scratch));
++            String rule=SCRATCH_RULE.get(); // SCRATCH t8: nearest (committed e80e6f4e) / strongest (c2) / mprime
++            starts.set(v,lowest[v]==Double.POSITIVE_INFINITY||single?strongest(reached).stream():rule.equals("nearest")?nearest(reached).stream():rule.equals("strongest")?strongest(reached).stream():balanced(graph,model,v,reached,drains,scratch));
+         }
+         for(int v=0;v<nodes;v++) {
+             var junction=graph.reservoirs().get(v);
+@@ -372,6 +373,24 @@ public final class NetworkReduction {
+      * compressor drives first, then the higher static pressure, then the shorter length, then the denser stream, then the
+      * lower boundary identity, then the lower connection identity.
+      */
++    /** SCRATCH t8 (never commit): the start rule of the calling thread, -Dt8rule=nearest|strongest|mprime (default mprime). */
++    public static final ThreadLocal<String> SCRATCH_RULE=ThreadLocal.withInitial(()->System.getProperty("t8rule","mprime"));
++    /** SCRATCH t8: the committed rule's order where the junction drains: driven first, then the nearest, the higher, the
++     * denser, the lower identities. */
++    private static Arrival nearest(List<Arrival> arrivals) {
++        Arrival best=null;
++        for(var a:arrivals) {
++            if(best==null){best=a;continue;}
++            int order=Boolean.compare(a.lifted(),best.lifted());
++            if(order==0)order=Double.compare(best.length(),a.length());
++            if(order==0)order=Double.compare(a.standing(),best.standing());
++            if(order==0)order=Double.compare(a.density(),best.density());
++            if(order==0)order=Long.compare(best.sourceId(),a.sourceId());
++            if(order==0)order=Long.compare(best.pipeId(),a.pipeId());
++            if(order>0)best=a;
++        }
++        return best;
++    }
+     private static Arrival strongest(List<Arrival> arrivals) {
+         Arrival best=null;
+         for(var a:arrivals) {

@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="560" viewBox="0 0 1000 560" font-family="Segoe UI, Arial, sans-serif">
+  <title>Layered pipe rack, end views of one block: option A (one tier of four) and option B (two tiers of two), supports just beneath the lines</title>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#854F0B" stroke-width="1.5"/></marker>
+    <marker id="d" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M1 1L9 5L1 9" fill="none" stroke="#5F5E5A" stroke-width="1.2"/></marker>
+  </defs>
+  <rect width="1000" height="560" fill="#ffffff"/>
+
+  <text x="80" y="58" font-size="16" fill="#2C2C2A">A. One tier per block (recommended)</text>
+  <text x="80" y="80" font-size="12" fill="#5F5E5A">End view, looking along the rack's facing</text>
+  <rect x="80" y="100" width="280" height="280" fill="none" stroke="#B4B2A9" stroke-dasharray="5 4"/>
+  <g stroke="#BA7517" stroke-width="1.4" stroke-dasharray="7 5">
+    <line x1="60" y1="152.5" x2="380" y2="152.5"/><line x1="60" y1="327.5" x2="380" y2="327.5"/>
+  </g>
+  <g fill="#B4B2A9" stroke="#5F5E5A" stroke-width="0.8">
+    <rect x="88.75" y="264.1" width="17.5" height="115.9"/><rect x="333.75" y="264.1" width="17.5" height="115.9"/>
+    <rect x="88.75" y="264.1" width="262.5" height="17.5"/>
+  </g>
+  <g fill="#85B7EB" stroke="#185FA5" stroke-width="1.2">
+    <circle cx="141.25" cy="240" r="24.1"/><circle cx="193.75" cy="240" r="24.1"/>
+    <circle cx="246.25" cy="240" r="24.1"/><circle cx="298.75" cy="240" r="24.1"/>
+  </g>
+  <g font-size="13" fill="#042C53" text-anchor="middle" dominant-baseline="central">
+    <text x="141.25" y="240">0</text><text x="193.75" y="240">1</text><text x="246.25" y="240">2</text><text x="298.75" y="240">3</text>
+  </g>
+  <line x1="141.25" y1="203" x2="193.75" y2="203" stroke="#5F5E5A" marker-start="url(#d)" marker-end="url(#d)"/>
+  <text x="167.5" y="196" font-size="11" fill="#5F5E5A" text-anchor="middle">3/16 m</text>
+  <line x1="80" y1="398" x2="360" y2="398" stroke="#5F5E5A" marker-start="url(#d)" marker-end="url(#d)"/>
+  <text x="220" y="414" font-size="11" fill="#5F5E5A" text-anchor="middle">1 m</text>
+  <g font-size="12" fill="#2C2C2A">
+    <text x="392" y="156">Crossing level above, y 13/16</text>
+    <text x="392" y="236">Tier: positions 0-3 at y 0.5</text>
+    <text x="392" y="252" fill="#5F5E5A">left to right along the facing</text>
+    <text x="392" y="277">Beam just beneath the lines</text>
+    <text x="392" y="331">Crossing level below, y 3/16</text>
+    <text x="392" y="362">Posts stop at the beam</text>
+  </g>
+  <g stroke="#888780" stroke-width="0.6" stroke-dasharray="3 3">
+    <line x1="324" y1="240" x2="388" y2="240"/><line x1="352" y1="273" x2="388" y2="273"/><line x1="352" y1="358" x2="388" y2="358"/>
+  </g>
+  <g font-size="12" fill="#444441">
+    <text x="80" y="446">Lanes 1-4 positions wide: OD up to 0.172 / 0.359 / 0.547 / 0.734 m (today's slot table).</text>
+    <text x="80" y="466">Nothing stands above the tier. A rack stacked on top carries the posts on up to its beam.</text>
+    <text x="80" y="486">A line crossing the tier is one position wide and turns at mid-block, between the bents.</text>
+    <text x="80" y="506">Bents (posts, beam) only in bent blocks, in the block face plane; sheet 4 for mixed sizes.</text>
+  </g>
+
+  <text x="660" y="58" font-size="16" fill="#2C2C2A">B. Two tiers of two (alternative)</text>
+  <text x="660" y="80" font-size="12" fill="#5F5E5A">End view, looking along the rack's facing</text>
+  <rect x="660" y="100" width="280" height="280" fill="none" stroke="#B4B2A9" stroke-dasharray="5 4"/>
+  <line x1="640" y1="240" x2="960" y2="240" stroke="#BA7517" stroke-width="1.4" stroke-dasharray="7 5"/>
+  <g fill="#B4B2A9" stroke="#5F5E5A" stroke-width="0.8">
+    <rect x="668.75" y="206.75" width="17.5" height="173.25"/><rect x="913.75" y="206.75" width="17.5" height="173.25"/>
+    <rect x="668.75" y="206.75" width="262.5" height="17.5"/><rect x="668.75" y="329.25" width="262.5" height="17.5"/>
+  </g>
+  <g fill="#85B7EB" stroke="#185FA5" stroke-width="1.2">
+    <circle cx="738.75" cy="178.75" r="28"/><circle cx="861.25" cy="178.75" r="28"/>
+    <circle cx="738.75" cy="301.25" r="28"/><circle cx="861.25" cy="301.25" r="28"/>
+  </g>
+  <g font-size="13" fill="#042C53" text-anchor="middle" dominant-baseline="central">
+    <text x="738.75" y="178.75">2</text><text x="861.25" y="178.75">3</text><text x="738.75" y="301.25">0</text><text x="861.25" y="301.25">1</text>
+  </g>
+  <line x1="800" y1="100" x2="800" y2="76" stroke="#854F0B" stroke-width="1.4" marker-end="url(#a)"/>
+  <line x1="800" y1="380" x2="800" y2="404" stroke="#854F0B" stroke-width="1.4" marker-end="url(#a)"/>
+  <g font-size="12" fill="#444441">
+    <text x="660" y="446">OD up to about 0.20 m per position; tiers 0.44 m apart.</text>
+    <text x="660" y="466">Each tier on a beam just beneath its lines.</text>
+    <text x="660" y="486">Between: the dashed level inside the block.</text>
+    <text x="660" y="506">Above and below: out through the top and</text>
+    <text x="660" y="522">bottom faces, through the middle gap.</text>
+  </g>
+</svg>
