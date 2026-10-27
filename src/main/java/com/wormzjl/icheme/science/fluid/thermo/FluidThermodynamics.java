@@ -780,18 +780,36 @@ public final class FluidThermodynamics {
         return false;
     }
     /**
-     * Whether {@code state} holds a carried trace gas (decision D41): a dry gas, below {@link #PHASE_TRACE_FRACTION} of the
-     * node's moles, in free water with no hydrocarbon liquid. Below that share the gas is below what a junction's rows
-     * resolve (they are stated over the junction's whole holdup, decision D34, A83), so a junction's step layout carries no
-     * unknown for it: its gas components are an omitted trace of the junction ({@code PhaseLayout.support}), carried
-     * exactly by the transport reconstruction like every other component, and the junction's state keeps them as this
-     * dry gas.
+     * Whether {@code state}'s hydrocarbons are an omitted trace (decision D41; for vessels since 2026-10-27, seed-236
+     * trace). Free water is the node's only standing phase (no steam), and its hydrocarbon is below
+     * {@link #PHASE_TRACE_FRACTION} of its fluid moles: by decision D34 no hydrocarbon phase exists, and the trace fold
+     * ({@link #foldTracePhases}) has no phase to give it to. A node's step layout and a vessel's closure carry no unknown
+     * and no row for it ({@code PhaseLayout.support}). Its split and that split's equilibrium are below what the rows
+     * resolve, and an amount unknown of it is differenced at a step that swamps it. The transport reconstruction carries
+     * it exactly, the state keeps it in the phases its own flash gives, and a share at or above the trace is a phase
+     * appearance.
+     *
+     * <p>A junction omits a carried dry gas only. Its liquid trace is what its outflow carries to the vessels after it,
+     * whose rows resolve what they hold. Omitted from the junction's streams, a 3.6e-8 mol crude trace stayed out of the
+     * Newton's view of the 1 m3 tank it fed, which held 3.4e-7 mol, while the reconstruction booked it; the tank's
+     * balance rows missed by up to 1.5 and the equation gate refused every step. A vessel omits liquid and gas, but only
+     * while their volume is within {@link #OMITTED_TRACE_VOLUME} of the vessel's. Its wall row resolves the volume of its
+     * contents, and through a liquid-full wall their pressure (1e-9 of a water tank's volume is 2 Pa). Bundled fuzz seed
+     * 236: a water-full tank's 1e-21 mol of crude, laid out as two trace phases from 1e-12 entry traces, refused every
+     * step (its Jacobian at 1/32 s and over, its closure's two-phase rows below).
      */
-    public static boolean carriedTrace(State state) {
-        if(state.liquidVolume()>0||state.waterVapor()>0||!(state.waterLiquid()>0))return false;
-        double nh=0;for(double x:state.vaporView())nh+=x;
-        return nh>0&&nh<PHASE_TRACE_FRACTION*(nh+state.waterLiquid());
+    public static boolean omittedTrace(State state,boolean junction) {
+        if(state.waterVapor()>0||!(state.waterLiquid()>0)||junction&&state.liquidVolume()>0)return false;
+        double nh=0;for(double x:state.liquidView())nh+=x;for(double x:state.vaporView())nh+=x;
+        if(!(nh>0&&nh<PHASE_TRACE_FRACTION*(nh+state.waterLiquid())))return false;
+        return junction||state.liquidVolume()+state.vaporVolume()<=OMITTED_TRACE_VOLUME*state.volume();
     }
+    /**
+     * The share of a vessel's volume within which its hydrocarbon trace is omitted ({@link #omittedTrace}): ten ulps of
+     * the volume. A liquid-full water vessel's pressure then moves 2e-6 Pa (2e-11 of a 1e5 Pa hydraulic row), under the
+     * Newton's 1e-10 and the reconstruction's 1e-8 gate.
+     */
+    public static final double OMITTED_TRACE_VOLUME=1e-15;
     /**
      * The hydrocarbon partial pressure of a split the trace rule restated ({@link #foldTracePhases}): a gas holding
      * hydrocarbons and no water vapour, the carried gas of decision D41, is at the node's pressure, as a layout decodes a

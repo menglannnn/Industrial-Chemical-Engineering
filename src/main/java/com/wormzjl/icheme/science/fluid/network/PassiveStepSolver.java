@@ -1026,7 +1026,8 @@ public final class PassiveStepSolver {
      * own split; a phase what is about to arrive carries and the layout lacks enters with what arrives of it
      * ({@link #arrivingInVessel}). The seed was the TP flash of the inventory with up to a quarter of its mass of what
      * arrives: for a pool of pure methane at saturation fed CO2 that put 99 % of the moles in the vapour, 183 m3 in a 1 m3
-     * tank. A junction is seeded with its own state, its owned holdup a small stock the backward-Euler rows move.
+     * tank. A vessel whose hydrocarbon over the step is an omitted trace ({@link #omittedArrival}) is seeded with its own
+     * state. A junction is seeded with its own state, its owned holdup a small stock the backward-Euler rows move.
      *
      * <p>Water trace in a junction (decision D10): a junction whose reachable set holds water while its state holds none
      * is seeded with its state flashed at its own temperature and pressure with a water entry trace of {@code 1e-12} of
@@ -1050,6 +1051,7 @@ public final class PassiveStepSolver {
             // A vessel that holds no fluid keeps its own state, which lays it out dry (decision D54, see dry); what arrives
             // in it is laid out by arrivingPhases.
             if(node.fixed()||node.junction()||holdsNoFluidVessel(node)){seeds.add(state);continue;}
+            if(omittedArrival(graph,nodeIndex,state,flows,dt)){seeds.add(state);continue;}
             // This is only a trial guess and a basis. The accumulation equations still start from the exact original inventory.
             var n=PhaseLayout.totalAmounts(state);double total=Arrays.stream(n).sum();boolean changed=false;
             for(int i=0;i<count;i++)if(available[i]&&n[i]==0){n[i]=total*1e-12;changed=true;}
@@ -1090,6 +1092,33 @@ public final class PassiveStepSolver {
         }
         try{return model.adoptingState(seed.temperature(),p,l,v,wl,wv,pc,null).withSolidState(seed.solids(),seed.solidMoments());}
         catch(IllegalArgumentException refused){return seed;}
+    }
+    /**
+     * Whether vessel {@code nodeIndex}'s hydrocarbon over the step is an omitted trace (decision D41 for vessels,
+     * {@link FluidThermodynamics#omittedTrace}): what it holds plus what its inflows deliver at the start flows over
+     * {@code dt} (the amounts {@link #arrivingInVessel} lays out), with no steam held or arriving. Such a vessel is seeded
+     * with its own state and lays out no hydrocarbon. An entry trace of 1e-12 of its amount for each hydrocarbon it can
+     * receive is 10^13 times what a trace delivers, and is a phantom phase. Seed 236's water-full tank was seeded with
+     * 3.2e-10 m3 of liquid and 1.05e-9 m3 of gas for 1e-21 mol of crude, and its pass stated their equilibrium. A vessel
+     * that holds no hydrocarbon and receives none keeps its entry traces, so its layout keeps the unknowns the converged
+     * flows may need.
+     */
+    private boolean omittedArrival(PassiveNetwork graph,int nodeIndex,FluidThermodynamics.State state,double[] flows,double dt) {
+        if(state.waterVapor()>0||!(state.waterLiquid()>0))return false;
+        double moles=0,volume=state.liquidVolume()+state.vaporVolume(),water=state.waterLiquid();
+        for(double x:state.liquidView())moles+=x;for(double x:state.vaporView())moles+=x;
+        for(int edge=0;edge<flows.length;edge++) {
+            var pipe=graph.pipes().get(edge);double flow=flows[edge];
+            if(!(Math.abs(flow)>0)||(flow>=0?pipe.second():pipe.first())!=nodeIndex||!boundaryAllowed(graph,pipe,flow))continue;
+            var stream=endStream(graph.reservoirs().get(flow>=0?pipe.first():pipe.second()).state(),pipe.drawPort(flow),pipe.volume());
+            if(stream==null)continue;
+            if(stream.waterVapor()>0)return false;
+            // Per kilogram of fluid, as arrivingInVessel reads it.
+            double mass=Math.min(state.mass()*.25,dt*Math.abs(transported(graph,pipe,flow)));
+            for(double x:stream.liquidView())moles+=mass*x;for(double x:stream.vaporView())moles+=mass*x;
+            volume+=mass*(stream.liquidVolume()+stream.vaporVolume());water+=mass*stream.waterLiquid();
+        }
+        return moles>0&&moles<FluidThermodynamics.PHASE_TRACE_FRACTION*(moles+water)&&volume<=FluidThermodynamics.OMITTED_TRACE_VOLUME*state.volume();
     }
     /** A dry junction state flashed at its own temperature and pressure with a water entry trace of 1e-12 of its total
      * amount; the state itself if that flash leaves the property domain. See {@link #initialPhaseSeeds}. */
@@ -1962,14 +1991,15 @@ public final class PassiveStepSolver {
     }
     /**
      * Whether the reconstruction gave a hydrocarbon phase to a node the Newton state holds none in (hold class E3). A
-     * junction the booked amounts give a carried trace gas has none to give (decision D41): the next pass would omit it
-     * again ({@code PhaseLayout.support}), so it is the junction's state, not an appearance.
+     * node the booked amounts give an omitted trace has none to give (decision D41 for vessels,
+     * {@link FluidThermodynamics#omittedTrace}): the next pass would omit it again ({@code PhaseLayout.support}), so it
+     * is the node's state, not an appearance.
      */
     private static boolean phaseAppeared(PassiveNetwork graph,List<FluidThermodynamics.State> solved,List<FluidThermodynamics.State> reconstructed) {
         for(int i=0;i<solved.size();i++) {
             var before=solved.get(i);var after=reconstructed.get(i);
             if(before.liquidVolume()>0||before.vaporProperties()!=null||after.liquidVolume()==0&&after.vaporProperties()==null)continue;
-            if(graph.reservoirs().get(i).junction()&&FluidThermodynamics.carriedTrace(after))continue;
+            if(FluidThermodynamics.omittedTrace(after,graph.reservoirs().get(i).junction()))continue;
             double[] held=PhaseLayout.totalAmounts(before),booked=PhaseLayout.totalAmounts(after);double total=PhaseLayout.sum(booked);
             for(int c=0;c<held.length;c++)if(held[c]==0&&booked[c]>=PassiveIntervalSolver.TRACE_FLUSH_FRACTION*total)return true;
         }

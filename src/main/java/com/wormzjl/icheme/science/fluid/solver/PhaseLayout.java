@@ -422,7 +422,9 @@ public final class PhaseLayout {
     }
     private void equilibriumResidual(FluidThermodynamics.State state,double[] l,double[] v,double[] result,int row,int offset,double[] variables,
                                      FluidThermodynamics.Prepared prepared) {
-        if(liquidActive&&vaporActive) {
+        // A seed whose hydrocarbon is an omitted trace (FluidThermodynamics.omittedTrace) may hold it in two phases, but
+        // the layout lays out neither: it decodes no hydrocarbon, and has no split to state.
+        if(liquidActive&&vaporActive&&components.length>0) {
             if(state.liquidProperties()==null||state.vaporProperties()==null)throw new IllegalArgumentException("A phase vanished inside a fixed-regime Newton trial");
             double nl=sum(l),nv=sum(v);
             double[] fl=state.liquidProperties().logFugacityView(),fv=state.vaporProperties().logFugacityView();
@@ -483,16 +485,18 @@ public final class PhaseLayout {
         return support(seed,componentMask,policy,promoted,false);
     }
     /**
-     * {@link #support} for a node that is a pipe junction ({@code junction}) or a vessel. A junction whose seed holds a
-     * carried trace gas ({@link FluidThermodynamics#carriedTrace}, decision D41) has no phase of its own for it: its gas
-     * components are omitted traces with no unknown and no row, below what the junction's rows resolve (an amount
-     * unknown there has a difference step no row registers, a zero column, and with the gas's water vapour the
-     * saturation row read the ratio of two such amounts and never contracted). The transport reconstruction carries them
-     * exactly and books more when more arrives; a share at or above the trace is a phase appearance.
+     * {@link #support} for a node that is a pipe junction ({@code junction}) or a vessel. A node whose seed holds an
+     * omitted hydrocarbon trace ({@link FluidThermodynamics#omittedTrace}, decision D41: a junction's carried dry gas, a
+     * vessel's trace within its wall's volume resolution) has no phase of its own for it. Every hydrocarbon component is
+     * an omitted trace with no unknown and no row, below what the node's rows resolve. An amount unknown there has a
+     * difference step no row registers, or one that swamps the phase it is in (a tank's 1e-18 mol of crude liquid,
+     * differenced by 5.4e-6 mol of methane, had no liquid root). With a gas's water vapour, the saturation row read the
+     * ratio of two such amounts and never contracted. The transport reconstruction carries them exactly and books more
+     * when more arrives; a share at or above the trace is a phase appearance.
      */
     public static PhaseSupport[] support(FluidThermodynamics.State seed,boolean[] componentMask,TraceTruncationPolicy policy,boolean[] promoted,boolean junction) {
         var support=supportOf(seed,componentMask,policy,promoted);
-        if(junction&&FluidThermodynamics.carriedTrace(seed))for(int i=0;i<support.length;i++)if(support[i]==PhaseSupport.VAPOR_ONLY)support[i]=PhaseSupport.ABSENT;
+        if(FluidThermodynamics.omittedTrace(seed,junction))Arrays.fill(support,PhaseSupport.ABSENT);
         return support;
     }
     /**
