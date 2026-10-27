@@ -187,7 +187,7 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements com.wor
             var at=worldPosition.relative(direction);
             if(!level.isLoaded(at))continue;
             if(level.getBlockEntity(at) instanceof FluidDeviceBlockEntity neighbour){if(neighbour.refreshFaces())neighbour.sync();}
-            else if(level.getBlockEntity(at) instanceof PipeRackBlockEntity rack){if(rack.refreshDrawn())level.sendBlockUpdated(at,rack.getBlockState(),rack.getBlockState(),2);}
+            else if(level.getBlockEntity(at) instanceof PipeRackBlockEntity rack)rack.redraw();
             else EquipmentStructure.refreshNozzlesAt(level,at);
         }
     }
@@ -258,6 +258,10 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements com.wor
     /** Writes a pipe's line facts: its joints when not every face, its paint when painted, its secondary paint when it differs. */
     public static CompoundTag writeLine(int joints,int paint,int secondary,CompoundTag tag){
         if(joints!=PhysicalFluidTopology.ALL_FACES)tag.putByte("Joints",(byte)joints);
+        return writePaints(paint,secondary,tag);
+    }
+    /** Writes a line's paints, as a pipe and a rack lane save them: its paint when painted, its secondary paint when it differs. */
+    public static CompoundTag writePaints(int paint,int secondary,CompoundTag tag){
         if(paint!=com.wormzjl.icheme.science.equipment.Paint.BARE)tag.putInt("Paint",paint);
         if(secondary!=paint)tag.putInt("Secondary",secondary);
         return tag;
@@ -265,22 +269,26 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements com.wor
     /** A pipe's saved joints. Absent: every face, as every pipe connected before joints existed. A value past the six faces is not a joint set. */
     public static int readJoints(CompoundTag tag){int saved=tag.contains("Joints")?tag.getByte("Joints")&255:PhysicalFluidTopology.ALL_FACES;return (saved&~PhysicalFluidTopology.ALL_FACES)==0?saved:PhysicalFluidTopology.ALL_FACES;}
     /** A pipe's saved paint. Absent: bare, as every pipe looked before paint existed. A value that is no colour is repaired to bare and logged. */
-    public static int readPaint(CompoundTag tag){
+    public static int readPaint(CompoundTag tag){return readPaint(tag,"pipe_compat");}
+    /** {@link #readPaint(CompoundTag)}, a repair logged under {@code log}: a pipe's and a rack lane's paint read alike. */
+    public static int readPaint(CompoundTag tag,String log){
         if(!tag.contains("Paint"))return com.wormzjl.icheme.science.equipment.Paint.BARE;
         int saved=tag.contains("Paint",net.minecraft.nbt.Tag.TAG_INT)?tag.getInt("Paint"):Integer.MIN_VALUE;
         if((saved&~0xFFFFFF)==0)return saved;
-        com.wormzjl.icheme.IChemE.LOGGER.warn("pipe_compat repair=paint ({}) -> bare",tag.get("Paint"));
+        com.wormzjl.icheme.IChemE.LOGGER.warn("{} repair=paint ({}) -> bare",log,tag.get("Paint"));
         return com.wormzjl.icheme.science.equipment.Paint.BARE;
     }
     /**
      * A pipe's saved secondary paint. Absent: {@code paint}, as the flanges looked before the secondary paint existed. A
      * value that is neither a colour nor bare is repaired to {@code paint} and logged.
      */
-    public static int readSecondary(CompoundTag tag,int paint){
+    public static int readSecondary(CompoundTag tag,int paint){return readSecondary(tag,paint,"pipe_compat");}
+    /** {@link #readSecondary(CompoundTag, int)}, a repair logged under {@code log}. */
+    public static int readSecondary(CompoundTag tag,int paint,String log){
         if(!tag.contains("Secondary"))return paint;
         int saved=tag.contains("Secondary",net.minecraft.nbt.Tag.TAG_INT)?tag.getInt("Secondary"):Integer.MIN_VALUE;
         if(com.wormzjl.icheme.science.equipment.Paint.line(saved))return saved;
-        com.wormzjl.icheme.IChemE.LOGGER.warn("pipe_compat repair=secondary ({}) -> paint",tag.get("Secondary"));
+        com.wormzjl.icheme.IChemE.LOGGER.warn("{} repair=secondary ({}) -> paint",log,tag.get("Secondary"));
         return paint;
     }
     @Override protected void loadAdditional(CompoundTag tag,HolderLookup.Provider registries){

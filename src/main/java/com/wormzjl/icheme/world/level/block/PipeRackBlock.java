@@ -117,7 +117,7 @@ public final class PipeRackBlock extends BaseEntityBlock {
     @Override
     protected BlockState updateShape(BlockState state, Direction direction, BlockState neighbour, LevelAccessor level, BlockPos position, BlockPos neighbourPosition) {
         if (level instanceof ServerLevel server) server.getServer().execute(() -> {
-            if (server.getBlockEntity(position) instanceof PipeRackBlockEntity rack && rack.refreshDrawn()) server.sendBlockUpdated(position, rack.getBlockState(), rack.getBlockState(), 2);
+            if (server.getBlockEntity(position) instanceof PipeRackBlockEntity rack) rack.redraw();
         });
         return super.updateShape(state, direction, neighbour, level, position, neighbourPosition);
     }

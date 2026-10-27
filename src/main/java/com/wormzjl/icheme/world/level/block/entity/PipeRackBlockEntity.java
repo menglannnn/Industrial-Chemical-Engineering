@@ -17,6 +17,7 @@ import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
+import net.minecraft.network.Connection;
 import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.entity.BlockEntity;
@@ -29,8 +30,11 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Set;
+import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -121,7 +125,7 @@ public final class PipeRackBlockEntity extends BlockEntity {
     public static final ModelProperty<Drawn> DRAWN = new ModelProperty<>();
     private static final ConcurrentHashMap<RackGeometry.Rack, VoxelShape> FRAMES = new ConcurrentHashMap<>();
     /** Client thread only; weak, so a level dropped without unloading its racks frees them. */
-    private static final java.util.Set<PipeRackBlockEntity> CLIENT_RACKS = java.util.Collections.newSetFromMap(new java.util.WeakHashMap<>());
+    private static final Set<PipeRackBlockEntity> CLIENT_RACKS = Collections.newSetFromMap(new WeakHashMap<>());
 
     private List<Lane> lanes = List.of();
     private int[] joined = new int[0];
@@ -155,17 +159,22 @@ public final class PipeRackBlockEntity extends BlockEntity {
     }
 
     /** The faces the lanes have joints on, a bit per face. */
-    public int faces() {
+    private int faces() {
         int faces = 0;
         for (var lane : lanes) faces |= lane.joints;
         return faces;
     }
 
-    /** The route search's view of this cell: its frame, its lanes, and the faces they have joints on. */
-    public PipeRoute.Room room() {
+    /** The lanes as drawn with no line met next door: what a new lane must fit beside, and what the route search reads. */
+    private List<RackGeometry.Lane> unjoined() {
         var out = new ArrayList<RackGeometry.Lane>(lanes.size());
         for (var lane : lanes) out.add(lane.drawn(0));
-        return PipeRoute.Room.rack(rack(), out, faces());
+        return out;
+    }
+
+    /** The route search's view of this cell: its frame, its lanes, and the faces they have joints on. */
+    public PipeRoute.Room room() {
+        return PipeRoute.Room.rack(rack(), unjoined(), faces());
     }
 
     public List<RackGeometry.Lane> drawnLanes() {
@@ -204,7 +213,7 @@ public final class PipeRackBlockEntity extends BlockEntity {
     }
 
     /** The ledger position of the lane of {@code option}. */
-    public PhysicalFluidTopology.Position position(int option) {
+    private PhysicalFluidTopology.Position position(int option) {
         return new PhysicalFluidTopology.Position(level.dimension().location().toString(), worldPosition.getX(), worldPosition.getY(), worldPosition.getZ(), option + 1);
     }
 
@@ -221,9 +230,7 @@ public final class PipeRackBlockEntity extends BlockEntity {
      */
     public void addLane(Lane lane) {
         var next = new ArrayList<>(lanes);
-        var others = new ArrayList<RackGeometry.Lane>();
-        for (var other : lanes) others.add(other.drawn(0));
-        if (!RackGeometry.fits(rack(), others, lane.drawn(0))) throw new IllegalStateException("The rack has no room for the lane");
+        if (!RackGeometry.fits(rack(), unjoined(), lane.drawn(0))) throw new IllegalStateException("The rack has no room for the lane");
         next.add(lane);
         setLanes(next, null);
     }
@@ -321,13 +328,18 @@ public final class PipeRackBlockEntity extends BlockEntity {
         }
     }
 
+    /** Server: redraws the drawn state from the loaded neighbours ({@link #refreshDrawn}) and sends it to the clients when it changed. */
+    public void redraw() {
+        if (refreshDrawn()) level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 2);
+    }
+
     /**
      * Server: the drawn state from the loaded neighbours. Which joints of each lane meet a line next door: a lane of the
      * next rack with the opposite joint at the same point, or a pipe connected towards this rack; a face whose neighbour
      * is in an unloaded chunk keeps what it showed (reading it would load the chunk). And the steel ({@link
      * RackGeometry#steel}, along the run counted in world coordinates). True when anything changed.
      */
-    public boolean refreshDrawn() {
+    private boolean refreshDrawn() {
         if (level == null || level.isClientSide()) return false;
         var next = new int[lanes.size()];
         for (int i = 0; i < lanes.size(); i++) {
@@ -456,9 +468,7 @@ public final class PipeRackBlockEntity extends BlockEntity {
             entry.putInt("Arms", lane.arms);
             entry.putInt("Joints", lane.joints);
             entry.putDouble("Bore", lane.bore);
-            if (lane.paint != Paint.BARE) entry.putInt("Paint", lane.paint);
-            if (lane.secondary != lane.paint) entry.putInt("Secondary", lane.secondary);
-            list.add(entry);
+            list.add(FluidDeviceBlockEntity.writePaints(lane.paint, lane.secondary, entry));
         }
         tag.put("Lanes", list);
         return tag;
@@ -478,7 +488,9 @@ public final class PipeRackBlockEntity extends BlockEntity {
             if (entry.contains("Identity", Tag.TAG_LONG) && entry.contains("Option", Tag.TAG_INT) && entry.contains("Width", Tag.TAG_INT) && entry.contains("Arms", Tag.TAG_INT)
                     && entry.contains("Joints", Tag.TAG_INT) && entry.contains("Bore", Tag.TAG_DOUBLE))
                 try {
-                    lane = new Lane(entry.getLong("Identity"), entry.getInt("Option"), entry.getInt("Width"), entry.getInt("Arms"), entry.getInt("Joints"), entry.getDouble("Bore"), paint(entry), secondary(entry, paint(entry)));
+                    int paint = FluidDeviceBlockEntity.readPaint(entry, "pipe_rack");
+                    lane = new Lane(entry.getLong("Identity"), entry.getInt("Option"), entry.getInt("Width"), entry.getInt("Arms"), entry.getInt("Joints"), entry.getDouble("Bore"),
+                            paint, FluidDeviceBlockEntity.readSecondary(entry, paint, "pipe_rack"));
                 } catch (IllegalArgumentException ignored) {
                 }
             if (lane == null || (used >> lane.option & 1) != 0) {
@@ -490,27 +502,6 @@ public final class PipeRackBlockEntity extends BlockEntity {
         }
         out.sort(Comparator.comparingInt(Lane::option));
         return List.copyOf(out);
-    }
-
-    /** A saved lane's paint: absent, bare; a value that is no colour, repaired to bare and logged. */
-    private static int paint(CompoundTag entry) {
-        if (!entry.contains("Paint")) return Paint.BARE;
-        int saved = entry.contains("Paint", Tag.TAG_INT) ? entry.getInt("Paint") : Integer.MIN_VALUE;
-        if ((saved & ~0xFFFFFF) == 0) return saved;
-        IChemE.LOGGER.warn("pipe_rack repair=paint ({}) -> bare", entry.get("Paint"));
-        return Paint.BARE;
-    }
-
-    /**
-     * A saved lane's secondary paint: absent (rack-1, or the same as the paint), {@code paint}; a value that is no colour,
-     * repaired to {@code paint} and logged.
-     */
-    private static int secondary(CompoundTag entry, int paint) {
-        if (!entry.contains("Secondary")) return paint;
-        int saved = entry.contains("Secondary", Tag.TAG_INT) ? entry.getInt("Secondary") : Integer.MIN_VALUE;
-        if (Paint.line(saved)) return saved;
-        IChemE.LOGGER.warn("pipe_rack repair=secondary ({}) -> paint", entry.get("Secondary"));
-        return paint;
     }
 
     // ---- client ----
@@ -529,7 +520,7 @@ public final class PipeRackBlockEntity extends BlockEntity {
     }
 
     @Override
-    public void onDataPacket(net.minecraft.network.Connection connection, ClientboundBlockEntityDataPacket packet, HolderLookup.Provider registries) {
+    public void onDataPacket(Connection connection, ClientboundBlockEntityDataPacket packet, HolderLookup.Provider registries) {
         super.onDataPacket(connection, packet, registries);
         requestModelDataUpdate();
         if (level != null) level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 0);
