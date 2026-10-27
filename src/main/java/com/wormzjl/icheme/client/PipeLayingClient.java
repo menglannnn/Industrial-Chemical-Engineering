@@ -59,9 +59,9 @@ import java.util.Set;
  * The laying tool on the client (batch 2026-10-26-pipe-laying-system, plan 4.1, 4.6 and 4.7). The client decides what a
  * use means, because only it knows whether a line has a start, and sends the server one command: open the settings, lay
  * a route, or dismantle a pipe; a line's start stays until the server answers that it laid the line ({@link #answered}).
- * It searches the route, draws it as a ghost and reports it on the action bar, and marks
- * the equipment ports around the player. Everything here reads blocks the client already holds: nothing is requested
- * from the server and no process data is read. Render thread only.
+ * It searches the route, draws it as a ghost and reports it on the action bar, and marks the equipment ports around the
+ * player. Everything here reads blocks the client already holds: nothing is requested from the server and no process
+ * data is read. Render thread only.
  */
 @EventBusSubscriber(modid = IChemE.MOD_ID, value = Dist.CLIENT)
 public final class PipeLayingClient {

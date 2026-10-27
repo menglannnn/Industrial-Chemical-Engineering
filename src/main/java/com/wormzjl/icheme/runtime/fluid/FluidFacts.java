@@ -37,7 +37,7 @@ import java.util.function.Function;
  * list of at most one.</p>
  */
 final class FluidFacts {
-    /** 1: the 0.13.0 records. 2 (batch 2026-10-26-pipe-laying-system): a registration's {@code joints}, a rack lane's width and face points, a position's rack lane (RACK_LAYERS_PLAN RD9: redefined in place while only this batch's branch wrote it). */
+    /** 1: the 0.13.0 records. 2 (batch 2026-10-26-pipe-laying-system): a registration's {@code joints}, a rack lane's width and face points, a position's rack lane. */
     static final int SCHEMA=2;
     /** Renamed or removed enum constants, per enum: the saved name to the current one. None at schema 2. */
     private static final Map<Class<?>,Map<String,String>> ALIASES=Map.of();

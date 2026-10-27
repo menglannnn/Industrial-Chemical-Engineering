@@ -234,9 +234,9 @@ public final class PhysicalFluidTopology {
     /**
      * What {@code from} meets out of {@code cell} towards {@code direction} (batch 2026-10-26-pipe-laying-system, plan 7):
      * for a lane, the plain device in the next cell or the lane there whose point on the shared face is its own; for any
-     * other device, the device in the next cell; else, across a rack face, the
-     * lane of a rack cell a plain pipe meets, the one jointed back through this face (at most one, plan 5.2). Null when
-     * none; {@link Device#joins} decides whether the two join. Without lanes this is the plain lookup it replaces.
+     * other device, the device in the next cell; else, across a rack face, the lane of a rack cell a plain pipe meets, the
+     * one jointed back through this face (at most one, plan 5.2). Null when none; {@link Device#joins} decides whether the
+     * two join. Where no lane is near, it is the plain lookup of the next cell.
      */
     static <R> R across(java.util.function.Function<Position,R> at,java.util.function.Function<R,Device> device,Device from,Position cell,Direction direction) {
         var next=cell.offset(direction);var back=opposite(direction);

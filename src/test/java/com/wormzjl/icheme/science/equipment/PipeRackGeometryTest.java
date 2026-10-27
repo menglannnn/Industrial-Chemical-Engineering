@@ -426,7 +426,6 @@ class PipeRackGeometryTest {
         return Math.max(0, Math.min(1, x));
     }
 
-    /** A segment's least distance to a box, sampled finely (the boxes are thin, the segments short). */
     /** The box {@code {x0, y0, z0, x1, y1, z1}} round the points {@code positions}. */
     private static double[] bounds(double[] positions) {
         double[] out = {Double.MAX_VALUE, Double.MAX_VALUE, Double.MAX_VALUE, -Double.MAX_VALUE, -Double.MAX_VALUE, -Double.MAX_VALUE};
@@ -451,6 +450,7 @@ class PipeRackGeometryTest {
         return out;
     }
 
+    /** A segment's least distance to a box, sampled finely (the boxes are thin, the segments short). */
     private static double boxDistance(double[][] segment, double[] box) {
         double best = Double.MAX_VALUE;
         for (int k = 0; k <= 256; k++) {
