@@ -17,9 +17,9 @@ Status: In progress since 2026-10-27 on branch `claude/distillation-sump-enlarge
 ## History
 
 - 2026-10-27: references found (research subagent on opus; the stripper drawing, the Walas rule and Perry's 3 m checked here), three forms compared on NewSweep's 315 designs, the stack chosen (option A of the review). First at half metres: the full suite failed 4 tests, one of them a crowded 4 m design losing a draw because a half-metre sump moves the tray grid half a block against the cell rows; the stack now rounds to whole metres. Sump 3 m to D 1.5, 4 m for D 2 to 8, D/2 beyond (was max(2, D/2)). Refused designs 103 → 93, none newly refused; every tray nozzle moves by exactly the sump's growth. Two tests changed (review section 7). Commit `a0ab6b50` (code, tests, layout table), then the documents, tool folder and CHANGELOG `[Unreleased]`. Gates on `a0ab6b50`'s tree: `test` 1643/1643, `slowGates` 188/188, fluid GameTests 34/34 (fresh run id `sump1`). No in-game check.
+- 2026-10-27: owner decisions: "Keep option A (3 to 4 m sump, wide columns unchanged). The nozzle moves on placed columns are approved." Option B dropped.
 
 ## Open items
 
-- Owner: approve the nozzle moves on placed columns under 8 m (review section 5), or choose option B (taller everywhere).
 - Merge: CHANGELOG entry is under `[Unreleased]`; proposed version 0.15.1 (patch: a layout correction); the owner chooses.
 - Not looked at: a level bridle on the sump (survey section 4), a narrower bottom boot for hot residue service.

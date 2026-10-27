@@ -24,11 +24,11 @@ Whole metres, not half: nozzles stand on whole cell rows. A half-metre sump move
 
 ## 5. Placed columns: nozzle pipe blocks move (owner approval)
 
-Every placed column under 8 m refreshes to a taller layout on load (`EquipmentRefresh`): its sump grows 0.25 to 2 m, its shell (whole metres) up to 2 m, and every nozzle but the bottoms rises with it, so a pipe joined at the old height parts and must be re-laid. Layout table: the 0.5 m column's row re-recorded (T/T 15 → 16 m, box height 21 → 22, top outlet, reflux, feed and vapour return one block up); the 8 m and 15 m rows unchanged. The request implies the move; it is listed here for the owner's approval before a merge.
+Every placed column under 8 m refreshes to a taller layout on load (`EquipmentRefresh`): its sump grows 0.25 to 2 m, its shell (whole metres) up to 2 m, and every nozzle but the bottoms rises with it, so a pipe joined at the old height parts and must be re-laid. Layout table: the 0.5 m column's row re-recorded (T/T 15 → 16 m, box height 21 → 22, top outlet, reflux, feed and vapour return one block up); the 8 m and 15 m rows unchanged. Owner decision 2026-10-27: "The nozzle moves on placed columns are approved."
 
 ## 6. Options for the owner
 
-- (A, built) The stack to the next metre: 3 or 4 m up to D 8, wider columns unchanged.
+- (A, built; owner decision 2026-10-27: "Keep option A") The stack to the next metre: 3 or 4 m up to D 8, wider columns unchanged.
 - (B) Taller everywhere, for looks: max(3, 2 + D/2) to whole metres (D 4 → 4 m, D 8 → 6 m, D 15 → 10 m); physics does not ask for it, and it moves the wide columns' nozzles too. One line in `bottomSpace`, a table re-record.
 
 ## 7. Tests changed and gates
