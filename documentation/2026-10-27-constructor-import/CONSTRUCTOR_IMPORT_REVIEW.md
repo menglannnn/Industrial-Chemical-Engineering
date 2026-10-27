@@ -34,7 +34,7 @@ Wire only: `equipment-12` → `equipment-13` (no compatibility work, AGENTS.md).
 ## 6. Verification
 
 - `EquipmentNetworkCodecTest` (3, new): the draft crosses with each action and the server keeps its column; an import lands on the draft sent (placement, paint, turns stay; on the stored design they would not); the answered design tags read back with no repair. The answer's message is Minecraft's component codec: a unit test cannot encode it (NeoForge's `Bootstrap` needs the game), so it is not covered here.
-- `test` 1647/1647 at `dbefe7f4` (0.15.2: 1644 + 3). `slowGates` not run: no gate code touched; run it in the merge lane.
+- `test` 1647/1647 at `dbefe7f4` (0.15.2: 1644 + 3). `slowGates` not run: no gate code touched. Merge as 0.15.3 with no test run on the release tree (owner: "no test").
 - In game: not checked (at most one check; the status line and the answered load are client-only judges if the owner wants one).
 
 ## 7. Code guide

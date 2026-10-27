@@ -15,6 +15,8 @@ All notable changes to Industrial Chemical Engineering (IChemE, formerly CreateC
 
 ## [Unreleased]
 
+## [0.15.3] - 2026-10-27
+
 ### Fixed
 
 - The equipment constructor's Import always finishes: the screen sends its draft with the import (protocol `equipment-13`, one `ConstructorPayload` with an `Action`; `ImportPayload` deleted), the calculator's column lands on that draft, and the server answers every import (`ImportAnswer`): the screen loads the design or shows why there is none on its status line (`dbefe7f4`; batch `2026-10-27-constructor-import`).
