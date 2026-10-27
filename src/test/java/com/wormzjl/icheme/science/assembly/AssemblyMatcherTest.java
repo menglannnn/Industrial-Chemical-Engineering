@@ -66,7 +66,7 @@ class AssemblyMatcherTest {
         var units = new HashMap<String, Unit>();
         var roles = new ArrayList<>(List.of(VAPOUR_OUTLET, REFLUX, FEED));
         for (int i = 0; i < trays.pumparounds().size(); i++) roles.addAll(List.of(PUMPAROUND_DRAW, RETURN));
-        roles.add(VAPOUR_RETURN);
+        if (c.kettle()) roles.add(VAPOUR_RETURN);
         for (int i = 0; i < trays.draws().size(); i++) roles.add(DRAW);
         for (int i = 0; i < trays.steam().size(); i++) roles.add(STEAM);
         roles.add(BOTTOMS);
@@ -337,17 +337,14 @@ class AssemblyMatcherTest {
     }
 
     @Test
-    void aPipeOnTheBlindVapourReturnIsAFault() {
+    void aColumnStrippedBySumpSteamHasEveryPortPipedAndNoVapourReturn() {
         var plant = ideal(trays(Condenser.AIR_COOLER, false, false, List.of(SUMP), Pump.STANDARD, 0, List.of()));
         var column = plant.unit("column");
-        var clean = plant.match();
-        assertTrue(clean.complete());
-        assertEquals(PortState.BLIND, portState(clean, column, VAPOUR_RETURN, 0));
-        plant.graph().end(port(column, VAPOUR_RETURN), OpenEnd::new, 2);
-        var piped = plant.match();
-        assertEquals(PortState.BLIND_PIPED, portState(piped, column, VAPOUR_RETURN, 0));
-        assertEquals(1, piped.misplaced());
-        assertFalse(piped.complete());
+        var report = plant.match();
+        assertTrue(report.complete());
+        var ports = report.ports().stream().filter(p -> p.unit() == column.origin()).toList();
+        assertEquals(List.of(VAPOUR_OUTLET, REFLUX, FEED, STEAM, BOTTOMS), ports.stream().map(AssemblyReport.PortReport::role).toList());
+        for (var p : ports) assertEquals(PortState.CONNECTED, p.state(), p::toString);
     }
 
     @Test

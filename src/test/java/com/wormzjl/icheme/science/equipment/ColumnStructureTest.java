@@ -200,6 +200,28 @@ class ColumnStructureTest {
         for (var shape : COLUMNS) assertEquals(List.of(), ColumnStructure.unplaced(shape), shape.toString());
     }
 
+    /**
+     * Owner answer Q9 (a), batch 2026-10-26-multi-machine-framework: the reboiler's vapour return only on a column whose
+     * component design has a kettle. With a kettle, and without a component design, the nozzles stand as before; a column
+     * stripped by sump steam has none, and its steam nozzle finds the row the return took (finding F1: a 2 m column of 6
+     * trays had no row for it).
+     */
+    @Test
+    void theVapourReturnComesWithAKettle() {
+        var plain = new ColumnTrays(6, 3, List.of(), List.of(7), List.of());
+        java.util.function.Function<Boolean, EquipmentShape> column = kettle -> EquipmentShape.column(2, kettle == null ? plain
+                : plain.withComponents(new ColumnComponents(ColumnComponents.Condenser.AIR_COOLER, ColumnComponents.Pump.STANDARD, List.of(), false, kettle)),
+                Heading.NORTH, EquipmentShape.minimumSkirt(2));
+        java.util.function.Function<EquipmentShape, List<String>> places = s -> s.nozzles().stream()
+                .map(n -> n.role() + " " + java.util.Arrays.toString(n.base()) + " " + n.axis() + n.sign()).toList();
+        var before = column.apply(null);
+        assertEquals(places.apply(before), places.apply(column.apply(true)));
+        assertEquals(List.of(Role.STEAM), ColumnStructure.unplaced(before).stream().map(Unplaced::role).toList());
+        var stripped = column.apply(false);
+        assertEquals(List.of(), ColumnStructure.unplaced(stripped));
+        assertEquals(List.of(Role.VAPOUR_OUTLET, Role.REFLUX, Role.FEED, Role.STEAM, Role.BOTTOMS), stripped.nozzles().stream().map(EquipmentShape.Nozzle::role).toList());
+    }
+
     /** A design imported from a column calculator keeps its numbers; cutting trays drops what no longer fits; the layout round-trips. */
     @Test
     void traysComeFromACalculatorAndRefitWhenCut() {

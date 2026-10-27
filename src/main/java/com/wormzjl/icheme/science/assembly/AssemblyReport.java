@@ -61,10 +61,10 @@ public record AssemblyReport(List<SlotReport> slots, List<PortReport> ports, Set
 
     /**
      * A port's state: still needed (its class colour), connected (grey), a utility (advice, its class colour until
-     * piped), blind (no colour), blind but piped (a fault), or not used by the design.
+     * piped), or not used by the design.
      */
     public enum PortState {
-        NEEDED, CONNECTED, UTILITY, BLIND, BLIND_PIPED, UNUSED
+        NEEDED, CONNECTED, UTILITY, UNUSED
     }
 
     /** A port of the unit at {@code unit}: its role, which one of that role, its state. */
@@ -76,10 +76,9 @@ public record AssemblyReport(List<SlotReport> slots, List<PortReport> ports, Set
         return (int) slots.stream().filter(s -> s.state().colour == Colour.TEAL).count();
     }
 
-    /** The slots misplaced, and the blind ports piped. */
+    /** The slots misplaced. */
     public int misplaced() {
-        return (int) slots.stream().filter(s -> s.state().colour == Colour.YELLOW).count()
-                + (int) ports.stream().filter(p -> p.state() == PortState.BLIND_PIPED).count();
+        return (int) slots.stream().filter(s -> s.state().colour == Colour.YELLOW).count();
     }
 
     /** The slots missing or not checked. */
@@ -87,7 +86,7 @@ public record AssemblyReport(List<SlotReport> slots, List<PortReport> ports, Set
         return (int) slots.stream().filter(s -> s.state().colour == Colour.RED).count();
     }
 
-    /** Whether the structure is complete: every slot in place and no blind port piped. */
+    /** Whether the structure is complete: every slot in place. */
     public boolean complete() {
         return misplaced() == 0 && missing() == 0;
     }

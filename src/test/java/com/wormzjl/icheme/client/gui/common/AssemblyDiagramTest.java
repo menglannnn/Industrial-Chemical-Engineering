@@ -1,6 +1,5 @@
 package com.wormzjl.icheme.client.gui.common;
 
-import com.wormzjl.icheme.client.gui.common.AssemblyDiagram.PortMark;
 import com.wormzjl.icheme.science.assembly.Blueprint;
 import com.wormzjl.icheme.science.assembly.ColumnBlueprint;
 import com.wormzjl.icheme.science.equipment.ColumnComponents;
@@ -123,15 +122,13 @@ class AssemblyDiagramTest {
             for (var m : diagram.ports()) {
                 marks.add(new Blueprint.PortSpec(m.slot(), m.role(), Math.max(0, m.ordinal())));
                 assertTrue(blueprint.slots().contains(m.slot()), m::toString);
-                if (m.partner() != null) assertTrue(blueprint.slots().contains(m.partner()), m::toString);
-                else assertEquals(new PortMark(ColumnBlueprint.COLUMN, Role.VAPOUR_RETURN, 0, m.x(), m.y(), null), m, "only a blind port has no partner");
+                assertTrue(blueprint.slots().contains(m.partner()), m::toString);
             }
             for (var link : blueprint.links()) {
                 var start = link.start();
                 if (start.role() != null) assertTrue(marks.contains(new Blueprint.PortSpec(start.slot(), start.role(), start.ordinal())), () -> link.name() + " " + trays);
                 if (link.finish() instanceof Blueprint.ToPort to) assertTrue(marks.contains(to.port()), () -> link.name() + " " + trays);
             }
-            for (var blind : blueprint.blind()) assertTrue(marks.contains(blind), blind::toString);
         }
     }
 }

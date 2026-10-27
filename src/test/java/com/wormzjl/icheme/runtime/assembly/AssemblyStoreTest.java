@@ -29,7 +29,7 @@ class AssemblyStoreTest {
         var slots = List.of(new SlotReport(new Slot("column", 0), State.OK, COLUMN, AssemblyReport.NONE, ""),
                 new SlotReport(new Slot("receiver", 0), condenser, DRUM, PIPE, condenser == State.OK ? "" : "DRUM_STANDING"));
         var ports = List.of(new PortReport(COLUMN, Role.VAPOUR_OUTLET, 0, PortState.CONNECTED), new PortReport(DRUM, Role.SIDE, 1, PortState.CONNECTED),
-                new PortReport(COLUMN, Role.VAPOUR_RETURN, 0, PortState.BLIND));
+                new PortReport(DRUM, Role.SIDE, 0, PortState.UNUSED));
         return new AssemblyReport(slots, ports, Set.of(PIPE, FAR, COLUMN, DRUM), List.of(COLUMN, DRUM));
     }
 

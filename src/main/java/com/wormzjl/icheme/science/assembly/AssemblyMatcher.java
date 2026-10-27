@@ -396,15 +396,6 @@ public final class AssemblyMatcher {
                 slots.add(new SlotReport(slot, state, binding != null ? binding.position() : NONE, fault != null ? fault.at() : NONE,
                         fault != null ? fault.detail() : ""));
             }
-            var blind = new HashMap<Key, Boolean>();
-            for (var spec : blueprint.blind()) {
-                var holder = bound.get(spec.slot());
-                if (holder == null || holder.unit() == null || spec.ordinal() >= holder.unit().count(spec.role())) continue;
-                var run = graph.run(new Port(holder.unit(), spec.role(), spec.ordinal()));
-                boolean piped = !(run.end() instanceof Unconnected);
-                if (piped) footprint.addAll(run.positions());
-                blind.put(new Key(holder.unit().origin(), spec.role(), spec.ordinal()), piped);
-            }
             var ports = new ArrayList<PortReport>();
             var members = new ArrayList<Long>();
             for (var binding : bound.values()) {
@@ -417,8 +408,7 @@ public final class AssemblyMatcher {
                     int ordinal = seen.merge(role, 1, Integer::sum) - 1;
                     var key = new Key(unit.origin(), role, ordinal);
                     PortState state;
-                    if (blind.containsKey(key)) state = blind.get(key) ? PortState.BLIND_PIPED : PortState.BLIND;
-                    else if (used.contains(key)) state = PortState.CONNECTED;
+                    if (used.contains(key)) state = PortState.CONNECTED;
                     else if (required.contains(key)) state = PortState.NEEDED;
                     else if (utilities.contains(role)) state = PortState.UTILITY;
                     else state = PortState.UNUSED;

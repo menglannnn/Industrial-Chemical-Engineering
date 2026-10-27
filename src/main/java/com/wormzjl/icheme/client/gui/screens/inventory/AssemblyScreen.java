@@ -16,7 +16,6 @@ import com.wormzjl.icheme.science.assembly.AssemblyView;
 import com.wormzjl.icheme.science.assembly.Blueprint.Slot;
 import com.wormzjl.icheme.science.assembly.ColumnBlueprint;
 import com.wormzjl.icheme.science.equipment.ColumnTrays;
-import com.wormzjl.icheme.science.equipment.EquipmentShape.Role;
 import com.wormzjl.icheme.world.inventory.AssemblyMenu;
 import com.wormzjl.icheme.world.level.block.EquipmentStructure;
 import net.minecraft.client.Minecraft;
@@ -244,11 +243,6 @@ public final class AssemblyScreen extends AbstractContainerScreen<AssemblyMenu> 
         var d = diagram;
         for (var w : d.wires()) wire(g, w);
         for (var t : d.trays()) g.hLine(x(t[0]), x(t[2]), y(t[1]), ProcessUi.LINE);
-        var blind = d.blind();
-        if (blind != null) {
-            var state = portState(new PortMark(ColumnBlueprint.COLUMN, Role.VAPOUR_RETURN, 0, 0, 0, null));
-            g.vLine(x(blind[0]), y(blind[1] - 6), y(blind[1] + 6), state == PortState.BLIND_PIPED ? YELLOW : ProcessUi.MUTED);
-        }
         for (var p : d.pills()) {
             g.fill(x(p.x()), y(p.y() - 11), x(p.x() + p.w()), y(p.y() + 11), ProcessUi.PANEL);
             g.renderOutline(x(p.x()), y(p.y() - 11), x(p.x() + p.w()) - x(p.x()), y(p.y() + 11) - y(p.y() - 11), ProcessUi.LINE);
@@ -346,10 +340,10 @@ public final class AssemblyScreen extends AbstractContainerScreen<AssemblyMenu> 
 
     private void port(GuiGraphics g, PortMark m) {
         var state = portState(m);
-        if (m.partner() == null || state == PortState.BLIND || state == PortState.UNUSED) return;
+        if (state == PortState.UNUSED) return;
         int half = Math.max(2, px(PortMark.SIZE / 2)), cx = x(m.x()), cy = y(m.y());
         int fill = state == PortState.CONNECTED ? PortColours.CONNECTED : PortColours.of(m.role().port);
-        g.fill(cx - half - 1, cy - half - 1, cx + half + 1, cy + half + 1, state == PortState.BLIND_PIPED ? YELLOW : EDGE);
+        g.fill(cx - half - 1, cy - half - 1, cx + half + 1, cy + half + 1, EDGE);
         g.fill(cx - half, cy - half, cx + half, cy + half, 0xFF000000 | fill);
     }
 
@@ -438,7 +432,7 @@ public final class AssemblyScreen extends AbstractContainerScreen<AssemblyMenu> 
     private @Nullable PortMark diagramPort(double mx, double my) {
         double dx = (mx - ox) / scale, dy = (my - oy) / scale, slack = Math.max(0, 2 / scale - PortMark.SIZE / 2.0);
         for (var m : diagram.ports())
-            if (m.partner() != null && Math.abs(dx - m.x()) <= PortMark.SIZE / 2.0 + slack && Math.abs(dy - m.y()) <= PortMark.SIZE / 2.0 + slack) return m;
+            if (Math.abs(dx - m.x()) <= PortMark.SIZE / 2.0 + slack && Math.abs(dy - m.y()) <= PortMark.SIZE / 2.0 + slack) return m;
         return null;
     }
 

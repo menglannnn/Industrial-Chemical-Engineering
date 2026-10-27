@@ -175,10 +175,10 @@ final class ColumnStructure {
      * towards the constructor and the pipe rack, the feed over its tray and the bottoms through the skirt's port (on the
      * shell just over the bottom tangent line where the skirt leaves it no room); on the right the reflux over tray 1 and
      * each pumparound's draw under its draw tray and return over its return tray; on the left the reboiler's vapour return
-     * between the sump's level and the bottom tray, the side draws under their trays and the stripping steam under its
-     * stage. Sizes follow the column diameter; each takes any pipe. A nozzle moves to the nearest row where it meets no
-     * other nozzle on its side and leaves its neck and the block beyond its flange clear of the access structure
-     * ({@link Clearance}), so a pipe can always meet it; a nozzle with no such row is left out and listed by
+     * between the sump's level and the bottom tray ({@link #reboiled}), the side draws under their trays and the stripping
+     * steam under its stage. Sizes follow the column diameter; each takes any pipe. A nozzle moves to the nearest row
+     * where it meets no other nozzle on its side and leaves its neck and the block beyond its flange clear of the access
+     * structure ({@link Clearance}), so a pipe can always meet it; a nozzle with no such row is left out and listed by
      * {@link #unplaced}. Cached per shape.
      */
     static void nozzles(EquipmentShape s, List<EquipmentShape.Nozzle> out) {
@@ -216,7 +216,7 @@ final class ColumnStructure {
             rows.side(EquipmentShape.Role.PUMPAROUND_DRAW, i + 1, yB + t.trayHeight(d, p.draw()) - .2, 0, -1, size(d / 6, .6));
             rows.side(EquipmentShape.Role.RETURN, i + 1, yB + t.trayHeight(d, p.ret()) + .3, 0, -1, size(d / 6, .6));
         }
-        rows.side(EquipmentShape.Role.VAPOUR_RETURN, 1, yB + .75 * sump, 0, 1, size(.27 * d, PipeSizes.MAX_OUTSIDE));
+        if (reboiled(t)) rows.side(EquipmentShape.Role.VAPOUR_RETURN, 1, yB + .75 * sump, 0, 1, size(.27 * d, PipeSizes.MAX_OUTSIDE));
         for (int i = 0; i < t.draws().size(); i++) rows.side(EquipmentShape.Role.DRAW, i + 1, yB + t.trayHeight(d, t.draws().get(i)) - .2, 0, 1, size(d / 8, .5));
         for (int i = 0; i < t.steam().size(); i++) {
             int stage = t.steam().get(i);
@@ -227,6 +227,15 @@ final class ColumnStructure {
         out.addAll(rows.placed);
         if (bottoms != null) out.add(bottoms);
         return new Layout(List.copyOf(out), List.copyOf(rows.unplaced));
+    }
+
+    /**
+     * Whether a column carries the reboiler's vapour return (owner answer Q9 (a), batch 2026-10-26-multi-machine-framework):
+     * where its component design has a kettle. A column stripped by sump steam has no reboiler, so no return; a column
+     * without a component design keeps the nozzle it was built with.
+     */
+    static boolean reboiled(ColumnTrays trays) {
+        return trays.components() == null || trays.components().kettle();
     }
 
     /**

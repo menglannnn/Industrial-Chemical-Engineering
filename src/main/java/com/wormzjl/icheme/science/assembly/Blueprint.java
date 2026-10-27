@@ -17,14 +17,12 @@ import java.util.Set;
  * @param master the slot the assembly is validated from
  * @param slots  every slot, in report order
  * @param links  the links, in matching order: a link starts at a slot an earlier link (or the master) fills
- * @param blind  ports that stay blind: a pipe on one is an error
  */
-public record Blueprint(Slot master, List<Slot> slots, List<Link> links, List<PortSpec> blind) {
+public record Blueprint(Slot master, List<Slot> slots, List<Link> links) {
     public Blueprint {
         Objects.requireNonNull(master, "master");
         slots = List.copyOf(slots);
         links = List.copyOf(links);
-        blind = List.copyOf(blind);
     }
 
     /**

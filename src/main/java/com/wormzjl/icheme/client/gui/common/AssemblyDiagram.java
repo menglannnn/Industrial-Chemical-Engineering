@@ -16,7 +16,7 @@ import static com.wormzjl.icheme.science.assembly.ColumnBlueprint.*;
  * The plant drawing of a column's assembly (batch 2026-10-26-multi-machine-framework, plan section 8), laid out as in
  * {@code COLUMN_ASSEMBLY_CASES.html} on a {@value #WIDTH} by {@value #HEIGHT} design grid: the column in the middle, the
  * overhead system at the top right, the pumparound loops to the right, the side draws, feed and steam to the left, the
- * kettle or the blind vapour return at the bottom left. One part per slot of the column's blueprint, a square per port.
+ * kettle at the bottom left. One part per slot of the column's blueprint, a square per port.
  * Texts are language keys under {@value #KEY}. Minecraft-free: the screen draws it, scaled to fit.
  */
 public final class AssemblyDiagram {
@@ -64,9 +64,9 @@ public final class AssemblyDiagram {
 
     /**
      * The square of port {@code role} number {@code ordinal} (-1: any of that role) of the unit in {@code slot}, and the
-     * slot of the part it pipes to; none for a port that stays blind.
+     * slot of the part it pipes to.
      */
-    public record PortMark(Slot slot, Role role, int ordinal, int x, int y, @Nullable Slot partner) {
+    public record PortMark(Slot slot, Role role, int ordinal, int x, int y, Slot partner) {
         public static final int SIZE = 8;
 
         public boolean contains(double px, double py) {
@@ -80,7 +80,6 @@ public final class AssemblyDiagram {
     private final List<Pill> pills = new ArrayList<>();
     private final List<PortMark> ports = new ArrayList<>();
     private final List<int[]> trays = new ArrayList<>();
-    private int @Nullable [] blind;
 
     private AssemblyDiagram() {
     }
@@ -108,11 +107,6 @@ public final class AssemblyDiagram {
     /** The tray lines in the column: x from, y, x to. */
     public List<int[]> trays() {
         return trays;
-    }
-
-    /** Where the blind flange of the vapour return stands (x, y), or null with a kettle. */
-    public int @Nullable [] blind() {
-        return blind;
     }
 
     public @Nullable Part part(Slot slot) {
@@ -194,7 +188,7 @@ public final class AssemblyDiagram {
             d.side(sump ? 545 : 420 + 50 * traySteam++, true, steamValve(i), sump ? t("outside.sump_steam") : t("outside.tray_steam", stage));
         }
 
-        // The bottom: the kettle on the bottoms, or a blind vapour return and the bottoms straight out.
+        // The bottom: the kettle on the bottoms, or (sump steam, no vapour return) the bottoms straight out.
         if (ket) {
             d.part(REBOILER, Glyph.UNIT, 90, 640, 120, 34, t("label.reboiler"), t("part.reboiler"), t("where.reboiler"), t("wanted.reboiler"));
             d.wire(true, 260, 620, 260, 657, 211, 657);
@@ -205,9 +199,6 @@ public final class AssemblyDiagram {
             d.wire(true, 90, 657, 66, 657, 66, 700, 359, 700);
             d.valve(BOTTOMS_VALVE, 300, 700);
         } else {
-            d.wire(false, 231, 580, 218, 580);
-            d.blind = new int[]{218, 580};
-            d.label(210, 580, t("label.blind_return"), Align.RIGHT);
             d.wire(true, 260, 620, 260, 700, 359, 700);
             d.valve(BOTTOMS_VALVE, 310, 700);
         }
@@ -256,10 +247,7 @@ public final class AssemblyDiagram {
             port(REBOILER, Role.VAPOUR_OUTLET, 0, 150, 640, COLUMN);
             port(COLUMN, Role.VAPOUR_RETURN, 0, 232, 580, REBOILER);
             port(REBOILER, Role.LIQUID_OUTLET, 0, 90, 657, BOTTOMS_VALVE);
-        } else {
-            port(COLUMN, Role.BOTTOMS, 0, 260, 620, BOTTOMS_VALVE);
-            port(COLUMN, Role.VAPOUR_RETURN, 0, 232, 580, null);
-        }
+        } else port(COLUMN, Role.BOTTOMS, 0, 260, 620, BOTTOMS_VALVE);
     }
 
     private static Text t(String key, Object... args) {
@@ -311,7 +299,7 @@ public final class AssemblyDiagram {
         pills.add(new Pill(x, y, w, text));
     }
 
-    private void port(Slot slot, Role role, int ordinal, int x, int y, @Nullable Slot partner) {
+    private void port(Slot slot, Role role, int ordinal, int x, int y, Slot partner) {
         ports.add(new PortMark(slot, role, ordinal, x, y, partner));
     }
 }

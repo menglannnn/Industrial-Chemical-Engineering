@@ -60,7 +60,6 @@ public final class ColumnBlueprint {
         var c = Objects.requireNonNull(trays.components(), "A column without a component design has no assembly");
         var slots = new ArrayList<Slot>();
         var links = new ArrayList<Link>();
-        var blind = new ArrayList<PortSpec>();
         slots.add(COLUMN);
         if (c.ejector()) slots.add(EJECTOR);
         slots.addAll(List.of(CONDENSER, RECEIVER, OFFGAS_VALVE, WATER_VALVE, REFLUX_PUMP, REFLUX_TEE, REFLUX_VALVE, DISTILLATE_VALVE, FEED_VALVE));
@@ -104,12 +103,11 @@ public final class ColumnBlueprint {
                     false, REBOILER));
             links.add(new Link("bottoms", Start.at(REBOILER, Role.LIQUID_OUTLET, 0), List.of(Step.of(BOTTOMS_VALVE, VALVE)), new Outside(), false, BOTTOMS_VALVE));
         } else {
+            // Without a kettle the column has no vapour return (owner answer Q9 (a)): sump steam strips its bottom.
             links.add(new Link("bottoms", Start.at(COLUMN, Role.BOTTOMS, 0), List.of(Step.of(BOTTOMS_VALVE, VALVE)), new Outside(), false, BOTTOMS_VALVE));
-            // Without a kettle the vapour return stays blind: a pipe on it would leak the column's bottom.
-            blind.add(new PortSpec(COLUMN, Role.VAPOUR_RETURN, 0));
         }
         slots.add(BOTTOMS_VALVE);
-        return new Blueprint(COLUMN, slots, links, blind);
+        return new Blueprint(COLUMN, slots, links);
     }
 
     /** A pump step of the designed kind; the other kind fills it as the wrong kind. */
