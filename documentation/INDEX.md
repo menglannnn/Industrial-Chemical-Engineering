@@ -14,6 +14,7 @@ Status words:
 
 | Batch | Purpose | Status |
 |---|---|---|
+| [2026-10-27-hold-class-wall-deadline/](2026-10-27-hold-class-wall-deadline/README.md) | Audit an intermittent HoldClassWorldsTest wall deadline | Implemented 2026-10-27 |
 | [2026-10-27-column-bench-audit/](2026-10-27-column-bench-audit/README.md) | Audit main-versus-fork column benchmark data | Implemented 2026-10-27 |
 | [2026-10-27-creative-tab/](2026-10-27-creative-tab/README.md) | Keep IChemE items in the mod creative tab | Implemented 2026-10-27 |
 | [2026-10-26-v3-solver-performance/](2026-10-26-v3-solver-performance/README.md) | V3 distillation solver performance and aggressive warm-start path | Implemented 2026-10-27 |
