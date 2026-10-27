@@ -38,4 +38,3 @@ class VesselGeometryTest {
         assertThrows(IllegalArgumentException.class,()->VesselGeometry.prism(Double.NaN,1));
     }
 }
-

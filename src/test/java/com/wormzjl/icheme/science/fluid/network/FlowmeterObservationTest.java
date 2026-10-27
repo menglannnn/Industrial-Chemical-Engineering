@@ -20,4 +20,3 @@ class FlowmeterObservationTest extends PortFixture {
         assertEquals(points,pipe.withObservationPoints(points).withBlockedDirections(0).observationPoints());
     }
 }
-

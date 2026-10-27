@@ -89,4 +89,3 @@ public final class Sensor {
         return f.valid("sensor",()->new Installed(new Instrument.Key(host,mount),id,rev,Kind.valueOf(name)));
     }
 }
-

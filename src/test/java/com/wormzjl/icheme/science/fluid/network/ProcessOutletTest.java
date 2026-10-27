@@ -107,4 +107,3 @@ class ProcessOutletTest extends PortFixture {
         }
     }
 }
-
