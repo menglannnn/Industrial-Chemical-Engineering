@@ -205,8 +205,10 @@ public final class EquipmentConstructorBlockEntity extends BlockEntity {
     /**
      * A saved design read onto the current rules (batch 2026-10-26-backward-compat): its shape through {@link ShapeRepair},
      * its placement and paint kept where valid; a form this build no longer has proposes the default shape with the
-     * saved placement and paint, as {@code fresh} (what a new constructor proposes) has them otherwise. Each change goes to
-     * {@code repairs}.
+     * saved placement and paint, as {@code fresh} (what a new constructor proposes) has them otherwise. The shape is read
+     * from the fields its form builds with ({@link Design#shape}); the other forms' fields (a drum's side connections and
+     * boot, the air cooler's bank, the trays) are kept as saved, as a form switch keeps them (finding F2, batch
+     * 2026-10-26-multi-machine-framework). Each change goes to {@code repairs}.
      */
     public static Design readDesign(CompoundTag tag, Design fresh, java.util.function.Consumer<String> repairs) {
         var placement = fresh.placement();
@@ -235,15 +237,32 @@ public final class EquipmentConstructorBlockEntity extends BlockEntity {
             } catch (IllegalArgumentException invalid) {
                 repairs.accept("trays (" + invalid.getMessage() + ") -> " + Design.TRAYS.trays() + " trays");
             }
+        // The shape from what its form builds with, as Design.shape: only a lying drum shows the boot.
+        boolean drum = form.kind() == EquipmentShape.Kind.DRUM, lying = drum && form.orientation().horizontal(), boot = tag.getBoolean("Boot");
+        int[] savedConnections = tag.contains("Connections") ? tag.getIntArray("Connections") : null, savedBank = tag.contains("Bank") ? tag.getIntArray("Bank") : null;
         var read = ShapeRepair.read(new ShapeRepair.Saved(form.kind().name(), "north", form.orientation().name(), tag.getDouble("Diameter"), tag.getInt("TangentLength"),
-                tag.getInt("Support"), trays.encode(), tag.contains("Connections") ? tag.getIntArray("Connections") : null, tag.getBoolean("Boot"), tag.getInt("Outlet"),
-                tag.contains("Bank") ? tag.getIntArray("Bank") : null));
+                tag.getInt("Support"), trays.encode(), savedConnections, boot && lying, tag.getInt("Outlet"), savedBank));
         read.repairs().forEach(repairs);
         var shape = read.shape();
         // A column's own length follows its trays; the design keeps the drum length it was saved with for another form.
         int length = form.column() ? (int) Math.max(1, Math.min(EquipmentShape.MAX_TANGENT_LENGTH, tag.getInt("TangentLength"))) : (int) shape.tangentLength();
-        var design = new Design(shape.diameter(), length, form, shape.support(), placement, shape.trays() != null ? shape.trays() : trays, shape.connections(), paint,
-                shape.bank(), shape.boot(), shape.outlet());
+        // What the other forms own is kept as saved: this form's shape does not carry it (finding F2).
+        var connections = shape.connections();
+        if (!drum && savedConnections != null)
+            try {
+                connections = EquipmentShape.Connection.decode(savedConnections);
+            } catch (IllegalArgumentException invalid) {
+                repairs.accept("connections (" + invalid.getMessage() + ") -> none");
+            }
+        var bank = shape.bank();
+        if (form.kind() != EquipmentShape.Kind.AIR_COOLER && savedBank != null)
+            try {
+                bank = ProcessUnit.Bank.decode(savedBank);
+            } catch (IllegalArgumentException invalid) {
+                repairs.accept("bank (" + invalid.getMessage() + ") -> one bay");
+            }
+        var design = new Design(shape.diameter(), length, form, shape.support(), placement, shape.trays() != null ? shape.trays() : trays, connections, paint,
+                bank, lying ? shape.boot() : boot, shape.outlet());
         if (!tag.contains("Column")) return design;
         // The imported column (shape fields 2): its own checks, then the skirt at least its least.
         try {

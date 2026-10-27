@@ -174,6 +174,41 @@ class EquipmentShapeCompatTest {
         assertEquals(1, repairs.size(), repairs.toString());
     }
 
+    /**
+     * Finding F2 (batch 2026-10-26-multi-machine-framework): a constructor keeps every form's fields across a reload in
+     * any form, as it keeps them across a form switch (a drum's side connections and boot, the trays, the air cooler's
+     * bank, the drum length while a column is shown). Each design reads back as it was written, with no repair.
+     */
+    @Test
+    void aConstructorKeepsEveryFormsFieldsAcrossAReload() {
+        var fresh = EquipmentConstructorBlockEntity.Design.DEFAULT;
+        var trays = ColumnTrays.simple(12, 6);
+        var bank = new ProcessUnit.Bank(3, 2);
+        int saddles = EquipmentShape.minimumBootSupport(2, 6);
+        // A lying drum with a boot and its side connection; the trays and the bank belong to the other forms.
+        var lying = new EquipmentConstructorBlockEntity.Design(2, 6, VesselPlacement.Form.LENGTHWISE, saddles, fresh.placement(), trays,
+                EquipmentShape.defaultConnections(2, 6, Orientation.HORIZONTAL, saddles, true), fresh.paint(), bank, true, 0);
+        var designs = new ArrayList<>(List.of(lying,
+                // Standing, its bottom outlet turned: the boot waits for the drum to lie again.
+                new EquipmentConstructorBlockEntity.Design(2, 6, VesselPlacement.Form.VERTICAL, 3, fresh.placement(), trays,
+                        EquipmentShape.defaultConnections(2, 6, Orientation.VERTICAL, 3, false, 2), fresh.paint(), bank, true, 2),
+                lying.imported(new ColumnDesign(new ColumnTrays(20, 15, List.of(8), List.of(21), List.of(new ColumnTrays.Pumparound(8, 6)), COMPONENTS), 6))));
+        for (var kind : List.of(Kind.AIR_COOLER, Kind.PUMP)) {
+            double d = ProcessUnit.minDiameter(kind);
+            int length = ProcessUnit.defaultLength(kind, d);
+            var form = VesselPlacement.Form.valueOf(kind.name());
+            designs.add(new EquipmentConstructorBlockEntity.Design(d, length, form, ProcessUnit.defaultSupport(kind, d, length), fresh.placement(), trays,
+                    lying.connections(), fresh.paint(), bank, true, 0));
+        }
+        for (var design : designs) {
+            var tag = new CompoundTag();
+            EquipmentConstructorBlockEntity.writeDesign(tag, design);
+            var repairs = new ArrayList<String>();
+            assertEquals(design, EquipmentConstructorBlockEntity.readDesign(tag, fresh, repairs::add), design.form()::name);
+            assertEquals(List.of(), repairs, design.form()::name);
+        }
+    }
+
     // ---------------- the corpus: saved shell tags per shape-field change ----------------
 
     private static final Path CORPUS = Path.of("src/test/resources/compat/equipment");
