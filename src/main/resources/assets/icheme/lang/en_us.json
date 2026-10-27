@@ -906,6 +906,7 @@
   "message.icheme.equipment.no_calculator": "No column calculator within %s blocks of the constructor",
   "message.icheme.equipment.imported": "Imported the column design: %s trays, feed on tray %s, %s m diameter",
   "message.icheme.equipment.no_design": "Save a design in the column calculator first (its Components page)",
+  "message.icheme.equipment.not_editable": "Not imported: this constructor cannot be edited from here",
   "message.icheme.equipment.import_first": "Not built: import a design from a column calculator within %s blocks first",
   "message.icheme.equipment.misfit": "Not built: %s on this skirt",
   "message.icheme.equipment.blocked": "Not built: %s",
