@@ -14,6 +14,7 @@ Status words:
 
 | Batch | Purpose | Status |
 |---|---|---|
+| [2026-10-27-constructor-import/](2026-10-27-constructor-import/README.md) | Equipment Constructor's column Import always answered, keeping the draft | In progress since 2026-10-27 |
 | [2026-10-27-column-sump/](2026-10-27-column-sump/README.md) | Distillation column sump sized from engineering references | Implemented 2026-10-27 (0.15.1) |
 | [2026-10-27-skirt-shadow/](2026-10-27-skirt-shadow/README.md) | Skylight on the floor inside vessel skirts | Implemented 2026-10-27 (0.15.1; GameTest fix 0.15.2) |
 | [2026-10-26-multi-machine-framework/](2026-10-26-multi-machine-framework/README.md) | Multi-machine assemblies, first stage: the distillation column structure | Implemented 2026-10-27 |
