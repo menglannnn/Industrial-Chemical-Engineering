@@ -268,6 +268,13 @@ final class V3SimultaneousColumnSolver {
                 || maximumLocalBlockAttempts < 0) {
             throw new IllegalArgumentException("V3 Newton solve limits are invalid");
         }
+        // A solve is serial: all residual probes complete before the next probe starts. Reuse one mutable PR
+        // workspace for the whole attempt instead of allocating a fresh kernel workspace for every residual,
+        // Jacobian colour and line-search trial. Fugacity result objects copy the values they expose, so the
+        // workspace can safely be overwritten after each evaluation while preserving numerical behaviour.
+        final V3FiniteDifferenceJacobian.V3ThermoWorkspaceFactory reusableWorkspace =
+                newWorkspaceFactory(workspaceFactory.newWorkspace());
+        workspaceFactory = reusableWorkspace;
         V3StageBlockLayout layout = new V3StageBlockLayout(problem);
         V3BandedPivotedSolver.Workspace linearWorkspace = new V3BandedPivotedSolver.Workspace();
         int maximumLineSearchSteps = differenceScale == V3FiniteDifferenceJacobian.DifferenceScale.COARSE
@@ -493,6 +500,12 @@ final class V3SimultaneousColumnSolver {
             }
         }
         throw new IllegalStateException("V3 Newton solve escaped its bounded iteration loop");
+    }
+
+    private static V3FiniteDifferenceJacobian.V3ThermoWorkspaceFactory newWorkspaceFactory(
+            com.wormzjl.icheme.science.column.v3.thermo.V3ThermoWorkspace workspace) {
+        Objects.requireNonNull(workspace, "workspace");
+        return () -> workspace;
     }
 
     /**
