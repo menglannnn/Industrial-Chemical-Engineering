@@ -20,6 +20,7 @@ Status: Implemented 2026-10-27 (branch `claude/modest-nightingale-c9932d` fast-f
 - 2026-10-27: merged into `main` by fast-forward from `995dbd9c` on the owner's "merge". Owner: "no bump" (`mod_version` stays 0.15.0; the CHANGELOG line stays under `[Unreleased]`) and "no test" (`slowGates` not run). Code guide: equipment, verification, fluid-runtime and README at `d02d221f`.
 - 2026-10-27: released in 0.15.1 with the column sump batch (CHANGELOG `[0.15.1]`). In that merge's run `sump2` the GameTest `aSkirtsFloorTakesTheSkylightAboveTheDrum` failed once: its tick budget ran out before the light engine had a turn.
 - 2026-10-27: GameTest fix (owner: "Fix the flaky skylight GameTest here: make it wait for the light engine to settle, not a tick count."): each light reading waits for the engine's run of the queued work, then reads once (`33936ffd`). Probe: the old poll fails with the engine asleep, the new wait passes, the gate fails at its first reading with the rule off. Fluid GameTests 35/35 (`skyfix1`). Review section 6; tools `gametest-probe/`.
+- 2026-10-27: merged as 0.15.2 (owner: "Merge the skylight GameTest fix to main as 0.15.2 (patch bump)."). Release prep `1699862c` (version, CHANGELOG `[0.15.2]`, code guide README and verification chapter). Gates on the release tree: `test` 1644/1644, `slowGates` 188/188; fluid GameTests 35/35 at `33936ffd` (`skyfix1`; the release tree adds only documents and the version). Main fast-forwarded from `0c8728b3`; not pushed.
 
 ## Open items
 
