@@ -472,16 +472,11 @@ public final class V3ColumnCalculator {
             if (mismatch <= HYDRAULIC_MISMATCH_TOLERANCE) {
                 return summarised(nominal, hydraulics, solved, traffic, marched, false, mismatch);
             }
-            if (policy.fastPublication()) {
-                // The aggressive game path already has a fully audited MESH state. A second full Newton solve on
-                // the flow-marched pressure profile is the dominant cost on large columns; publish the nominal
-                // state with the marched hydraulic reading and an explicit warning when the mismatch is outside
-                // the strict correction band. Offline/default calculation keeps the exact correction path.
-                return advisory(summarised(nominal, hydraulics, solved, traffic, marched, false, mismatch),
-                        String.format(Locale.ROOT,
-                                "aggressive path skipped hydraulic re-solve (pressure-drop mismatch %.1f%%)",
-                                100.0 * mismatch));
-            }
+            // The published inspection carries the pressure profile of its solved problem.  Even on the
+            // aggressive interactive route we must therefore apply the marched profile when the authored drop is
+            // zero (the common diameter-driven preset): publishing only the hydraulic summary would show a
+            // positive column dP while every inspected tray still had the flat nominal pressure.  Keep the same
+            // bounded correction path for all routes so the summary and per-tray readings cannot disagree.
             V3SolvePass corrected = hydraulicCorrection(input, pass, thermo, policy, control, marched);
             if (corrected == null) {
                 // One half step, then the full one from the state it reached: a correction that refuses a 20 kPa
