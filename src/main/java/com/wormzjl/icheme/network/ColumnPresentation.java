@@ -108,5 +108,20 @@ final class ColumnPresentation {
         if (host != null) host.sessions.values().forEach(session -> session.refresh = true);
     }
 
+    /** A terminal solve is already an engine event; publish it on the next engine tick instead of waiting for the
+     * next five-second bucket. Sessions still have to be subscribed and valid, so unsolicited clients receive nothing. */
+    static void refreshNow(MinecraftServer server, BlockPos pos) {
+        var host = SERVERS.get(server);
+        if (host == null) return;
+        boolean matched = false;
+        for (Session session : host.sessions.values()) {
+            if (session.menu.blockPos().equals(pos)) {
+                session.refresh = true;
+                matched = true;
+            }
+        }
+        if (matched) host.mailbox.requestImmediate();
+    }
+
     static void forget(MinecraftServer server) { SERVERS.remove(server); }
 }

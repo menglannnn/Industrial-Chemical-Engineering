@@ -470,6 +470,16 @@ public final class V3ColumnCalculator {
             if (mismatch <= HYDRAULIC_MISMATCH_TOLERANCE) {
                 return summarised(nominal, hydraulics, solved, traffic, marched, false, mismatch);
             }
+            if (policy.fastPublication()) {
+                // The aggressive game path already has a fully audited MESH state. A second full Newton solve on
+                // the flow-marched pressure profile is the dominant cost on large columns; publish the nominal
+                // state with the marched hydraulic reading and an explicit warning when the mismatch is outside
+                // the strict correction band. Offline/default calculation keeps the exact correction path.
+                return advisory(summarised(nominal, hydraulics, solved, traffic, marched, false, mismatch),
+                        String.format(Locale.ROOT,
+                                "aggressive path skipped hydraulic re-solve (pressure-drop mismatch %.1f%%)",
+                                100.0 * mismatch));
+            }
             V3SolvePass corrected = hydraulicCorrection(input, pass, thermo, policy, control, marched);
             if (corrected == null) {
                 // One half step, then the full one from the state it reached: a correction that refuses a 20 kPa
@@ -787,8 +797,12 @@ public final class V3ColumnCalculator {
         Objects.requireNonNull(control, "control");
         Objects.requireNonNull(strategy, "strategy");
         V3LiquidSupplyScreen.requireRatio(liquidSupplyScreenRatio);
+        // Warm corrections already have a nearby certified state; keep their strict hydraulic polish. The coarse
+        // ramp and no-second-pressure-solve policy are reserved for the expensive first interactive solve.
+        SolvePolicy policy = strategy == V3SolveStrategy.AGGRESSIVE && warmStart == null
+                ? SolvePolicy.OFF_FAST : SolvePolicy.OFF;
         return com.wormzjl.icheme.science.material.MaterialRuntime.pinned(input.packageId(),
-                () -> calculateInCatalog(input, control, SolvePolicy.OFF, liquidSupplyScreenRatio,
+                () -> calculateInCatalog(input, control, policy, liquidSupplyScreenRatio,
                         strategy, warmStart));
     }
 
@@ -1858,6 +1872,7 @@ public final class V3ColumnCalculator {
         // this increment and whose later rungs double the water already placed.
         int steamRampSteps = Math.max(4, Math.min(24, (int) Math.ceil(totalSteamMolPerSecond / 4.0)));
         List<RampStep> rampSteps = new ArrayList<>(rampSteps(input, steamRampSteps));
+        if (policy.fastPublication()) rampSteps = new ArrayList<>(fastRampSteps(input, rampSteps));
         if (coupled) {
             // A different bounded homotopy from the same freshly accepted dry state. This
             // avoids an intermediate steam-only or heat-only state becoming a path barrier.
@@ -2252,6 +2267,24 @@ public final class V3ColumnCalculator {
             }
         }
         return List.copyOf(steps);
+    }
+
+    /** Coarse homotopy used only by the interactive aggressive route. Every feature still has an authored final
+     * rung; retaining the first rung preserves phase admission while dropping repeated midpoint corrections. */
+    private static List<RampStep> fastRampSteps(V3ColumnInput input, List<RampStep> source) {
+        List<RampStep> result = new ArrayList<>(source.size());
+        String previousPath = "";
+        for (RampStep step : source) {
+            boolean first = !step.pathLabel().equals(previousPath);
+            boolean requested = step.requested(input);
+            // One midpoint is useful when a large authored flow or duty crosses a phase boundary.
+            double fraction = step.pathLabel().equals("draw-ramp") ? step.drawFraction()
+                    : step.pathLabel().equals(HEAT_RAMP_LABEL) ? step.heatFraction() : step.steamFraction();
+            boolean midpoint = Math.abs(fraction - 0.5) < 0.26 && fraction > 0.0 && fraction < 1.0;
+            if (first || midpoint || requested) result.add(step);
+            previousPath = step.pathLabel();
+        }
+        return List.copyOf(result);
     }
 
     /**
@@ -2923,18 +2956,24 @@ public final class V3ColumnCalculator {
      * ({@link #withoutCutoff()}); the closure never can.</p>
      */
     private record SolvePolicy(double requestedCutoff, double attemptCutoff, double closureTolerance,
-            java.util.function.Consumer<V3NeuralSeed> observer, NeuralProgress progress) {
+            java.util.function.Consumer<V3NeuralSeed> observer, NeuralProgress progress, boolean fastPublication) {
         private SolvePolicy(double requestedCutoff, double attemptCutoff, double closureTolerance) {
-            this(requestedCutoff, attemptCutoff, closureTolerance, null);
+            this(requestedCutoff, attemptCutoff, closureTolerance, null, null, false);
         }
 
         /** Only the learned path carries an in-flight recorder; every classical solve leaves it null. */
         private SolvePolicy(double requestedCutoff, double attemptCutoff, double closureTolerance,
                 java.util.function.Consumer<V3NeuralSeed> observer) {
-            this(requestedCutoff, attemptCutoff, closureTolerance, observer, null);
+            this(requestedCutoff, attemptCutoff, closureTolerance, observer, null, false);
+        }
+        private SolvePolicy(double requestedCutoff, double attemptCutoff, double closureTolerance,
+                java.util.function.Consumer<V3NeuralSeed> observer, NeuralProgress progress) {
+            this(requestedCutoff, attemptCutoff, closureTolerance, observer, progress, false);
         }
         private static final SolvePolicy OFF =
-                new SolvePolicy(0.0, 0.0, V3ConvergenceEvidence.MAXIMUM_LOG_FLOW_CHANGE);
+                new SolvePolicy(0.0, 0.0, V3ConvergenceEvidence.MAXIMUM_LOG_FLOW_CHANGE, null, null, false);
+        private static final SolvePolicy OFF_FAST =
+                new SolvePolicy(0.0, 0.0, V3ConvergenceEvidence.MAXIMUM_LOG_FLOW_CHANGE, null, null, true);
 
         private SolvePolicy {
             V3TruncationSupport.requireCutoff(requestedCutoff);
@@ -2948,7 +2987,7 @@ public final class V3ColumnCalculator {
         /** Same closure, no stage-trace cutoff; the ramp's intermediate rungs run untruncated by design. */
         private SolvePolicy withoutCutoff() {
             return requestedCutoff == 0.0 && attemptCutoff == 0.0
-                    ? this : new SolvePolicy(0.0, 0.0, closureTolerance, observer, progress);
+                    ? this : new SolvePolicy(0.0, 0.0, closureTolerance, observer, progress, fastPublication);
         }
 
         /** The trace a solve on this policy reports through; unobserved classical solves report nowhere. */

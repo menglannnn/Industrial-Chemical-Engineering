@@ -53,6 +53,11 @@ public final class PresentationMailbox<K> {
 
     public long nextTick() { owned(); return next; }
     public int size() { owned(); return viewers.size(); }
+    /** Requests one prompt publication on the next engine tick without changing the normal cadence afterwards. */
+    public void requestImmediate() {
+        owned();
+        if (!viewers.isEmpty()) next = 0;
+    }
     private void owned() {
         if (Thread.currentThread() != owner) throw new IllegalStateException("Presentation belongs to the server thread");
     }

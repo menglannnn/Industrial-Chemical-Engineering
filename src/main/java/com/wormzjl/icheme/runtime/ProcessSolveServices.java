@@ -490,11 +490,13 @@ public final class ProcessSolveServices {
             V3ColumnOutcome outcome = V3HollandExample32.isPackage(input.packageId())
                     && initialization.mode() != V3InitializationOptions.Mode.LNN_ONLY
                     ? V3HollandExample32.calculate(input, cancellationToken::throwIfCancellationRequested)
-                    : warmStart == null
+                    : initialization.mode() == V3InitializationOptions.Mode.LNN_ONLY
+                    || strategy == V3SolveStrategy.DRIFT_SPEC && warmStart == null
                     ? V3ColumnCalculator.calculate(input, cancellationToken::throwIfCancellationRequested,
                             stageTraceCutoffMoleFraction, convergenceClosureFraction, initialization, model,
                             liquidSupplyScreenRatio)
-                    : V3ColumnCalculator.calculateWithStrategy(input, cancellationToken::throwIfCancellationRequested,
+                    : V3ColumnCalculator.calculateWithStrategy(input,
+                            cancellationToken::throwIfCancellationRequested,
                             strategy, warmStart, liquidSupplyScreenRatio);
             cancellationToken.throwIfCancellationRequested();
             return new V3ColumnSolveResult(outcome);

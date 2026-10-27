@@ -192,6 +192,7 @@ public final class ColumnV3Network {
             logTerminal(job, "STALE_RESULT", "operation_mismatch");
             return;
         }
+        ColumnPresentation.refreshNow(server, job.request().target().blockPos());
         logTerminal(job, terminalStatus, terminalDetail);
     }
 
