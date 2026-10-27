@@ -38,6 +38,6 @@ The floor inside a skirt is the base plate under the vessel, seen through the ac
 - `./gradlew test` at `d02d221f`: 1644 / 1644, 0 failures (new `ShapeRasterizerTest.aSkirtShowingItsInsideLetsSkylightThrough`).
 - `./gradlew runFluidGameTestServer` (fresh run id `skirt1`): 35 / 35, including the new `EquipmentCompatGameTests.aSkirtsFloorTakesTheSkylightAboveTheDrum` (floor skylight equals the sky above; cells set back to closed are restated at the controller's load, `equipment_restate … interior=102`).
 - Software renders and the skylight probe (`tools/skirt-shadow/`): every floor and inside skirt cell at skylight 15 for the D 3, D 6, D 10 drums and the D 8 column.
-- `slowGates`: not run; it runs in the merge lane. No in-game check (lighting judged by the GameTest and the probe).
+- `slowGates`: not run; the owner waived the tests for the merge ("no test"). No in-game check (lighting judged by the GameTest and the probe).
 
-Code guide: `equipment.md` (interior light contract, `EquipmentInteriorBlock` row, refresh tick order, test map); snapshot line left for the merge (the sump branch rewrites it). Tool folder: `tools/skirt-shadow/`.
+Code guide: `equipment.md` (interior light contract, `EquipmentInteriorBlock` row, refresh tick order, test map); `verification.md` and `fluid-runtime.md` (35 fluid GameTests, three `EquipmentCompatGameTests`); README. Snapshot lines at `d02d221f`. Tool folder: `tools/skirt-shadow/`.

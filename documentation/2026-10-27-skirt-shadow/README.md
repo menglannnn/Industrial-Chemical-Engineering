@@ -2,7 +2,7 @@
 
 Purpose: remove the shadow on the floor inside a vessel's skirt, seen through its slots and port, which grew with the diameter (owner request 2026-10-27: "Remove the shadow in drum/vessel skirt"; clarified: "the bottom plane looked through the windows, drums with very large diameter makes this worse").
 
-Status: In progress since 2026-10-27 on branch `claude/modest-nightingale-c9932d`; not merged, not pushed. Index: [../INDEX.md](../INDEX.md).
+Status: Implemented 2026-10-27 (branch `claude/modest-nightingale-c9932d` fast-forwarded into `main`; no version bump, `mod_version` stays 0.15.0); not pushed. Index: [../INDEX.md](../INDEX.md).
 
 ## Documents
 
@@ -17,8 +17,9 @@ Status: In progress since 2026-10-27 on branch `claude/modest-nightingale-c9932d
 
 - 2026-10-27: first reading: the skirt's darker paint (structure channel). Skirts moved to the body paint (`c9e827ac`, docs `0711471d`). The owner corrected the reading; reverted (`f2b15b31`).
 - 2026-10-27: the shadow is the floor's light: opaque interior cells leave it lit only sideways from the skirt ring (skylight 9 at a 10 m drum's centre). Owner choice "Skylight through" (over baking light into the inside faces). Code `d02d221f`: `EquipmentInteriorBlock.SKYLIGHT` on the interior cells of a vessel whose skirt shows its inside; placed vessels restated at load. `test` 1644/1644, fluid GameTests 35/35; floor skylight 15 at every size (probe).
+- 2026-10-27: merged into `main` by fast-forward from `995dbd9c` on the owner's "merge". Owner: "no bump" (`mod_version` stays 0.15.0; the CHANGELOG line stays under `[Unreleased]`) and "no test" (`slowGates` not run). Code guide: equipment, verification, fluid-runtime and README at `d02d221f`.
 
 ## Open items
 
 - Owner validation (review section 4); Iris shadow map and Distant Horizons not checked in game.
-- Merge: CHANGELOG entry under `[Unreleased]`; proposed version: patch (a lighting fix); the owner chooses. Set the code guide snapshot line at the merge; run `slowGates` in the merge lane.
+- The next merge that bumps `mod_version` moves this batch's CHANGELOG line under its version heading.

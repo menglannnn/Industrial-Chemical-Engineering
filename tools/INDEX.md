@@ -8,7 +8,7 @@ Keep the paths below stable: `build.gradle` applies `tools/development.gradle` w
 
 | Folder | Purpose | Batch | Status |
 |---|---|---|---|
-| [skirt-shadow/](skirt-shadow/README.md) | Skirt floor renders with the in-game skylight and a skylight probe, before and after | `2026-10-27-skirt-shadow` | In progress since 2026-10-27 |
+| [skirt-shadow/](skirt-shadow/README.md) | Skirt floor renders with the in-game skylight and a skylight probe, before and after | `2026-10-27-skirt-shadow` | Implemented 2026-10-27 |
 | [multi-machine-framework/](multi-machine-framework/README.md) | Column nozzle-row, nozzle-bore and arrow probes, MCP bridge drivers, review-world NBT tool, in-game evidence and logs | `2026-10-26-multi-machine-framework` | Concluded 2026-10-27 |
 | [process-control/](process-control/README.md) | Sensors, regulation qualification and native GUI evidence | `2026-10-26-process-control` | Implemented 2026-10-27 |
 | [liquid-level-gauge/](liquid-level-gauge/README.md) | Native accessory-state renders and item icon source | `2026-10-26-liquid-level-gauge-accessory` | In progress since 2026-10-26; feature delivered |
