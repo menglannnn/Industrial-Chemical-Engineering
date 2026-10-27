@@ -1,0 +1,2 @@
+E10 no finite Jacobian trial at a first step                 seeds=   1 smallest=  430 list= 430
+E5 step line search stalls                                   seeds=   2 smallest=  431 list= 431 579

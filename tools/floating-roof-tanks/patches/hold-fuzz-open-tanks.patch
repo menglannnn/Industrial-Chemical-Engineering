@@ -1,0 +1,46 @@
+--- a/hold-fuzz-bundled/src/HoldFuzzTest.java
++++ b/hold-fuzz-bundled/src/HoldFuzzTest.java
+@@ -49,7 +49,7 @@
+     record Block(int x,int y,int z,Kind kind,PhysicalFluidTopology.Direction facing,double bore,FlowControl control,FluidDeviceSpec spec,String fluid) {
+         PhysicalFluidTopology.Position position(){return new PhysicalFluidTopology.Position(DIM,x,y,z);}
+         String label() {
+-            String what=switch(kind){case RESERVOIR->"tank";case GENERATOR->"gen["+fluid+" "+Math.round(spec.temperature())+"K "+Math.round(spec.pressure()/1000)+"kPa]";case VOID->"void";case PIPE->"pipe"+bore;
++            String what=switch(kind){case RESERVOIR->spec!=null&&spec.open()?"otank":"tank";case GENERATOR->"gen["+fluid+" "+Math.round(spec.temperature())+"K "+Math.round(spec.pressure()/1000)+"kPa]";case VOID->"void";case PIPE->"pipe"+bore;
+                 case PUMP->"pump["+((FlowControl.Pump)control).targetVolumeFlow()+","+Math.round(((FlowControl.Pump)control).maximumAddedPressure()/1000)+"kPa]";
+                 case COMPRESSOR->"comp["+((FlowControl.Compressor)control).targetVolumeFlow()+","+((FlowControl.Compressor)control).maximumPressureRatio()+"]";
+                 case VALVE->"valve["+Math.round(((FlowControl.PressureValve)control).targetPressure()/1000)+"kPa]";case FILTER->"filter";};
+@@ -140,6 +140,25 @@
+         return List.copyOf(at.values());
+     }
+     static void put(Map<List<Integer>,Block> at,Block b){at.put(List.of(b.x,b.y,b.z),b);}
++    /** {@code holdFuzz.openTanks} (batch 2026-10-21-floating-roof-tanks): about half the one-block tanks are open (a floating
++     * roof, {@code FluidDeviceSpec.open}), chosen by a hash of the seed and the tank's position. No random draw is made, so a
++     * seed's layout, order and specs are the same with the option off as without it. */
++    static final boolean OPEN_TANKS=Boolean.getBoolean("holdFuzz.openTanks");
++    static boolean opens(long seed,Block b) {
++        long h=seed*0x9E3779B97F4A7C15L+(b.x*73856093L^b.y*19349663L^b.z*83492791L);
++        h^=h>>>33;h*=0xff51afd7ed558ccdL;h^=h>>>33;h*=0xc4ceb9fe1a85ec53L;h^=h>>>33;
++        return (h&1)==0;
++    }
++    static List<Placement> openTanks(long seed,List<Placement> placements) {
++        if(!OPEN_TANKS)return placements;
++        var list=new ArrayList<Placement>();
++        for(var p:placements) {
++            var b=p.block();
++            if(b.kind==Kind.RESERVOIR&&opens(seed,b)){var s=b.spec;b=new Block(b.x,b.y,b.z,b.kind,b.facing,b.bore,b.control,new FluidDeviceSpec(s.volume(),s.temperature(),s.pressure(),s.composition(),s.solids(),s.levelHeight(),true),b.fluid);}
++            list.add(new Placement(p.tick(),b));
++        }
++        return list;
++    }
+     /** A random order and random online ticks: several blocks in one tick, a few ticks apart, or a slice or more apart. */
+     static List<Placement> placements(Random r,List<Block> blocks) {
+         var order=new ArrayList<>(blocks);Collections.shuffle(order,r);var list=new ArrayList<Placement>();long tick=100;
+@@ -213,7 +232,7 @@
+     }
+ 
+     static Outcome run(long seed,int slices,boolean verbose) {
+-        var r=new Random(seed);var blocks=world(r);var placements=placements(r,blocks);
++        var r=new Random(seed);var blocks=world(r);var placements=openTanks(seed,placements(r,blocks));
+         var exceptions=new ArrayList<String>();var refused=new ArrayList<String>();long started=System.nanoTime();
+         World w=null;String islands="";
+         try {

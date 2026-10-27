@@ -1,0 +1,41 @@
+diff --git a/src/main/java/com/wormzjl/createcheme/runtime/fluid/PhysicalRegistry.java b/src/main/java/com/wormzjl/createcheme/runtime/fluid/PhysicalRegistry.java
+index 92b59cb2..6259c047 100644
+--- a/src/main/java/com/wormzjl/createcheme/runtime/fluid/PhysicalRegistry.java
++++ b/src/main/java/com/wormzjl/createcheme/runtime/fluid/PhysicalRegistry.java
+@@ -329,12 +329,13 @@ public final class PhysicalRegistry {
+                 throw new IllegalStateException("Topology event reached device "+device+" outside the islands it fenced");}
+             // The recompile's junctions are minted here, before the constructed booking below: a junction that existed keeps
+             // what it holds (option K), a new one gets its start state (decisions D37, D39) and holdup.
+-            var graph=island.graph();var kept=PassiveNetwork.keepJunctions(graph,i->{var key=PhysicalFluidTopology.junctionKey(graph,i);return key==null?null:heldJunctions.get(key);});
++            var graph=island.graph();var kept=PassiveNetwork.keepJunctions(graph,i->{var key=PhysicalFluidTopology.junctionKey(graph,i);if(NetworkReduction.SCRATCH_T12.get().equals("remint"))return null; /* SCRATCH t12 */ return key==null?null:heldJunctions.get(key);});
+             // An island the batch compiles again exactly as it stood (the same devices, nodes, heights, boundaries and
+             // connections, every junction kept with the same holdup: a dead-end stub placed beside it) did not change. It is
+             // not replaced: it goes on with its solver, its committed interval, its clock and any certificate (A148).
+             var devices=island.physicalIds().stream().sorted().toList();Long same=null;
+             for(long old:affected)if(!unchanged.contains(old)&&members(old).equals(devices)&&coordinator.snapshot(old).graph().equals(kept)){same=old;break;}
++            if(java.util.Set.of("replace","k","remint").contains(NetworkReduction.SCRATCH_T12.get()))same=null; // SCRATCH t12
+             if(same!=null) {
+                 unchanged.add(same);
+                 for(int i=0;i<kept.reservoirs().size();i++){var key=PhysicalFluidTopology.junctionKey(graph,i);if(key!=null)carried.add(key);}
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/network/NetworkReduction.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/NetworkReduction.java
+index 8c16b047..c9a945e0 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/NetworkReduction.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/NetworkReduction.java
+@@ -343,6 +343,8 @@ public final class NetworkReduction {
+             if(!PassiveNetwork.unsized(junction)) {
+                 // Kept across an edit: displaced when more flows in during the first step than it holds.
+                 if(weights==null)weights=model.molecularWeights();
++                if(Boolean.getBoolean("t12print"))System.out.println("T12_DISPLACE junction="+junction.id()+" mass="+mass(junction.inventory(),weights)+" inflow="+start.inflow()+" td="+mass(junction.inventory(),weights)/start.inflow()+" heldP="+junction.state().pressure()+" heldRho="+junction.state().mass()/junction.state().volume()+" startP="+start.state().pressure()+" startRho="+start.state().mass()/start.state().volume()+" displaced="+(start.inflow()*PassiveStepSolver.HOLDUP_TAU>mass(junction.inventory(),weights))); // SCRATCH t12
++                if(SCRATCH_T12.get().equals("nodisplace")||SCRATCH_T12.get().equals("k"))continue; // SCRATCH t12
+                 if(!(start.inflow()*PassiveStepSolver.HOLDUP_TAU>mass(junction.inventory(),weights)))continue;
+             }
+             starts.set(v,start.state());
+@@ -416,6 +418,8 @@ public final class NetworkReduction {
+     }
+     /** Rounds of the balance and the mixture of the fluid the junction holds ({@link #balanced}). */
+     private static final int BALANCE_ROUNDS=8;
++    /** SCRATCH t12 (never commit): -Dt12mode=on|replace|nodisplace|k|remint (replace: an unchanged island is replaced, A148 off; nodisplace: the displacement criterion off; k: both off, t11's option K; remint: before option K). */ // SCRATCH t12
++    public static final ThreadLocal<String> SCRATCH_T12=ThreadLocal.withInitial(()->System.getProperty("t12mode","on")); // SCRATCH t12
+     /**
+      * The start of a junction that drains somewhere (form (m'), owner decision D39): what is still flowing in once the
+      * junction's pressure {@code P} balances what its suppliers drive in against what its drains take, at {@code P}. Each

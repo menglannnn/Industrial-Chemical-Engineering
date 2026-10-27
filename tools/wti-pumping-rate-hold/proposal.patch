@@ -1,0 +1,25 @@
+--- a/src/main/java/com/wormzjl/icheme/science/fluid/network/PassiveStepSolver.java
++++ b/src/main/java/com/wormzjl/icheme/science/fluid/network/PassiveStepSolver.java
+@@ -325,6 +325,10 @@
+         suctionFloors=suctionFloors(inputGraph,inputStates);
+         SolverDiagnostics.count(SolverDiagnostics.implicitSolves);
+         ownership.check("Each executing island job needs its own step workspace");
++        if(rateOnly&&!samePhaseLayouts(previousOutputStates,inputStates)) {
++            previousPipes=List.of();previousModes=List.of();
++        }
++
+         lastSolve=null;
+         if(!Double.isFinite(dt)||dt<=0)throw new IllegalArgumentException("Positive finite substep required");
+         var graph=inputGraph;
+@@ -2089,6 +2093,11 @@
+         if(!(previousPipes.equals(pipeIdentities)&&Arrays.equals(previousNodeIds,nodeIds(graph))&&previousFlows.length==graph.pipes().size()&&previousLawFlows.length==graph.pipes().size()))return false;
+         if(rateOnly&&!sameStates(previousInputStates,inputStates))return false;
+         if(previousRateOnly&&!rateOnly&&!sameFluidStates(previousOutputStates,inputStates))return false;
++        return true;
++    }
++    private static boolean samePhaseLayouts(List<FluidThermodynamics.State> a,List<FluidThermodynamics.State> b) {
++        if(a.size()!=b.size())return false;
++        for(int i=0;i<a.size();i++)if(phaseCode(a.get(i))!=phaseCode(b.get(i)))return false;
+         return true;
+     }
+     /** The initial device modes of a solve on {@code graph}'s states (the mint reads them too): the switch of {@link #solve}. */

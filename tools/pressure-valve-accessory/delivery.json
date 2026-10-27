@@ -1,0 +1,16 @@
+{
+  "implementation": "dc174f27",
+  "delivery": "4ad6dc97",
+  "branch": "codex/pressure-valve-accessory",
+  "base": "2fe26e21",
+  "targeted_valve_tests": 11,
+  "geometry_gates": 7,
+  "jar": "PASS",
+  "software_scenes": 39,
+  "icon_bounds": "PASS",
+  "checkpoint": 18,
+  "unit": 11,
+  "mod": "0.11.2",
+  "integration": "not merged",
+  "game_checks": "manual fresh world, no client launched"
+}

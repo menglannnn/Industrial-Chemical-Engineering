@@ -1,0 +1,2 @@
+gamemode spectator
+tp @s 70 -25 70 0 25

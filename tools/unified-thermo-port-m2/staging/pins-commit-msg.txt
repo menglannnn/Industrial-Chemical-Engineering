@@ -1,0 +1,26 @@
+test: the legacy path pin, the spine's revision line and chain-100 on the M2 head
+
+The references M2 deferred to its final head (D24 to D27 included), each taken once.
+
+- LegacyNetworkPathPinTest (P3 WP5 gate, ported to main's API): the bundled network package, which declares no
+  spine, keeps its coefficient path bit for bit. Pinned on the toolchain's JDK 21.0.11:
+  DIGEST dc9a8919...9e02, REVISION 95cd8e6d...:direct-liquid-v1:tp-engine-v1:fluid-domain-data-v1:cp-segments-v1:
+  catalog-volume-reference-v1. The branch's digest does not carry over (DeterministicMath, the engine evaluator's
+  derivatives, no liquid-root-absent flag, D24's Rachford-Rice); the revision is a fresh world's (the engine decides
+  the phases; the widened fluid_domain to 10 MPa).
+- SpineNetworkPathTest: its line on the coefficient path's revision is restored (the Legacy pin's REVISION).
+- chain-100 re-captured (accepted 3, rejected 0, as before). Against the 0.7.0 capture, which main reproduces
+  exactly: mass 2.9e-5, liquid volume fraction 4.4e-5, component amounts 4.4e-6 of a node, pressure 4.1e-7,
+  temperature 6.9e-6 K, flows 2.2e-4 relative; the declared gate is 1e-6 on states. Physics: each 1 m3 node is
+  charged by the model at 350 K and about 150 kPa. Under M2 the crude liquid is the translated PR78 at the state
+  pressure, no longer an anchor carried by the retired 1e-9 1/Pa, so node 1's liquid takes 42.92 L (was 42.88 L);
+  Region 1's water takes 0.09 % less; each node's charge is 2.8e-5 heavier and the flows follow. The node flashes
+  are the engine's: Newton solves 4 (was 104, the network's own 100 per-node flashes), Jacobian builds 5 (was 105).
+
+Measured once at this state (one full test, 1414 tests): one failure, STACK_PASS, left to the owner (54c1d24d).
+The 33 junction lines equal those of the D26 suites: the 24 MIXED_GAS_TRANSIENT lines and MIXED_GAS_COST
+(newtonSolves 339) as on main; the 8 LIQUID_JUNCTION lines move with the M2 model's water: m_J +0.10 % (Region 1's
+997.05 kg/m3, not 996.0), the generators' Q(1 s) +0.05 % (the flow goes with the root of the density), the tanks'
+Q(1 s) x0.44 (a liquid-full tank delivers its own expansion: 4.5e-10 1/Pa, not 1e-9).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>

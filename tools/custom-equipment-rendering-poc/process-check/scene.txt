@@ -1,0 +1,14 @@
+gamemode creative
+setblock 210 -60 0 createcheme:equipment_constructor[facing=south]
+setblock 213 -60 0 createcheme:column_calculator_v3
+createcheme equipment place 200 -60 12 3 6 vertical 2 north
+createcheme equipment place 186 -60 12 2.5 5 horizontal 1 east
+createcheme equipment column 232 -60 24 3 20 3 north
+createcheme equipment column 252 -60 24 6 30 4 north
+setblock 200 -58 9 createcheme:fluid_pipe[facing=north,north=true,south=true]
+setblock 200 -58 8 createcheme:fluid_pump[facing=north,north=true,south=true]
+setblock 200 -58 7 createcheme:pressure_control_valve[facing=north,north=true,south=true]
+setblock 200 -58 6 createcheme:fluid_pipe[facing=north,south=true,up=true]
+setblock 200 -57 6 createcheme:fluid_pipe[facing=up,up=true,down=true]
+setblock 200 -56 6 createcheme:pressure_control_valve[facing=up,up=true,down=true]
+setblock 200 -55 6 createcheme:fluid_pipe[facing=up,down=true]

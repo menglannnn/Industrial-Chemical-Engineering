@@ -1,0 +1,314 @@
+=== variant base: Region 1 at the state pressure
+cadence water initial: P 500000.000 / 150000.000 Pa, T 350.0000 K, mass 973.918985 / 973.763447 kg, water volume 1.000000000 / 1.000000000 m3, vapour 0.00000 / 0.00000 m3, water kappa 4.56105e-10 / 4.56560e-10 1/Pa
+  fine 0.25 s t=20 s: P 402649.485 / 247295.113 Pa, dP 155354.372 Pa, moved 0.040090003 kg, tau over the frame 24.624 s
+  fine 0.25 s t=40 s: P 359447.543 / 290485.787 Pa, dP 68961.756 Pa, moved 0.057883968 kg, tau over the frame 24.626 s
+  fine 0.25 s t=60 s: P 340271.987 / 309658.966 Pa, dP 30613.021 Pa, moved 0.065782551 kg, tau over the frame 24.627 s
+  fine 0.25 s t=80 s: P 331760.057 / 318170.358 Pa, dP 13589.700 Pa, moved 0.069288805 kg, tau over the frame 24.627 s
+  coarse 0.5 s t=20 s: moved 0.039959120 kg
+  coarse 0.5 s t=40 s: moved 0.057767549 kg
+  coarse 0.5 s t=60 s: moved 0.065704880 kg
+  coarse 0.5 s t=80 s: moved 0.069242742 kg
+  water reference-refinement t=20 s: cumulative flow 0.3265 % off (ratio 1.306), pressure ratio 0.513, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 4
+  water reference-refinement t=40 s: cumulative flow 0.2011 % off (ratio 0.804), pressure ratio 0.389, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 4
+  water reference-refinement t=60 s: cumulative flow 0.1181 % off (ratio 0.472), pressure ratio 0.243, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 4
+  water reference-refinement t=80 s: cumulative flow 0.0665 % off (ratio 0.266), pressure ratio 0.140, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 4
+  water reference-refinement worst ratio to the bound 1.306: FAIL
+  water option-b refinement 0.25 against 0.125 s t=20 s: cumulative flow 0.1641 % off (ratio 0.656), pressure ratio 0.258, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 4
+  water option-b refinement 0.25 against 0.125 s t=40 s: cumulative flow 0.1009 % off (ratio 0.403), pressure ratio 0.195, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 4
+  water option-b refinement 0.25 against 0.125 s t=60 s: cumulative flow 0.0591 % off (ratio 0.236), pressure ratio 0.122, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 4
+  water option-b refinement 0.25 against 0.125 s t=80 s: cumulative flow 0.0332 % off (ratio 0.133), pressure ratio 0.070, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 4
+  water option-b refinement 0.25 against 0.125 s worst ratio to the bound 0.656: PASS
+  water option-b fixed-1 against 0.125 s t=20 s: cumulative flow 1.1329 % off (ratio 0.566), pressure ratio 0.223, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 80
+  water option-b fixed-1 against 0.125 s t=40 s: cumulative flow 0.7005 % off (ratio 0.350), pressure ratio 0.169, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 80
+  water option-b fixed-1 against 0.125 s t=60 s: cumulative flow 0.4126 % off (ratio 0.206), pressure ratio 0.106, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 80
+  water option-b fixed-1 against 0.125 s t=80 s: cumulative flow 0.2331 % off (ratio 0.117), pressure ratio 0.062, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 80
+  water option-b fixed-1 against 0.125 s worst ratio to the bound 0.566: PASS
+  water option-b fixed-5 against 0.125 s t=20 s: cumulative flow 1.4522 % off (ratio 0.726), pressure ratio 0.286, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 16
+  water option-b fixed-5 against 0.125 s t=40 s: cumulative flow 1.1137 % off (ratio 0.557), pressure ratio 0.269, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 16
+  water option-b fixed-5 against 0.125 s t=60 s: cumulative flow 0.7011 % off (ratio 0.351), pressure ratio 0.181, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 16
+  water option-b fixed-5 against 0.125 s t=80 s: cumulative flow 0.4102 % off (ratio 0.205), pressure ratio 0.108, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 16
+  water option-b fixed-5 against 0.125 s worst ratio to the bound 0.726: PASS
+  water option-b fixed-20 against 0.125 s t=20 s: cumulative flow 1.7678 % off (ratio 0.884), pressure ratio 0.348, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 4
+  water option-b fixed-20 against 0.125 s t=40 s: cumulative flow 1.7660 % off (ratio 0.883), pressure ratio 0.427, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 4
+  water option-b fixed-20 against 0.125 s t=60 s: cumulative flow 1.4718 % off (ratio 0.736), pressure ratio 0.380, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 4
+  water option-b fixed-20 against 0.125 s t=80 s: cumulative flow 0.9855 % off (ratio 0.493), pressure ratio 0.261, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 4
+  water option-b fixed-20 against 0.125 s worst ratio to the bound 0.884: PASS
+  water option-b adaptive against 0.125 s t=20 s: cumulative flow 1.4522 % off (ratio 0.726), pressure ratio 0.286, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 16
+  water option-b adaptive against 0.125 s t=40 s: cumulative flow 1.2345 % off (ratio 0.617), pressure ratio 0.299, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 16
+  water option-b adaptive against 0.125 s t=60 s: cumulative flow 0.8373 % off (ratio 0.419), pressure ratio 0.216, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 16
+  water option-b adaptive against 0.125 s t=80 s: cumulative flow 0.4902 % off (ratio 0.245), pressure ratio 0.130, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 16
+  water option-b adaptive against 0.125 s worst ratio to the bound 0.726: PASS
+  water fixed-1 t=20 s: cumulative flow 0.9704 % off (ratio 0.485), pressure ratio 0.191, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 80
+  water fixed-1 t=40 s: cumulative flow 0.6002 % off (ratio 0.300), pressure ratio 0.145, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 80
+  water fixed-1 t=60 s: cumulative flow 0.3538 % off (ratio 0.177), pressure ratio 0.091, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 80
+  water fixed-1 t=80 s: cumulative flow 0.2000 % off (ratio 0.100), pressure ratio 0.053, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 80
+  water fixed-1 worst ratio to the bound 0.485: PASS
+  water fixed-5 t=20 s: cumulative flow 1.2902 % off (ratio 0.645), pressure ratio 0.254, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 16
+  water fixed-5 t=40 s: cumulative flow 1.0139 % off (ratio 0.507), pressure ratio 0.245, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 16
+  water fixed-5 t=60 s: cumulative flow 0.6425 % off (ratio 0.321), pressure ratio 0.166, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 16
+  water fixed-5 t=80 s: cumulative flow 0.3772 % off (ratio 0.189), pressure ratio 0.100, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 16
+  water fixed-5 worst ratio to the bound 0.645: PASS
+  water fixed-20 t=20 s: cumulative flow 1.6063 % off (ratio 0.803), pressure ratio 0.316, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 4
+  water fixed-20 t=40 s: cumulative flow 1.6668 % off (ratio 0.833), pressure ratio 0.403, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 4
+  water fixed-20 t=60 s: cumulative flow 1.4136 % off (ratio 0.707), pressure ratio 0.364, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 4
+  water fixed-20 t=80 s: cumulative flow 0.9527 % off (ratio 0.476), pressure ratio 0.252, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 4
+  water fixed-20 worst ratio to the bound 0.833: PASS
+  water adaptive-controlled-cpu t=20 s: cumulative flow 1.2902 % off (ratio 0.645), pressure ratio 0.254, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 16
+  water adaptive-controlled-cpu t=40 s: cumulative flow 1.1347 % off (ratio 0.567), pressure ratio 0.274, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 16
+  water adaptive-controlled-cpu t=60 s: cumulative flow 0.7787 % off (ratio 0.389), pressure ratio 0.201, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 16
+  water adaptive-controlled-cpu t=80 s: cumulative flow 0.4572 % off (ratio 0.229), pressure ratio 0.121, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 16
+  water adaptive-controlled-cpu worst ratio to the bound 0.645: PASS
+cadence wet-crude initial: P 200000.000 / 150000.000 Pa, T 350.0000 K, mass 64.615469 / 38.490007 kg, water volume 0.000830887 / 0.000387593 m3, vapour 0.926659 / 0.957120 m3, water kappa 4.56495e-10 / 4.56560e-10 1/Pa
+  fine 0.25 s t=20 s: P 199703.398 / 150324.589 Pa, dP 49378.809 Pa, moved 0.133421889 kg, tau over the frame 1599.790 s
+  fine 0.25 s t=40 s: P 199408.459 / 150646.964 Pa, dP 48761.495 Pa, moved 0.266074244 kg, tau over the frame 1589.776 s
+  fine 0.25 s t=60 s: P 199115.103 / 150967.153 Pa, dP 48147.949 Pa, moved 0.397965419 kg, tau over the frame 1579.476 s
+  fine 0.25 s t=80 s: P 198823.312 / 151285.184 Pa, dP 47538.128 Pa, moved 0.529103210 kg, tau over the frame 1569.062 s
+  coarse 0.5 s t=20 s: moved 0.133417066 kg
+  coarse 0.5 s t=40 s: moved 0.266064681 kg
+  coarse 0.5 s t=60 s: moved 0.397951192 kg
+  coarse 0.5 s t=80 s: moved 0.529084394 kg
+  wet-crude reference-refinement t=20 s: cumulative flow 0.0036 % off (ratio 0.014), pressure ratio 0.000, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 4
+  wet-crude reference-refinement t=40 s: cumulative flow 0.0036 % off (ratio 0.014), pressure ratio 0.000, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 4
+  wet-crude reference-refinement t=60 s: cumulative flow 0.0036 % off (ratio 0.014), pressure ratio 0.000, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 4
+  wet-crude reference-refinement t=80 s: cumulative flow 0.0036 % off (ratio 0.014), pressure ratio 0.000, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 4
+  wet-crude reference-refinement worst ratio to the bound 0.014: PASS
+  wet-crude fixed-1 t=20 s: cumulative flow 0.0108 % off (ratio 0.005), pressure ratio 0.000, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 80
+  wet-crude fixed-1 t=40 s: cumulative flow 0.0108 % off (ratio 0.005), pressure ratio 0.000, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 80
+  wet-crude fixed-1 t=60 s: cumulative flow 0.0107 % off (ratio 0.005), pressure ratio 0.000, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 80
+  wet-crude fixed-1 t=80 s: cumulative flow 0.0107 % off (ratio 0.005), pressure ratio 0.000, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 80
+  wet-crude fixed-1 worst ratio to the bound 0.005: PASS
+  wet-crude fixed-5 t=20 s: cumulative flow 0.0224 % off (ratio 0.011), pressure ratio 0.000, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 16
+  wet-crude fixed-5 t=40 s: cumulative flow 0.0223 % off (ratio 0.011), pressure ratio 0.000, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 16
+  wet-crude fixed-5 t=60 s: cumulative flow 0.0222 % off (ratio 0.011), pressure ratio 0.000, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 16
+  wet-crude fixed-5 t=80 s: cumulative flow 0.0220 % off (ratio 0.011), pressure ratio 0.000, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 16
+  wet-crude fixed-5 worst ratio to the bound 0.011: PASS
+  wet-crude fixed-20 t=20 s: cumulative flow 0.0758 % off (ratio 0.038), pressure ratio 0.000, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 4
+  wet-crude fixed-20 t=40 s: cumulative flow 0.0753 % off (ratio 0.038), pressure ratio 0.000, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 4
+  wet-crude fixed-20 t=60 s: cumulative flow 0.0749 % off (ratio 0.037), pressure ratio 0.000, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 4
+  wet-crude fixed-20 t=80 s: cumulative flow 0.0746 % off (ratio 0.037), pressure ratio 0.000, component ratio 0.001, phase ratio 0.000, temperature ratio 0.000, intervals 4
+  wet-crude fixed-20 worst ratio to the bound 0.038: PASS
+  wet-crude adaptive-controlled-cpu t=20 s: cumulative flow 0.0224 % off (ratio 0.011), pressure ratio 0.000, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 16
+  wet-crude adaptive-controlled-cpu t=40 s: cumulative flow 0.0265 % off (ratio 0.013), pressure ratio 0.000, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 16
+  wet-crude adaptive-controlled-cpu t=60 s: cumulative flow 0.0277 % off (ratio 0.014), pressure ratio 0.000, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 16
+  wet-crude adaptive-controlled-cpu t=80 s: cumulative flow 0.0274 % off (ratio 0.014), pressure ratio 0.000, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 16
+  wet-crude adaptive-controlled-cpu worst ratio to the bound 0.014: PASS
+mcp archived node 1 RESERVOIR: P 150663.5576 Pa, T 298.160930 K, V 0.998984280 m3, vapour 4.15239e-06 m3, water 0.998980127 m3, mass 996.050569 kg, water vapour 5.31289e-06 mol, water kappa 4.51502e-10 1/Pa, inventory volume 1.0
+mcp archived node 5 GENERATOR: P 200000.0000 Pa, T 298.150000 K, V 0.999011333 m3, vapour 0.00000 m3, water 0.999011333 m3, mass 996.106662 kg, water vapour 0.00000 mol, water kappa 4.51460e-10 1/Pa, inventory volume 1.0
+mcp archived node 10 VOID: P 101325.0000 Pa, T 298.150000 K, V 1.000000000 m3, vapour 1.00000 m3, water 0.000000000 m3, mass 1.145353 kg, water vapour 0.00000 mol, water kappa 0.00000 1/Pa, inventory volume 1.0
+mcp tank refreshed from its inventory: P 101325.0000 Pa, T 298.159990 K, V 0.999008382 m3, vapour 6.24050e-06 m3, water 0.999002141 m3, mass 996.050569 kg, water vapour 7.98417e-06 mol, water kappa 4.51558e-10 1/Pa
+  default attempt Attempt[index=0, step=1.0, accepted=false, dominant=be-reopen, error=1.0]
+  default attempt Attempt[index=1, step=1.0, accepted=false, dominant=be-state, error=0.47124969302744063]
+  default attempt Attempt[index=2, step=0.5, accepted=false, dominant=be-reopen, error=1.0]
+  default attempt Attempt[index=3, step=0.5, accepted=true, dominant=be-jump, error=0.4556076455220532]
+  default attempt Attempt[index=4, step=0.25, accepted=true, dominant=be-state, error=0.02145261734507356]
+  default attempt Attempt[index=5, step=0.25, accepted=true, dominant=be-state, error=6.2298823184155E-5]
+  pipe 0 mean flow: default 30.587261, refined 30.392284 kg/s, 0.6415 % (bound 0.2 %); end flow default 31.101747, refined 31.101755 kg/s
+  pipe 1 mean flow: default -31.600129, refined -31.405154 kg/s, 0.6208 % (bound 0.2 %); end flow default -31.101889, refined -31.101880 kg/s
+  default end tank: P 150662.8648 Pa, T 298.160921 K, V 1.000000000 m3, vapour 4.02765e-06 m3, water 0.999995972 m3, mass 997.063437 kg, water vapour 5.15329e-06 mol, water kappa 4.51502e-10 1/Pa, accepted 3, rejected 3
+  refined end tank: P 150662.8929 Pa, T 298.160910 K, V 1.000000000 m3, vapour 4.02778e-06 m3, water 0.999995972 m3, mass 997.063440 kg, water vapour 5.15345e-06 mol, water kappa 4.51502e-10 1/Pa, accepted 71
+  option-b second interval pipe 0 mean flow: default 31.101758, refined 31.101757 kg/s, 0.00000 % (bound 0.2 %)
+  option-b second interval pipe 1 mean flow: default -31.101879, refined -31.101880 kg/s, -0.00000 % (bound 0.2 %)
+  0.005 s steps, t=0.005 s: tank: P 101325.0000 Pa, T 298.159993 K, V 0.999229652 m3, vapour 6.24050e-06 m3, water 0.999223411 m3, mass 996.271185 kg, water vapour 7.98417e-06 mol, water kappa 4.51558e-10 1/Pa, flows [0.0, -44.123131208498016]
+  0.005 s steps, t=0.010 s: tank: P 101325.0000 Pa, T 298.159996 K, V 0.999450922 m3, vapour 6.24050e-06 m3, water 0.999444681 m3, mass 996.491800 kg, water vapour 7.98417e-06 mol, water kappa 4.51558e-10 1/Pa, flows [0.0, -44.123131208498016]
+  0.005 s steps, t=0.015 s: tank: P 101325.0000 Pa, T 298.159998 K, V 0.999672192 m3, vapour 6.24050e-06 m3, water 0.999665952 m3, mass 996.712416 kg, water vapour 7.98417e-06 mol, water kappa 4.51558e-10 1/Pa, flows [0.0, -44.123131208498016]
+  0.005 s steps, t=0.020 s: tank: P 101325.0000 Pa, T 298.160001 K, V 0.999893462 m3, vapour 6.24050e-06 m3, water 0.999887222 m3, mass 996.933032 kg, water vapour 7.98417e-06 mol, water kappa 4.51558e-10 1/Pa, flows [0.0, -44.123131208498016]
+  0.005 s steps, t=0.025 s: tank: P 148008.1337 Pa, T 298.160861 K, V 1.000000000 m3, vapour 4.22825e-06 m3, water 0.999995772 m3, mass 997.062057 kg, water vapour 5.40994e-06 mol, water kappa 4.51505e-10 1/Pa, flows [13.740891965436067, -39.54604216729493]
+  0.005 s steps, t=0.030 s: tank: P 150318.8986 Pa, T 298.160903 K, V 1.000000000 m3, vapour 4.16118e-06 m3, water 0.999995839 m3, mass 997.063154 kg, water vapour 5.32414e-06 mol, water kappa 4.51502e-10 1/Pa, flows [30.992002800430324, -31.21124968480229]
+  0.005 s steps, t=0.035 s: tank: P 150618.3588 Pa, T 298.160909 K, V 1.000000000 m3, vapour 4.15208e-06 m3, water 0.999995848 m3, mass 997.063296 kg, water vapour 5.31249e-06 mol, water kappa 4.51502e-10 1/Pa, flows [31.08756660979928, -31.116060924207318]
+  0.005 s steps, t=0.040 s: tank: P 150657.1259 Pa, T 298.160909 K, V 1.000000000 m3, vapour 4.15034e-06 m3, water 0.999995850 m3, mass 997.063315 kg, water vapour 5.31027e-06 mol, water kappa 4.51502e-10 1/Pa, flows [31.099916773750422, -31.10371707392543]
+  0.005 s steps, t=0.045 s: tank: P 150662.1438 Pa, T 298.160909 K, V 1.000000000 m3, vapour 4.14955e-06 m3, water 0.999995850 m3, mass 997.063318 kg, water vapour 5.30926e-06 mol, water kappa 4.51502e-10 1/Pa, flows [31.1015150143754, -31.10211895129456]
+  0.005 s steps, t=0.050 s: tank: P 150662.7934 Pa, T 298.160909 K, V 1.000000000 m3, vapour 4.14889e-06 m3, water 0.999995851 m3, mass 997.063319 kg, water vapour 5.30841e-06 mol, water kappa 4.51502e-10 1/Pa, flows [31.101721889482352, -31.1019120882648]
+  0.005 s steps, t=0.055 s: tank: P 150662.8774 Pa, T 298.160909 K, V 1.000000000 m3, vapour 4.14824e-06 m3, water 0.999995852 m3, mass 997.063320 kg, water vapour 5.30758e-06 mol, water kappa 4.51502e-10 1/Pa, flows [31.101748679464936, -31.10188530830751]
+  0.005 s steps, t=0.060 s: tank: P 150662.8883 Pa, T 298.160910 K, V 1.000000000 m3, vapour 4.14759e-06 m3, water 0.999995852 m3, mass 997.063320 kg, water vapour 5.30675e-06 mol, water kappa 4.51502e-10 1/Pa, flows [31.101752159816094, -31.10188183791238]
+  continuing 200 x 5 s: tank nitrogen 1.5799877498856734E-17 mol
+=== variant A: kappa 1e-9 1/Pa about 1 atm (Region 1's density at 1 atm)
+cadence water initial: P 500000.000 / 150000.000 Pa, T 350.0000 K, mass 974.130089 / 973.789203 kg, water volume 1.000000000 / 1.000000000 m3, vapour 0.00000 / 0.00000 m3, water kappa 1.00000e-09 / 1.00000e-09 1/Pa
+  fine 0.25 s t=20 s: P 447532.664 / 202485.180 Pa, dP 245047.484 Pa, moved 0.049404152 kg, tau over the frame 56.104 s
+  fine 0.25 s t=40 s: P 410799.042 / 239227.702 Pa, dP 171571.340 Pa, moved 0.083991710 kg, tau over the frame 56.108 s
+  fine 0.25 s t=60 s: P 385080.105 / 264951.110 Pa, dP 120128.995 Pa, moved 0.108207374 kg, tau over the frame 56.112 s
+  fine 0.25 s t=80 s: P 367072.645 / 282960.837 Pa, dP 84111.808 Pa, moved 0.125161947 kg, tau over the frame 56.114 s
+  coarse 0.5 s t=20 s: moved 0.049312887 kg
+  coarse 0.5 s t=40 s: moved 0.083863879 kg
+  coarse 0.5 s t=60 s: moved 0.108073080 kg
+  coarse 0.5 s t=80 s: moved 0.125036535 kg
+  water reference-refinement t=20 s: cumulative flow 0.1847 % off (ratio 0.739), pressure ratio 0.191, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 4
+  water reference-refinement t=40 s: cumulative flow 0.1522 % off (ratio 0.609), pressure ratio 0.227, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 4
+  water reference-refinement t=60 s: cumulative flow 0.1241 % off (ratio 0.496), pressure ratio 0.215, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 4
+  water reference-refinement t=80 s: cumulative flow 0.1002 % off (ratio 0.401), pressure ratio 0.188, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 4
+  water reference-refinement worst ratio to the bound 0.739: PASS
+  water fixed-1 t=20 s: cumulative flow 0.5514 % off (ratio 0.276), pressure ratio 0.071, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 80
+  water fixed-1 t=40 s: cumulative flow 0.4546 % off (ratio 0.227), pressure ratio 0.085, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 80
+  water fixed-1 t=60 s: cumulative flow 0.3710 % off (ratio 0.186), pressure ratio 0.080, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 80
+  water fixed-1 t=80 s: cumulative flow 0.2998 % off (ratio 0.150), pressure ratio 0.070, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 80
+  water fixed-1 worst ratio to the bound 0.276: PASS
+  water fixed-5 t=20 s: cumulative flow 0.9816 % off (ratio 0.491), pressure ratio 0.127, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 16
+  water fixed-5 t=40 s: cumulative flow 0.8711 % off (ratio 0.436), pressure ratio 0.162, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 16
+  water fixed-5 t=60 s: cumulative flow 0.7283 % off (ratio 0.364), pressure ratio 0.158, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 16
+  water fixed-5 t=80 s: cumulative flow 0.5959 % off (ratio 0.298), pressure ratio 0.140, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 16
+  water fixed-5 worst ratio to the bound 0.491: PASS
+  water fixed-20 t=20 s: cumulative flow 1.3961 % off (ratio 0.698), pressure ratio 0.181, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 4
+  water fixed-20 t=40 s: cumulative flow 1.4774 % off (ratio 0.739), pressure ratio 0.275, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 4
+  water fixed-20 t=60 s: cumulative flow 1.4653 % off (ratio 0.733), pressure ratio 0.318, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 4
+  water fixed-20 t=80 s: cumulative flow 1.3767 % off (ratio 0.688), pressure ratio 0.323, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 4
+  water fixed-20 worst ratio to the bound 0.739: PASS
+  water adaptive-controlled-cpu t=20 s: cumulative flow 0.9816 % off (ratio 0.491), pressure ratio 0.127, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 16
+  water adaptive-controlled-cpu t=40 s: cumulative flow 0.9846 % off (ratio 0.492), pressure ratio 0.184, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 16
+  water adaptive-controlled-cpu t=60 s: cumulative flow 0.8837 % off (ratio 0.442), pressure ratio 0.192, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 16
+  water adaptive-controlled-cpu t=80 s: cumulative flow 0.7219 % off (ratio 0.361), pressure ratio 0.170, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 16
+  water adaptive-controlled-cpu worst ratio to the bound 0.492: PASS
+cadence wet-crude initial: P 200000.000 / 150000.000 Pa, T 350.0000 K, mass 64.615471 / 38.490007 kg, water volume 0.000830843 / 0.000387583 m3, vapour 0.926659 / 0.957120 m3, water kappa 1.00000e-09 / 1.00000e-09 1/Pa
+  fine 0.25 s t=20 s: P 199703.398 / 150324.589 Pa, dP 49378.809 Pa, moved 0.133421890 kg, tau over the frame 1599.790 s
+  fine 0.25 s t=40 s: P 199408.459 / 150646.964 Pa, dP 48761.496 Pa, moved 0.266074247 kg, tau over the frame 1589.776 s
+  fine 0.25 s t=60 s: P 199115.103 / 150967.153 Pa, dP 48147.950 Pa, moved 0.397965423 kg, tau over the frame 1579.477 s
+  fine 0.25 s t=80 s: P 198823.312 / 151285.184 Pa, dP 47538.128 Pa, moved 0.529103216 kg, tau over the frame 1569.062 s
+  coarse 0.5 s t=20 s: moved 0.133417068 kg
+  coarse 0.5 s t=40 s: moved 0.266064684 kg
+  coarse 0.5 s t=60 s: moved 0.397951196 kg
+  coarse 0.5 s t=80 s: moved 0.529084399 kg
+  wet-crude reference-refinement t=20 s: cumulative flow 0.0036 % off (ratio 0.014), pressure ratio 0.000, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 4
+  wet-crude reference-refinement t=40 s: cumulative flow 0.0036 % off (ratio 0.014), pressure ratio 0.000, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 4
+  wet-crude reference-refinement t=60 s: cumulative flow 0.0036 % off (ratio 0.014), pressure ratio 0.000, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 4
+  wet-crude reference-refinement t=80 s: cumulative flow 0.0036 % off (ratio 0.014), pressure ratio 0.000, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 4
+  wet-crude reference-refinement worst ratio to the bound 0.014: PASS
+  wet-crude fixed-1 t=20 s: cumulative flow 0.0108 % off (ratio 0.005), pressure ratio 0.000, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 80
+  wet-crude fixed-1 t=40 s: cumulative flow 0.0108 % off (ratio 0.005), pressure ratio 0.000, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 80
+  wet-crude fixed-1 t=60 s: cumulative flow 0.0107 % off (ratio 0.005), pressure ratio 0.000, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 80
+  wet-crude fixed-1 t=80 s: cumulative flow 0.0107 % off (ratio 0.005), pressure ratio 0.000, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 80
+  wet-crude fixed-1 worst ratio to the bound 0.005: PASS
+  wet-crude fixed-5 t=20 s: cumulative flow 0.0224 % off (ratio 0.011), pressure ratio 0.000, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 16
+  wet-crude fixed-5 t=40 s: cumulative flow 0.0223 % off (ratio 0.011), pressure ratio 0.000, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 16
+  wet-crude fixed-5 t=60 s: cumulative flow 0.0222 % off (ratio 0.011), pressure ratio 0.000, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 16
+  wet-crude fixed-5 t=80 s: cumulative flow 0.0220 % off (ratio 0.011), pressure ratio 0.000, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 16
+  wet-crude fixed-5 worst ratio to the bound 0.011: PASS
+  wet-crude fixed-20 t=20 s: cumulative flow 0.0758 % off (ratio 0.038), pressure ratio 0.000, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 4
+  wet-crude fixed-20 t=40 s: cumulative flow 0.0753 % off (ratio 0.038), pressure ratio 0.000, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 4
+  wet-crude fixed-20 t=60 s: cumulative flow 0.0749 % off (ratio 0.037), pressure ratio 0.000, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 4
+  wet-crude fixed-20 t=80 s: cumulative flow 0.0746 % off (ratio 0.037), pressure ratio 0.000, component ratio 0.001, phase ratio 0.000, temperature ratio 0.000, intervals 4
+  wet-crude fixed-20 worst ratio to the bound 0.038: PASS
+  wet-crude adaptive-controlled-cpu t=20 s: cumulative flow 0.0224 % off (ratio 0.011), pressure ratio 0.000, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 16
+  wet-crude adaptive-controlled-cpu t=40 s: cumulative flow 0.0265 % off (ratio 0.013), pressure ratio 0.000, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 16
+  wet-crude adaptive-controlled-cpu t=60 s: cumulative flow 0.0277 % off (ratio 0.014), pressure ratio 0.000, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 16
+  wet-crude adaptive-controlled-cpu t=80 s: cumulative flow 0.0274 % off (ratio 0.014), pressure ratio 0.000, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 16
+  wet-crude adaptive-controlled-cpu worst ratio to the bound 0.014: PASS
+mcp archived node 1 RESERVOIR: P 150663.5576 Pa, T 298.160930 K, V 0.998957247 m3, vapour 4.15239e-06 m3, water 0.998953094 m3, mass 996.050569 kg, water vapour 5.31289e-06 mol, water kappa 1.00000e-09 1/Pa, inventory volume 1.0
+mcp archived node 5 GENERATOR: P 200000.0000 Pa, T 298.150000 K, V 0.998957266 m3, vapour 0.00000 m3, water 0.998957266 m3, mass 996.106662 kg, water vapour 0.00000 mol, water kappa 1.00000e-09 1/Pa, inventory volume 1.0
+mcp archived node 10 VOID: P 101325.0000 Pa, T 298.150000 K, V 1.000000000 m3, vapour 1.00000 m3, water 0.000000000 m3, mass 1.145353 kg, water vapour 0.00000 mol, water kappa 0.00000 1/Pa, inventory volume 1.0
+mcp tank refreshed from its inventory: P 101325.0000 Pa, T 298.159990 K, V 0.999008382 m3, vapour 6.24050e-06 m3, water 0.999002141 m3, mass 996.050569 kg, water vapour 7.98417e-06 mol, water kappa 1.00000e-09 1/Pa
+  default attempt Attempt[index=0, step=1.0, accepted=false, dominant=be-reopen, error=1.0]
+  default attempt Attempt[index=1, step=1.0, accepted=false, dominant=be-state, error=0.4708530370424775]
+  default attempt Attempt[index=2, step=0.5, accepted=false, dominant=be-reopen, error=1.0]
+  default attempt Attempt[index=3, step=0.5, accepted=true, dominant=be-jump, error=0.45483670593847153]
+  default attempt Attempt[index=4, step=0.25, accepted=true, dominant=be-state, error=0.021921781321525273]
+  default attempt Attempt[index=5, step=0.25, accepted=true, dominant=be-state, error=1.3661655458203925E-4]
+  pipe 0 mean flow: default 30.573999, refined 30.396939 kg/s, 0.5825 % (bound 0.2 %); end flow default 31.102351, refined 31.102393 kg/s
+  pipe 1 mean flow: default -31.613848, refined -31.436791 kg/s, 0.5632 % (bound 0.2 %); end flow default -31.102560, refined -31.102518 kg/s
+  default end tank: P 150663.4285 Pa, T 298.160921 K, V 1.000000000 m3, vapour 4.02769e-06 m3, water 0.999995972 m3, mass 997.090419 kg, water vapour 5.15335e-06 mol, water kappa 1.00000e-09 1/Pa, accepted 3, rejected 3
+  refined end tank: P 150663.5604 Pa, T 298.160911 K, V 1.000000000 m3, vapour 4.02774e-06 m3, water 0.999995972 m3, mass 997.090421 kg, water vapour 5.15341e-06 mol, water kappa 1.00000e-09 1/Pa, accepted 67
+  option-b second interval pipe 0 mean flow: default 31.102396, refined 31.102395 kg/s, 0.00000 % (bound 0.2 %)
+  option-b second interval pipe 1 mean flow: default -31.102517, refined -31.102518 kg/s, -0.00000 % (bound 0.2 %)
+  0.005 s steps, t=0.005 s: tank: P 101325.0000 Pa, T 298.159993 K, V 0.999229658 m3, vapour 6.24050e-06 m3, water 0.999223417 m3, mass 996.271191 kg, water vapour 7.98417e-06 mol, water kappa 1.00000e-09 1/Pa, flows [0.0, -44.12433452931487]
+  0.005 s steps, t=0.010 s: tank: P 101325.0000 Pa, T 298.159996 K, V 0.999450934 m3, vapour 6.24050e-06 m3, water 0.999444694 m3, mass 996.491812 kg, water vapour 7.98417e-06 mol, water kappa 1.00000e-09 1/Pa, flows [0.0, -44.12433452931487]
+  0.005 s steps, t=0.015 s: tank: P 101325.0000 Pa, T 298.159998 K, V 0.999672210 m3, vapour 6.24050e-06 m3, water 0.999665970 m3, mass 996.712434 kg, water vapour 7.98417e-06 mol, water kappa 1.00000e-09 1/Pa, flows [0.0, -44.12433452931487]
+  0.005 s steps, t=0.020 s: tank: P 101325.0000 Pa, T 298.160001 K, V 0.999893486 m3, vapour 6.24050e-06 m3, water 0.999887246 m3, mass 996.933056 kg, water vapour 7.98417e-06 mol, water kappa 1.00000e-09 1/Pa, flows [0.0, -44.12433452931487]
+  0.005 s steps, t=0.025 s: tank: P 139536.3663 Pa, T 298.160705 K, V 1.000000000 m3, vapour 4.49109e-06 m3, water 0.999995509 m3, mass 997.078918 kg, water vapour 5.74618e-06 mol, water kappa 1.00000e-09 1/Pa, flows [11.731245418036295, -40.903604557435344]
+  0.005 s steps, t=0.030 s: tank: P 149082.2630 Pa, T 298.160881 K, V 1.000000000 m3, vapour 4.19652e-06 m3, water 0.999995803 m3, mass 997.088684 kg, water vapour 5.36935e-06 mol, water kappa 1.00000e-09 1/Pa, flows [30.107943276166086, -32.061295302104575]
+  0.005 s steps, t=0.035 s: tank: P 150279.7537 Pa, T 298.160903 K, V 1.000000000 m3, vapour 4.16170e-06 m3, water 0.999995838 m3, mass 997.089907 kg, water vapour 5.32481e-06 mol, water kappa 1.00000e-09 1/Pa, flows [30.97990960183233, -31.224525179306948]
+  0.005 s steps, t=0.040 s: tank: P 150570.4221 Pa, T 298.160908 K, V 1.000000000 m3, vapour 4.15285e-06 m3, water 0.999995847 m3, mass 997.090205 kg, water vapour 5.31347e-06 mol, water kappa 1.00000e-09 1/Pa, flows [31.07271259490127, -31.132169029275484]
+  0.005 s steps, t=0.045 s: tank: P 150640.9581 Pa, T 298.160909 K, V 1.000000000 m3, vapour 4.15021e-06 m3, water 0.999995850 m3, mass 997.090277 kg, water vapour 5.31010e-06 mol, water kappa 1.00000e-09 1/Pa, flows [31.095191676906303, -31.10971629869597]
+  0.005 s steps, t=0.050 s: tank: P 150658.0738 Pa, T 298.160910 K, V 1.000000000 m3, vapour 4.14908e-06 m3, water 0.999995851 m3, mass 997.090295 kg, water vapour 5.30866e-06 mol, water kappa 1.00000e-09 1/Pa, flows [31.100643861600908, -31.10426568212827]
+  0.005 s steps, t=0.055 s: tank: P 150662.2269 Pa, T 298.160910 K, V 1.000000000 m3, vapour 4.14832e-06 m3, water 0.999995852 m3, mass 997.090300 kg, water vapour 5.30768e-06 mol, water kappa 1.00000e-09 1/Pa, flows [31.1019666892741, -31.102942957892765]
+  0.005 s steps, t=0.060 s: tank: P 150663.2346 Pa, T 298.160910 K, V 1.000000000 m3, vapour 4.14764e-06 m3, water 0.999995852 m3, mass 997.090302 kg, water vapour 5.30682e-06 mol, water kappa 1.00000e-09 1/Pa, flows [31.102287670740026, -31.102621992305025]
+  continuing 200 x 5 s: tank nitrogen 1.5803156090733868E-17 mol
+=== variant B: the retired law, Region 1 at 2 MPa with kappa 1e-9 1/Pa
+cadence water initial: P 500000.000 / 150000.000 Pa, T 350.0000 K, mass 973.123328 / 972.782794 kg, water volume 1.000000000 / 1.000000000 m3, vapour 0.00000 / 0.00000 m3, water kappa 1.00000e-09 / 1.00000e-09 1/Pa
+  fine 0.25 s t=20 s: P 447540.643 / 202477.197 Pa, dP 245063.446 Pa, moved 0.049354627 kg, tau over the frame 56.114 s
+  fine 0.25 s t=40 s: P 410810.211 / 239216.525 Pa, dP 171593.686 Pa, moved 0.083909766 kg, tau over the frame 56.119 s
+  fine 0.25 s t=60 s: P 385091.832 / 264939.372 Pa, dP 120152.460 Pa, moved 0.108104307 kg, tau over the frame 56.122 s
+  fine 0.25 s t=80 s: P 367083.590 / 282949.878 Pa, dP 84133.712 Pa, moved 0.125045195 kg, tau over the frame 56.124 s
+  coarse 0.5 s t=20 s: moved 0.049263468 kg
+  coarse 0.5 s t=40 s: moved 0.083782074 kg
+  coarse 0.5 s t=60 s: moved 0.107970151 kg
+  coarse 0.5 s t=80 s: moved 0.124919903 kg
+  water reference-refinement t=20 s: cumulative flow 0.1847 % off (ratio 0.739), pressure ratio 0.191, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 4
+  water reference-refinement t=40 s: cumulative flow 0.1522 % off (ratio 0.609), pressure ratio 0.227, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 4
+  water reference-refinement t=60 s: cumulative flow 0.1241 % off (ratio 0.496), pressure ratio 0.215, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 4
+  water reference-refinement t=80 s: cumulative flow 0.1002 % off (ratio 0.401), pressure ratio 0.188, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 4
+  water reference-refinement worst ratio to the bound 0.739: PASS
+  water fixed-1 t=20 s: cumulative flow 0.5513 % off (ratio 0.276), pressure ratio 0.071, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 80
+  water fixed-1 t=40 s: cumulative flow 0.4546 % off (ratio 0.227), pressure ratio 0.085, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 80
+  water fixed-1 t=60 s: cumulative flow 0.3710 % off (ratio 0.185), pressure ratio 0.080, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 80
+  water fixed-1 t=80 s: cumulative flow 0.2998 % off (ratio 0.150), pressure ratio 0.070, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 80
+  water fixed-1 worst ratio to the bound 0.276: PASS
+  water fixed-5 t=20 s: cumulative flow 0.9815 % off (ratio 0.491), pressure ratio 0.127, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 16
+  water fixed-5 t=40 s: cumulative flow 0.8710 % off (ratio 0.436), pressure ratio 0.162, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 16
+  water fixed-5 t=60 s: cumulative flow 0.7283 % off (ratio 0.364), pressure ratio 0.158, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 16
+  water fixed-5 t=80 s: cumulative flow 0.5959 % off (ratio 0.298), pressure ratio 0.140, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 16
+  water fixed-5 worst ratio to the bound 0.491: PASS
+  water fixed-20 t=20 s: cumulative flow 1.3960 % off (ratio 0.698), pressure ratio 0.181, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 4
+  water fixed-20 t=40 s: cumulative flow 1.4774 % off (ratio 0.739), pressure ratio 0.275, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 4
+  water fixed-20 t=60 s: cumulative flow 1.4652 % off (ratio 0.733), pressure ratio 0.318, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 4
+  water fixed-20 t=80 s: cumulative flow 1.3767 % off (ratio 0.688), pressure ratio 0.323, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 4
+  water fixed-20 worst ratio to the bound 0.739: PASS
+  water adaptive-controlled-cpu t=20 s: cumulative flow 0.9815 % off (ratio 0.491), pressure ratio 0.127, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 16
+  water adaptive-controlled-cpu t=40 s: cumulative flow 0.9845 % off (ratio 0.492), pressure ratio 0.184, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 16
+  water adaptive-controlled-cpu t=60 s: cumulative flow 0.8837 % off (ratio 0.442), pressure ratio 0.192, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 16
+  water adaptive-controlled-cpu t=80 s: cumulative flow 0.7219 % off (ratio 0.361), pressure ratio 0.170, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 16
+  water adaptive-controlled-cpu worst ratio to the bound 0.492: PASS
+cadence wet-crude initial: P 200000.000 / 150000.000 Pa, T 350.0000 K, mass 64.615416 / 38.489992 kg, water volume 0.000831701 / 0.000387984 m3, vapour 0.926658 / 0.957120 m3, water kappa 1.00000e-09 / 1.00000e-09 1/Pa
+  fine 0.25 s t=20 s: P 199703.397 / 150324.589 Pa, dP 49378.808 Pa, moved 0.133421864 kg, tau over the frame 1599.788 s
+  fine 0.25 s t=40 s: P 199408.458 / 150646.964 Pa, dP 48761.494 Pa, moved 0.266074195 kg, tau over the frame 1589.774 s
+  fine 0.25 s t=60 s: P 199115.101 / 150967.154 Pa, dP 48147.947 Pa, moved 0.397965346 kg, tau over the frame 1579.474 s
+  fine 0.25 s t=80 s: P 198823.310 / 151285.185 Pa, dP 47538.125 Pa, moved 0.529103114 kg, tau over the frame 1569.060 s
+  coarse 0.5 s t=20 s: moved 0.133417042 kg
+  coarse 0.5 s t=40 s: moved 0.266064632 kg
+  coarse 0.5 s t=60 s: moved 0.397951119 kg
+  coarse 0.5 s t=80 s: moved 0.529084297 kg
+  wet-crude reference-refinement t=20 s: cumulative flow 0.0036 % off (ratio 0.014), pressure ratio 0.000, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 4
+  wet-crude reference-refinement t=40 s: cumulative flow 0.0036 % off (ratio 0.014), pressure ratio 0.000, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 4
+  wet-crude reference-refinement t=60 s: cumulative flow 0.0036 % off (ratio 0.014), pressure ratio 0.000, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 4
+  wet-crude reference-refinement t=80 s: cumulative flow 0.0036 % off (ratio 0.014), pressure ratio 0.000, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 4
+  wet-crude reference-refinement worst ratio to the bound 0.014: PASS
+  wet-crude fixed-1 t=20 s: cumulative flow 0.0108 % off (ratio 0.005), pressure ratio 0.000, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 80
+  wet-crude fixed-1 t=40 s: cumulative flow 0.0108 % off (ratio 0.005), pressure ratio 0.000, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 80
+  wet-crude fixed-1 t=60 s: cumulative flow 0.0107 % off (ratio 0.005), pressure ratio 0.000, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 80
+  wet-crude fixed-1 t=80 s: cumulative flow 0.0107 % off (ratio 0.005), pressure ratio 0.000, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 80
+  wet-crude fixed-1 worst ratio to the bound 0.005: PASS
+  wet-crude fixed-5 t=20 s: cumulative flow 0.0224 % off (ratio 0.011), pressure ratio 0.000, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 16
+  wet-crude fixed-5 t=40 s: cumulative flow 0.0223 % off (ratio 0.011), pressure ratio 0.000, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 16
+  wet-crude fixed-5 t=60 s: cumulative flow 0.0222 % off (ratio 0.011), pressure ratio 0.000, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 16
+  wet-crude fixed-5 t=80 s: cumulative flow 0.0220 % off (ratio 0.011), pressure ratio 0.000, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 16
+  wet-crude fixed-5 worst ratio to the bound 0.011: PASS
+  wet-crude fixed-20 t=20 s: cumulative flow 0.0758 % off (ratio 0.038), pressure ratio 0.000, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 4
+  wet-crude fixed-20 t=40 s: cumulative flow 0.0753 % off (ratio 0.038), pressure ratio 0.000, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 4
+  wet-crude fixed-20 t=60 s: cumulative flow 0.0749 % off (ratio 0.037), pressure ratio 0.000, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 4
+  wet-crude fixed-20 t=80 s: cumulative flow 0.0746 % off (ratio 0.037), pressure ratio 0.000, component ratio 0.001, phase ratio 0.000, temperature ratio 0.000, intervals 4
+  wet-crude fixed-20 worst ratio to the bound 0.038: PASS
+  wet-crude adaptive-controlled-cpu t=20 s: cumulative flow 0.0224 % off (ratio 0.011), pressure ratio 0.000, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 16
+  wet-crude adaptive-controlled-cpu t=40 s: cumulative flow 0.0265 % off (ratio 0.013), pressure ratio 0.000, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 16
+  wet-crude adaptive-controlled-cpu t=60 s: cumulative flow 0.0277 % off (ratio 0.014), pressure ratio 0.000, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 16
+  wet-crude adaptive-controlled-cpu t=80 s: cumulative flow 0.0274 % off (ratio 0.014), pressure ratio 0.000, component ratio 0.000, phase ratio 0.000, temperature ratio 0.000, intervals 16
+  wet-crude adaptive-controlled-cpu worst ratio to the bound 0.014: PASS
+mcp archived node 1 RESERVOIR: P 150663.5576 Pa, T 298.160930 K, V 1.000000000 m3, vapour 4.15239e-06 m3, water 0.999995848 m3, mass 996.050569 kg, water vapour 5.31289e-06 mol, water kappa 1.00000e-09 1/Pa, inventory volume 1.0
+mcp archived node 5 GENERATOR: P 200000.0000 Pa, T 298.150000 K, V 1.000000000 m3, vapour 0.00000 m3, water 1.000000000 m3, mass 996.106662 kg, water vapour 0.00000 mol, water kappa 1.00000e-09 1/Pa, inventory volume 1.0
+mcp archived node 10 VOID: P 101325.0000 Pa, T 298.150000 K, V 1.000000000 m3, vapour 1.00000 m3, water 0.000000000 m3, mass 1.145353 kg, water vapour 0.00000 mol, water kappa 0.00000 1/Pa, inventory volume 1.0
+mcp tank refreshed from its inventory: P 150681.5630 Pa, T 298.161001 K, V 1.000000000 m3, vapour 4.15188e-06 m3, water 0.999995848 m3, mass 996.050569 kg, water vapour 5.31227e-06 mol, water kappa 1.00000e-09 1/Pa
+  default attempt Attempt[index=0, step=1.0, accepted=true, dominant=be-state, error=1.1928976702257352E-4]
+  pipe 0 mean flow: default 31.086013, refined 31.086011 kg/s, 0.0000 % (bound 0.2 %); end flow default 31.086013, refined 31.086004 kg/s
+  pipe 1 mean flow: default -31.086120, refined -31.086120 kg/s, -0.0000 % (bound 0.2 %); end flow default -31.086120, refined -31.086129 kg/s
+  default end tank: P 150663.5883 Pa, T 298.160999 K, V 1.000000000 m3, vapour 4.02672e-06 m3, water 0.999995973 m3, mass 996.050676 kg, water vapour 5.15212e-06 mol, water kappa 1.00000e-09 1/Pa, accepted 1, rejected 0
+  refined end tank: P 150663.5595 Pa, T 298.160999 K, V 1.000000000 m3, vapour 4.02483e-06 m3, water 0.999995975 m3, mass 996.050678 kg, water vapour 5.14971e-06 mol, water kappa 1.00000e-09 1/Pa, accepted 52
+  option-b second interval pipe 0 mean flow: default 31.086006, refined 31.086005 kg/s, 0.00000 % (bound 0.2 %)
+  option-b second interval pipe 1 mean flow: default -31.086128, refined -31.086128 kg/s, -0.00000 % (bound 0.2 %)
+  0.005 s steps, t=0.005 s: tank: P 150667.9236 Pa, T 298.161001 K, V 1.000000000 m3, vapour 4.15162e-06 m3, water 0.999995848 m3, mass 996.050556 kg, water vapour 5.31193e-06 mol, water kappa 1.00000e-09 1/Pa, flows [31.087390799529953, -31.084739682457613]
+  0.005 s steps, t=0.010 s: tank: P 150664.6156 Pa, T 298.161001 K, V 1.000000000 m3, vapour 4.15106e-06 m3, water 0.999995849 m3, mass 996.050553 kg, water vapour 5.31122e-06 mol, water kappa 1.00000e-09 1/Pa, flows [31.086337765834077, -31.08579278203439]
+  0.005 s steps, t=0.015 s: tank: P 150663.8133 Pa, T 298.161001 K, V 1.000000000 m3, vapour 4.15044e-06 m3, water 0.999995850 m3, mass 996.050553 kg, water vapour 5.31042e-06 mol, water kappa 1.00000e-09 1/Pa, flows [31.08608237163832, -31.086048189095816]
+  0.005 s steps, t=0.020 s: tank: P 150663.6187 Pa, T 298.161001 K, V 1.000000000 m3, vapour 4.14979e-06 m3, water 0.999995850 m3, mass 996.050553 kg, water vapour 5.30960e-06 mol, water kappa 1.00000e-09 1/Pa, flows [31.086020440248458, -31.086110130487228]
+  0.005 s steps, t=0.025 s: tank: P 150663.5716 Pa, T 298.161001 K, V 1.000000000 m3, vapour 4.14915e-06 m3, water 0.999995851 m3, mass 996.050554 kg, water vapour 5.30877e-06 mol, water kappa 1.00000e-09 1/Pa, flows [31.086005428580233, -31.086125152071673]
+  0.005 s steps, t=0.030 s: tank: P 150663.5601 Pa, T 298.161001 K, V 1.000000000 m3, vapour 4.14850e-06 m3, water 0.999995851 m3, mass 996.050555 kg, water vapour 5.30794e-06 mol, water kappa 1.00000e-09 1/Pa, flows [31.086001804900587, -31.086128785633697]
+  0.005 s steps, t=0.035 s: tank: P 150663.5573 Pa, T 298.161001 K, V 1.000000000 m3, vapour 4.14785e-06 m3, water 0.999995852 m3, mass 996.050555 kg, water vapour 5.30711e-06 mol, water kappa 1.00000e-09 1/Pa, flows [31.08600093132324, -31.086129669111166]
+  0.005 s steps, t=0.040 s: tank: P 150663.5567 Pa, T 298.161001 K, V 1.000000000 m3, vapour 4.14721e-06 m3, water 0.999995853 m3, mass 996.050556 kg, water vapour 5.30629e-06 mol, water kappa 1.00000e-09 1/Pa, flows [31.086000736422687, -31.086129873913947]
+  0.005 s steps, t=0.045 s: tank: P 150663.5565 Pa, T 298.161001 K, V 1.000000000 m3, vapour 4.14656e-06 m3, water 0.999995853 m3, mass 996.050556 kg, water vapour 5.30546e-06 mol, water kappa 1.00000e-09 1/Pa, flows [31.08600069353056, -31.086129926708583]
+  0.005 s steps, t=0.050 s: tank: P 150663.5565 Pa, T 298.161001 K, V 1.000000000 m3, vapour 4.14591e-06 m3, water 0.999995854 m3, mass 996.050557 kg, water vapour 5.30463e-06 mol, water kappa 1.00000e-09 1/Pa, flows [31.086000698915015, -31.086129931223883]
+  0.005 s steps, t=0.055 s: tank: P 150663.5565 Pa, T 298.161001 K, V 1.000000000 m3, vapour 4.14527e-06 m3, water 0.999995855 m3, mass 996.050558 kg, water vapour 5.30380e-06 mol, water kappa 1.00000e-09 1/Pa, flows [31.086000713746493, -31.086129926291143]
+  0.005 s steps, t=0.060 s: tank: P 150663.5565 Pa, T 298.161001 K, V 1.000000000 m3, vapour 4.14462e-06 m3, water 0.999995855 m3, mass 996.050558 kg, water vapour 5.30298e-06 mol, water kappa 1.00000e-09 1/Pa, flows [31.086000729219148, -31.086129920715564]
+  continuing 200 x 5 s: tank nitrogen 1.5560193279939547E-17 mol

@@ -1,0 +1,3 @@
+B  trace underflow (T1)                                      seeds=   1 smallest=  431 list= 431
+E6 step Newton iteration limit                               seeds=   2 smallest=  430 list= 430 446
+F  budget (wall deadline / soft budget)                      seeds=   1 smallest=  475 list= 475

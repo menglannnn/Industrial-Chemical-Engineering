@@ -1,0 +1,156 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1300 690" width="1300" height="690" font-family="Segoe UI, Arial, sans-serif">
+  <style>
+    .t{font-size:11px;fill:#222}
+    .h{font-size:14px;font-weight:600;fill:#111}
+    .s{font-size:10px;fill:#555}
+    .ln{stroke:#333;stroke-width:1;fill:none}
+    .lead{stroke:#888;stroke-width:.7;fill:none}
+    .grid{stroke:#e6e9ec;stroke-width:.6}
+    .shell{fill:#e9edf0;stroke:#444;stroke-width:1.2}
+    .steel{fill:#9aa3aa;stroke:#555;stroke-width:.8}
+    .rail{stroke:#c9a227;stroke-width:1.2;fill:none}
+    .ghost{fill:none;stroke:#777;stroke-width:1;stroke-dasharray:5 3}
+  </style>
+  <rect width="1300" height="690" fill="#fff"/>
+  <text x="20" y="24" class="h">Floating-roof tank: concept, approved 2026-10-21 (example D 20 m, shell 12 m, 1 block = 1 m, grid = 1 m)</text>
+
+  <!-- 1 m grids behind the two elevations -->
+  <g class="grid">
+    <path d="M40 150V337M54 150V337M68 150V337M82 150V337M96 150V337M110 150V337M124 150V337M138 150V337M152 150V337M166 150V337M180 150V337M194 150V337M208 150V337M222 150V337M236 150V337M250 150V337M264 150V337M278 150V337M292 150V337M306 150V337M320 150V337M334 150V337M348 150V337M362 150V337M376 150V337"/>
+    <path d="M40 162H376M40 176H376M40 190H376M40 204H376M40 218H376M40 232H376M40 246H376M40 260H376M40 274H376M40 288H376M40 302H376M40 316H376M40 330H376"/>
+    <path d="M460 150V337M474 150V337M488 150V337M502 150V337M516 150V337M530 150V337M544 150V337M558 150V337M572 150V337M586 150V337M600 150V337M614 150V337M628 150V337M642 150V337M656 150V337M670 150V337M684 150V337M698 150V337M712 150V337M726 150V337M740 150V337M754 150V337M768 150V337M782 150V337M796 150V337"/>
+    <path d="M460 162H796M460 176H796M460 190H796M460 204H796M460 218H796M460 232H796M460 246H796M460 260H796M460 274H796M460 288H796M460 302H796M460 316H796M460 330H796"/>
+  </g>
+
+  <!-- ================= View 1: front elevation (outside) ================= -->
+  <text x="40" y="60" class="h">1 · Front elevation</text>
+  <text x="40" y="76" class="s">drawn in the chunk mesh (static); the sight-glass bands are drawn by the client</text>
+  <rect x="54" y="330" width="292" height="7" fill="#bdbdbd" stroke="#888"/>
+  <line x1="20" y1="337" x2="400" y2="337" stroke="#6b5b3e" stroke-width="1.5"/>
+  <rect x="60" y="162" width="280" height="168" class="shell"/>
+  <path class="ln" d="M60 302H340M60 274H340M60 246H340M60 218H340M60 190H340" stroke="#9aa"/>
+  <rect x="58" y="159" width="284" height="4" class="steel"/>
+  <!-- wind girder with walkway rail -->
+  <rect x="46" y="178" width="308" height="3" class="steel"/>
+  <path class="ln" d="M46 164H58M342 164H354M46 164V178M52 164V178M348 164V178M354 164V178"/>
+  <!-- gauger's platform -->
+  <rect x="340" y="159" width="28" height="4" class="steel"/>
+  <path class="ln" d="M340 145H368M368 145V159M354 145V159"/>
+  <!-- stair flight wound round the shell (visible part) -->
+  <path d="M150 330L338 163" stroke="#555" stroke-width="2"/>
+  <path class="rail" d="M150 315L338 148"/>
+  <g stroke="#555" stroke-width="1"><path d="M166 316h6M181 302h6M197 288h6M213 274h6M229 260h6M244 246h6M260 232h6M276 218h6M292 204h6M307 190h6M323 176h6"/></g>
+  <!-- sight glass column -->
+  <rect x="91" y="176" width="8" height="150" fill="#d8dde1" stroke="#555"/>
+  <rect x="93" y="178" width="4" height="54" fill="#f4f8fa"/>
+  <rect x="93" y="232" width="4" height="87" fill="#70501D"/>
+  <rect x="93" y="319" width="4" height="7" fill="#B9E4F2"/>
+  <path class="ln" d="M99 180h-3M99 322h-3"/>
+  <!-- nozzles -->
+  <circle cx="170" cy="323" r="6" fill="#9aa3aa" stroke="#333"/><circle cx="170" cy="323" r="3" fill="#fff" stroke="#333"/>
+  <circle cx="230" cy="324" r="4.5" fill="#9aa3aa" stroke="#333"/><circle cx="230" cy="324" r="2" fill="#fff" stroke="#333"/>
+  <!-- labels view 1 -->
+  <path class="lead" d="M95 230L28 214"/><text x="10" y="210" class="t">sight glass</text>
+  <path class="lead" d="M170 329L160 360"/><text x="110" y="372" class="t">N1 product (LIQUID)</text>
+  <path class="lead" d="M230 329L246 360"/><text x="226" y="372" class="t">N2 water draw-off (LIQUID)</text>
+  <path class="lead" d="M250 245L300 120"/><text x="250" y="114" class="t">stairway wound round the shell</text>
+  <path class="lead" d="M354 168L392 132"/><text x="356" y="128" class="t">gauger's platform</text>
+  <path class="lead" d="M48 179L30 150"/><text x="8" y="146" class="t">wind girder + walkway</text>
+  <path class="lead" d="M200 302L200 395"/><text x="140" y="407" class="t">shell courses (2 m), top angle, ringwall</text>
+
+  <!-- ================= View 2: section ================= -->
+  <text x="460" y="60" class="h">2 · Section through the axis (level h = 7 m)</text>
+  <text x="460" y="76" class="s">roof and rolling ladder drawn by the client at the published level</text>
+  <rect x="474" y="330" width="292" height="7" fill="#bdbdbd" stroke="#888"/>
+  <line x1="450" y1="337" x2="810" y2="337" stroke="#6b5b3e" stroke-width="1.5"/>
+  <!-- liquids -->
+  <rect x="482" y="232" width="276" height="91" fill="#70501D" opacity=".9"/>
+  <rect x="482" y="323" width="276" height="7" fill="#B9E4F2"/>
+  <!-- shell walls and bottom -->
+  <rect x="478" y="162" width="4" height="170" fill="#666"/>
+  <rect x="758" y="162" width="4" height="170" fill="#666"/>
+  <rect x="478" y="329" width="284" height="3" fill="#666"/>
+  <rect x="466" y="178" width="12" height="3" class="steel"/><rect x="762" y="178" width="12" height="3" class="steel"/>
+  <!-- ghost roofs -->
+  <rect x="483" y="169" width="274" height="11" class="ghost"/>
+  <rect x="483" y="298" width="274" height="11" class="ghost"/>
+  <!-- floating roof: pontoons, deck, rim seal -->
+  <rect x="483" y="225" width="28" height="11" fill="#c7cdd2" stroke="#444"/>
+  <rect x="729" y="225" width="28" height="11" fill="#c7cdd2" stroke="#444"/>
+  <rect x="511" y="229" width="218" height="3" fill="#c7cdd2" stroke="#444"/>
+  <rect x="482" y="226" width="2.5" height="9" fill="#222"/><rect x="755.5" y="226" width="2.5" height="9" fill="#222"/>
+  <!-- legs -->
+  <g stroke="#333" stroke-width="1.4"><path d="M497 236v25M743 236v25M540 232v25M590 232v25M650 232v25M700 232v25"/></g>
+  <!-- roof drain sump and articulated drain (dashed) -->
+  <rect x="616" y="231" width="8" height="4" fill="#444"/>
+  <path d="M620 235L660 270L620 300L700 318L758 318" fill="none" stroke="#ddd" stroke-width="1.2" stroke-dasharray="3 2"/>
+  <!-- rolling ladder track and ladder -->
+  <rect x="590" y="226" width="130" height="2.5" fill="#444"/>
+  <path class="ln" d="M757.4 167.6L641.4 230.6M754.6 162.4L638.6 225.4" stroke="#222" stroke-width="1.3"/>
+  <g stroke="#222" stroke-width=".9"><path d="M747 168l2.8 5M736 174l2.8 5M725 180l2.8 5M714 186l2.8 5M703 192l2.8 5M692 198l2.8 5M681 204l2.8 5M670 210l2.8 5M659 216l2.8 5M648 222l2.8 5"/></g>
+  <circle cx="640" cy="228" r="3" fill="#fff" stroke="#222"/>
+  <rect x="762" y="159" width="28" height="4" class="steel"/>
+  <path class="ln" d="M762 145H790M790 145V159M776 145V159"/>
+  <!-- dimensions -->
+  <path class="ln" d="M452 162V330M448 162h8M448 330h8"/><text x="420" y="250" class="t" transform="rotate(-90 432 250)">shell 12 m</text>
+  <path class="ln" d="M806 176V330M802 176h8M802 330h8"/><text x="812" y="200" class="t">fill height</text><text x="812" y="213" class="t">H = shell − 1 m</text>
+  <path class="ln" d="M796 232V330M792 232h8"/><text x="812" y="262" class="t">level h</text>
+  <!-- labels view 2 -->
+  <path class="lead" d="M600 172L600 120"/><text x="540" y="114" class="t">roof at V_max (overflow above, O2)</text>
+  <path class="lead" d="M560 304L560 395"/><text x="490" y="407" class="t">roof landed on its legs below 1.8 m (drawing only)</text>
+  <path class="lead" d="M497 226L486 140"/><text x="456" y="134" class="t">pontoon ring + rim seal</text>
+  <path class="lead" d="M700 186L690 104"/><text x="560" y="98" class="t">rolling ladder: turns about the platform, wheels on the roof track</text>
+  <path class="lead" d="M560 231L520 380"/>
+  <text x="474" y="392" class="s">centre deck, legs, roof drain</text>
+  <text x="600" y="282" class="t" fill="#fff" style="fill:#fff">oil (bag at ambient pressure)</text>
+  <path class="lead" d="M650 327L680 360"/><text x="660" y="372" class="t">free water</text>
+
+  <!-- ================= View 3: plan ================= -->
+  <text x="40" y="440" class="h">3 · Plan (half scale; front = towards the constructor)</text>
+  <circle cx="200" cy="570" r="77" fill="none" stroke="#9aa3aa" stroke-dasharray="4 2"/>
+  <circle cx="200" cy="570" r="70" fill="#e9edf0" stroke="#444" stroke-width="1.2"/>
+  <circle cx="200" cy="570" r="56" fill="#dfe4e8" stroke="#666"/>
+  <circle cx="200" cy="570" r="3" fill="#444"/>
+  <g fill="#555"><circle cx="175" cy="550" r="1.4"/><circle cx="225" cy="550" r="1.4"/><circle cx="175" cy="590" r="1.4"/><circle cx="225" cy="590" r="1.4"/><circle cx="200" cy="530" r="1.4"/><circle cx="200" cy="610" r="1.4"/><circle cx="160" cy="570" r="1.4"/><circle cx="240" cy="570" r="1.4"/></g>
+  <path d="M130.7 610A80 80 0 0 0 280 570" fill="none" stroke="#555" stroke-width="5" stroke-linecap="butt"/>
+  <path d="M130.7 610A80 80 0 0 0 280 570" fill="none" stroke="#fff" stroke-width="3" stroke-dasharray="1 3"/>
+  <rect x="270" y="563" width="14" height="14" class="steel"/>
+  <path d="M268 570L222 570" stroke="#222" stroke-width="3"/><path d="M268 570L222 570" stroke="#fff" stroke-width="1" stroke-dasharray="1 3"/>
+  <rect x="146" y="614" width="4" height="5" fill="#70501D" stroke="#333"/>
+  <rect x="182" y="639" width="6" height="7" fill="#9aa3aa" stroke="#333"/>
+  <rect x="212" y="639" width="5" height="7" fill="#9aa3aa" stroke="#333"/>
+  <path class="ln" d="M200 655v22M195 672l5 6 5-6"/><text x="208" y="676" class="s">front</text>
+  <path class="lead" d="M108 610L60 640"/><text x="10" y="652" class="t">stair round the shell</text>
+  <path class="lead" d="M282 563L320 520"/><text x="300" y="514" class="t">gauger's platform</text>
+  <path class="lead" d="M240 570L320 560"/><text x="322" y="560" class="t">rolling ladder (radial)</text>
+  <path class="lead" d="M250 590L320 600"/><text x="322" y="602" class="t">pontoon ring, centre deck, drain sump</text>
+  <path class="lead" d="M200 646L320 640"/><text x="322" y="643" class="t">N1, N2 on the front bottom course</text>
+
+  <!-- ================= Notes ================= -->
+  <g transform="translate(935,60)">
+    <text x="0" y="0" class="h">Model notes</text>
+    <text x="0" y="22" class="t">• Grid: D 4–40 m (whole m), shell 4–24 m; fill height H = shell − 1 m.</text>
+    <text x="0" y="38" class="t">• V_max = π D²/4 · H (example: 3 456 m³); level head ρ g h exact.</text>
+    <text x="0" y="54" class="t">• Shell: flat bottom on a concrete ringwall, 2 m courses,</text>
+    <text x="10" y="68" class="t">top angle, wind girder 1.2 m below the top with walkway.</text>
+    <text x="0" y="84" class="t">• Access: one stair wound round the shell, about 40°,</text>
+    <text x="10" y="98" class="t">from grade to the gauger's platform (owner 2026-10-21).</text>
+    <text x="0" y="114" class="t">• Floating roof: pontoon ring ~0.1 D wide, centre deck,</text>
+    <text x="10" y="128" class="t">rim seal, legs 1.8 m, drain sump; lands on its legs.</text>
+    <text x="0" y="144" class="t">• Rolling ladder (length = fill height H) to a track on the roof.</text>
+    <text x="0" y="160" class="t">• Sight glass on the front: free-water band at the bottom,</text>
+    <text x="10" y="174" class="t">oil band above, colours mixed from component appearance</text>
+    <text x="10" y="188" class="t">(here crude #70501D and water #B9E4F2 from the data).</text>
+    <text x="0" y="204" class="t">• Ports (fixed classes, all LIQUID, FR5): N1 product,</text>
+    <text x="10" y="218" class="t">N2 water draw-off; optional side connections on the</text>
+    <text x="10" y="232" class="t">bottom course by the drum's rules (one free block apart).</text>
+    <text x="0" y="248" class="t">• Open top: interior cells pass light and do not occlude,</text>
+    <text x="10" y="262" class="t">so the roof shows from above; no entry (full collision).</text>
+    <text x="0" y="278" class="t">• Static parts in the chunk mesh; roof, ladder and the</text>
+    <text x="10" y="292" class="t">sight-glass bands drawn by the client on the 5 s bucket.</text>
+    <text x="0" y="308" class="t">• Paint: body and structure channels as for drums.</text>
+    <text x="0" y="336" class="h">Owner approval 2026-10-21</text>
+    <text x="0" y="356" class="t">Stair wound round the shell; pontoon, legs, wind</text>
+    <text x="0" y="372" class="t">girder, sight glass and nozzles as drawn.</text>
+  </g>
+</svg>

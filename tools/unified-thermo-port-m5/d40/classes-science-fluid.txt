@@ -1,0 +1,4 @@
+com.wormzjl.icheme.science.fluid.DeterministicMathSourceTest
+com.wormzjl.icheme.science.fluid.DeterministicMathTest
+com.wormzjl.icheme.science.fluid.PackagedSparseLuTest
+com.wormzjl.icheme.science.fluid.SparseLuSolverTest

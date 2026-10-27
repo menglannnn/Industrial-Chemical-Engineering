@@ -1,0 +1,66 @@
+designs 315, refused 89, side nozzles 1194, off their band 1, turned 245 {DRAW=20, FEED=2, PUMPAROUND_DRAW=20, REFLUX=44, RETURN=46, STEAM=73, VAPOUR_RETURN=40}
+ladders 877, moved 59; davits moved 30; top platform gone 0; clashes: cage 50, deck 0, mast 0
+cage clashes into a pipe block cell: 0
+designs with a deck walk cut between a ladder and the next (or the top manway): 13
+  walk: d 1.0 n 3 kettle: level 2 pieces [58-99M] ladder 135
+  walk: d 1.0 n 5 kettle: level 2 pieces [58-99M] ladder 135
+  walk: d 1.0 n 5 steam+draw: level 2 pieces [58-99M] ladder 135
+  walk: d 1.0 n 10 kettle+steam+draw+PA: level 2 pieces [58-99M] ladder 135
+  walk: d 1.0 n 15 kettle+steam+draw+PA: level 2 pieces [58-99M] ladder 135
+  walk: d 1.0 n 20 kettle+steam+draw+PA: level 2 pieces [58-99M] ladder 135
+  walk: d 1.0 n 20 full: level 2 pieces [58-99M] ladder 135
+  walk: d 1.0 n 30 kettle+steam+draw+PA: level 2 pieces [58-99M] ladder 135
+  walk: d 1.0 n 30 full: level 2 pieces [58-99M] ladder 135
+  walk: d 1.0 n 40 kettle+steam+draw+PA: level 2 pieces [58-99M] ladder 135
+  walk: d 1.0 n 40 full: level 2 pieces [58-99M] ladder 135
+  walk: d 1.0 n 64 kettle+steam+draw+PA: level 2 pieces [58-99M] ladder 135
+  off: d 15.0 n 1 steam+draw: STEAM wanted 13.20 at 11.50, side 1
+  d 0.5: designs 7 cage 0 deck 0 mast 0
+  d 1.0: designs 27 cage 25 deck 0 mast 0
+  d 1.5: designs 27 cage 25 deck 0 mast 0
+  d 2.0: designs 27 cage 0 deck 0 mast 0
+  d 3.0: designs 27 cage 0 deck 0 mast 0
+  d 4.0: designs 27 cage 0 deck 0 mast 0
+  d 6.0: designs 28 cage 0 deck 0 mast 0
+  d 8.0: designs 28 cage 0 deck 0 mast 0
+  d 15.0: designs 28 cage 0 deck 0 mast 0
+  refused 4: pumparound 1's draw has no free row by its tray on any side of a N-tray column
+  refused 4: pumparound 1's return has no free row by its tray on any side of a N-tray column
+  refused 12: pumparound 2's draw has no free row by its tray on any side of a N-tray column
+  refused 12: pumparound 2's return has no free row by its tray on any side of a N-tray column
+  refused 35: side draw 1 has no free row by its tray on any side of a N-tray column
+  refused 8: side draw 2 has no free row by its tray on any side of a N-tray column
+  refused 5: steam feed 1 has no free row by its tray on any side of a N-tray column
+  refused 8: the feed nozzle has no free row by its tray on any side of a N-tray column
+  refused 1: the reboiler's vapour return has no free row by its tray on any side of a N-tray column
+d 1.0 n 1 kettle: REFLUX->front FEED->left VAPOUR_RETURN->right clash [1, 0, 0]
+d 1.0 n 3 kettle: clash [1, 0, 0]
+d 1.0 n 3 steam+draw: STEAM->right clash [2, 0, 0]
+d 1.0 n 5 kettle: clash [1, 0, 0]
+d 1.0 n 5 steam+draw: DRAW->front clash [1, 0, 0]
+d 1.0 n 10 kettle+steam+draw+PA: REFLUX->front PUMPAROUND_DRAW->left RETURN->left VAPOUR_RETURN->front DRAW->back clash [1, 0, 0]
+d 1.0 n 15 kettle+steam+draw+PA: REFLUX->front PUMPAROUND_DRAW->front RETURN->left VAPOUR_RETURN->front DRAW->back clash [1, 0, 0]
+d 1.0 n 20 kettle+steam+draw+PA: REFLUX->front PUMPAROUND_DRAW->front RETURN->front VAPOUR_RETURN->front clash [1, 0, 0]
+d 1.0 n 20 full: REFLUX->front PUMPAROUND_DRAW->front RETURN->left VAPOUR_RETURN->front DRAW->back DRAW->front clash [4, 0, 0]
+d 1.0 n 30 kettle+steam+draw+PA: PUMPAROUND_DRAW->front RETURN->front VAPOUR_RETURN->front clash [1, 0, 0]
+d 1.0 n 30 full: PUMPAROUND_DRAW->front VAPOUR_RETURN->front DRAW->front clash [4, 0, 0]
+d 1.0 n 40 kettle+steam+draw+PA: REFLUX->front RETURN->front VAPOUR_RETURN->front DRAW->right clash [1, 0, 0]
+d 1.0 n 40 full: REFLUX->front RETURN->front PUMPAROUND_DRAW->front RETURN->left VAPOUR_RETURN->front DRAW->front clash [3, 0, 0]
+d 1.0 n 64 kettle+steam+draw+PA: REFLUX->front PUMPAROUND_DRAW->front VAPOUR_RETURN->front clash [1, 0, 0]
+  slim refused 4: d 0.5: pumparound 1's draw
+  slim refused 2: d 0.5: pumparound 1's return
+  slim refused 3: d 0.5: pumparound 2's return
+  slim refused 10: d 0.5: side draw 1
+  slim refused 8: d 0.5: the feed nozzle
+  slim refused 1: d 0.5: the reboiler's vapour return
+  slim refused 2: d 1.0: pumparound 2's draw
+  slim refused 1: d 1.0: pumparound 2's return
+  slim refused 3: d 1.0: side draw 1
+  slim refused 1: d 1.0: side draw 2
+  slim refused 1: d 1.0: steam feed 1
+  slim refused 2: d 1.5: pumparound 2's draw
+  slim refused 1: d 1.5: pumparound 2's return
+  slim refused 3: d 1.5: side draw 1
+  slim refused 1: d 1.5: side draw 2
+  slim refused 1: d 1.5: steam feed 1
+clearance d 0.5 48, d 1 36, d 1.5 29, d 2 24 deg

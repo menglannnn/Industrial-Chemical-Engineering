@@ -1,0 +1,6 @@
+gamerule sendCommandFeedback true
+tp @s 0 -40 205
+createcheme equipment unit 0 -60 225 cyclone 2.0 1 8 north
+tp @s 110 -40 -10
+createcheme equipment unit 110 -60 -30 cyclone 1.1 1 3 north
+gamerule sendCommandFeedback false

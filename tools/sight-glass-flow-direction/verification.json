@@ -1,0 +1,26 @@
+{
+  "tests": 25,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 0,
+  "classes": [
+    {
+      "class": "PhysicalFluidTopologyTest",
+      "tests": 20,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "class": "SightGlassDisplayTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  ],
+  "build": "success",
+  "protocol": "sight-glass-3",
+  "preview_frames": 56,
+  "preview_configurations": 12
+}

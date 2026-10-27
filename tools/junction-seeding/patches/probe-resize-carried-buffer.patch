@@ -1,0 +1,11 @@
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveNetwork.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveNetwork.java
+@@ -106,7 +106,7 @@
+         for(int i=0;i<graph.reservoirs.size();i++) {
+             var node=graph.reservoirs.get(i);if(!node.junction())continue;var old=from.reservoirs.get(i);
+             if(nodes==null)nodes=new ArrayList<>(graph.reservoirs);
+-            nodes.set(i,new Reservoir(node.id(),node.elevation(),old.state(),node.kind(),old.inventory()));
++            nodes.set(i,new Reservoir(node.id(),node.elevation(),old.state(),node.kind(),unsizedJunction(old.state())));
+         }
+         return nodes==null?graph:new PassiveNetwork(nodes,graph.pipes,graph.scheduledTransfers);
+     }

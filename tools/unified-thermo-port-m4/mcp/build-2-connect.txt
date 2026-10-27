@@ -1,0 +1,9 @@
+# M4 GUI check, step 2: tank and void, then the pipes that join them to the configured generators.
+#   N2 generator (60,78) - pipe (61,78) - tank (62,78) - pipe (63,78) - void (64,78)
+#   CO2 generator (62,75) - pipe (62,76) - pipe (62,77) - tank
+setblock 62 101 78 createcheme:fluid_reservoir
+setblock 64 101 78 createcheme:fluid_void
+setblock 61 101 78 createcheme:fluid_pipe
+setblock 63 101 78 createcheme:fluid_pipe
+setblock 62 101 76 createcheme:fluid_pipe
+setblock 62 101 77 createcheme:fluid_pipe

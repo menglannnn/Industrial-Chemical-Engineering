@@ -1,0 +1,55 @@
+STIRRED_REACTOR box 7 x 8 x 7 moving 2
+  0 pivot (3.50, 6.49, 3.50) axis (0, 1, 0) speed 1.000 crank 0.000 rod 0.000 reach 0.19 polygons 84
+  1 pivot (3.50, 7.84, 3.50) axis (0, 1, 0) speed 2.000 crank 0.000 rod 0.000 reach 0.21 polygons 48
+ADSORBER box 7 x 13 x 12 moving 0
+TRICKLE_BED_REACTOR box 7 x 22 x 7 moving 0
+EBULLATED_BED_REACTOR box 9 x 40 x 9 moving 0
+CENTRIFUGAL_COMPRESSOR box 10 x 12 x 17 moving 2
+  0 pivot (4.50, 7.04, 10.14) axis (0, 0, 1) speed 2.000 crank 0.000 rod 0.000 reach 0.14 polygons 52
+  1 pivot (4.06, 8.02, 15.73) axis (0, 0, 1) speed 2.000 crank 0.000 rod 0.000 reach 0.19 polygons 84
+STEAM_TURBINE box 4 x 4 x 11 moving 1
+  0 pivot (1.50, 1.66, 10.70) axis (0, 0, 1) speed 1.000 crank 0.000 rod 0.000 reach 0.31 polygons 48
+CONDENSING_TURBINE box 11 x 9 x 13 moving 1
+  0 pivot (6.50, 6.90, 12.36) axis (0, 0, 1) speed 1.000 crank 0.000 rod 0.000 reach 0.31 polygons 56
+CYCLONE box 8 x 11 x 5 moving 2
+  0 pivot (2.87, 2.60, 3.50) axis (1, 0, 0) speed 0.500 crank 0.000 rod 0.000 reach 0.09 polygons 56
+  1 pivot (5.87, 2.60, 3.50) axis (1, 0, 0) speed 0.500 crank 0.000 rod 0.000 reach 0.09 polygons 56
+FCC_CONVERTER box 30 x 51 x 19 moving 0
+DELAYED_COKER box 48 x 84 x 17 moving 2
+  0 pivot (18.50, 59.93, 7.50) axis (0, 1, 0) speed 0.008 crank 2.000 rod 20.000 reach 15.30 polygons 318
+  1 pivot (40.50, 59.93, 7.50) axis (0, 1, 0) speed 0.008 crank 2.000 rod 20.000 reach 15.30 polygons 318
+FLUIDIZED_BED_BOILER box 24 x 54 x 46 moving 9
+  0 pivot (14.50, 2.25, 37.51) axis (0, 0, 1) speed 2.000 crank 0.000 rod 0.000 reach 0.38 polygons 47
+  1 pivot (8.45, 2.05, 37.30) axis (0, 0, 1) speed 2.000 crank 0.000 rod 0.000 reach 0.35 polygons 63
+  2 pivot (20.55, 2.05, 37.30) axis (0, 0, 1) speed 2.000 crank 0.000 rod 0.000 reach 0.35 polygons 63
+  3 pivot (7.50, 9.33, 1.34) axis (0, 0, 1) speed 2.000 crank 0.000 rod 0.000 reach 0.17 polygons 46
+  4 pivot (12.50, 9.33, 1.34) axis (0, 0, 1) speed 2.000 crank 0.000 rod 0.000 reach 0.17 polygons 46
+  5 pivot (17.50, 9.33, 1.34) axis (0, 0, 1) speed 2.000 crank 0.000 rod 0.000 reach 0.17 polygons 46
+  6 pivot (7.50, 1.39, 12.00) axis (0, 0, 1) speed 0.050 crank 0.000 rod 0.000 reach 2.58 polygons 728
+  7 pivot (12.50, 1.39, 12.00) axis (0, 0, 1) speed 0.050 crank 0.000 rod 0.000 reach 2.58 polygons 728
+  ...
+FLUIDIZED_BED_GASIFIER box 13 x 43 x 21 moving 7
+  0 pivot (5.44, 17.19, 5.50) axis (1, 0, 0) speed 0.050 crank 0.100 rod 1.000 reach 0.55 polygons 10
+  1 pivot (5.44, 23.49, 5.50) axis (1, 0, 0) speed 0.050 crank 0.100 rod 1.000 reach 0.55 polygons 10
+  2 pivot (3.47, 10.50, 3.89) axis (0, 0, 1) speed 2.000 crank 0.000 rod 0.000 reach 0.17 polygons 54
+  3 pivot (5.53, 10.50, 3.89) axis (0, 0, 1) speed 2.000 crank 0.000 rod 0.000 reach 0.17 polygons 54
+  4 pivot (4.50, 7.09, 11.29) axis (0, 0, 1) speed 2.000 crank 0.000 rod 0.000 reach 0.17 polygons 50
+  5 pivot (3.67, 6.16, 14.50) axis (-1, 0, 0) speed 0.050 crank 0.100 rod 1.000 reach 0.55 polygons 10
+  6 pivot (5.33, 2.66, 14.50) axis (1, 0, 0) speed 0.050 crank 0.100 rod 1.000 reach 0.55 polygons 10
+GRATE_BOILER box 19 x 40 x 23 moving 8
+  0 pivot (18.05, 4.29, 15.22) axis (0, 0, 1) speed 2.000 crank 0.000 rod 0.000 reach 0.16 polygons 52
+  1 pivot (18.05, 4.29, 16.70) axis (0, 0, 1) speed 2.000 crank 0.000 rod 0.000 reach 0.21 polygons 62
+  2 pivot (4.27, 3.25, 3.41) axis (0, 0, 1) speed 0.033 crank 0.440 rod 2.200 reach 1.23 polygons 56
+  3 pivot (6.13, 3.25, 3.41) axis (0, 0, 1) speed 0.033 crank 0.440 rod 2.200 reach 1.23 polygons 56
+  4 pivot (7.98, 3.25, 3.41) axis (0, 0, 1) speed 0.033 crank 0.440 rod 2.200 reach 1.23 polygons 70
+  5 pivot (9.83, 3.25, 3.41) axis (0, 0, 1) speed 0.033 crank 0.440 rod 2.200 reach 1.23 polygons 56
+  6 pivot (7.05, 1.90, 21.08) axis (0, 0, 1) speed 2.000 crank 0.000 rod 0.000 reach 0.30 polygons 73
+  7 pivot (7.05, 1.90, 22.66) axis (0, 0, 1) speed 2.000 crank 0.000 rod 0.000 reach 0.34 polygons 70
+  ...
+FIXED_BED_GASIFIER box 16 x 36 x 11 moving 6
+  0 pivot (6.53, 3.71, 6.47) axis (0, 1, 0) speed 0.033 crank 0.255 rod 1.275 reach 0.56 polygons 24
+  1 pivot (8.47, 3.71, 4.53) axis (0, 1, 0) speed 0.033 crank 0.255 rod 1.275 reach 0.56 polygons 24
+  2 pivot (9.32, 9.18, 7.32) axis (1, 0, 1) speed 2.000 crank 0.000 rod 0.000 reach 0.17 polygons 46
+  3 pivot (5.68, 9.18, 3.68) axis (-1, 0, -1) speed 2.000 crank 0.000 rod 0.000 reach 0.17 polygons 46
+  4 pivot (6.81, 27.27, 5.50) axis (0, 1, 0) speed 0.033 crank 0.255 rod 1.275 reach 0.56 polygons 24
+  5 pivot (8.20, 27.27, 5.50) axis (0, 1, 0) speed 0.033 crank 0.255 rod 1.275 reach 0.56 polygons 24

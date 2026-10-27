@@ -1,0 +1,40 @@
+{
+  "date": "2026-10-25",
+  "implementation": "2c9c6d00",
+  "base": "8c008b56",
+  "branch": "codex/sight-glass-bubbles",
+  "tests": 14,
+  "failures_and_errors": 0,
+  "classes": [
+    {
+      "name": "com.wormzjl.icheme.runtime.fluid.SightGlassDisplayTest",
+      "tests": 3
+    },
+    {
+      "name": "com.wormzjl.icheme.runtime.fluid.TankDisplayTest",
+      "tests": 3
+    },
+    {
+      "name": "com.wormzjl.icheme.science.fluid.DeterministicMathSourceTest",
+      "tests": 2
+    },
+    {
+      "name": "com.wormzjl.icheme.science.material.FluidAppearanceTest",
+      "tests": 6
+    }
+  ],
+  "animation_frames": 64,
+  "sheets": [
+    "bubble-sizes.png",
+    "bubble-orientations.png",
+    "nbp-palette.png"
+  ],
+  "component_changes_only_rgb": true,
+  "wire": "sight-glass-2",
+  "checkpoint": 19,
+  "storage_unit": 12,
+  "minecraft_runs": 0,
+  "merge": "remains paused",
+  "jar": "icheme-0.11.2.jar",
+  "jar_sha256": "9a0b5e7194fa5ec9d4d6a8697e3860d8ea860ca6421105b96e279ca1fe57916b"
+}

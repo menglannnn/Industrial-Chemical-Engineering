@@ -1,0 +1,64 @@
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+index 743646b7..72d6054b 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+@@ -2555,12 +2555,22 @@ public final class PassiveStepSolver {
+                 double[][] jacobian=new double[count][2*band+1];residual(p,new double[count],jacobian);
+                 double floor=0;for(int i=0;i<count;i++)floor=Math.max(floor,Math.abs(jacobian[i][band]));floor=Math.max(floor*1e-12,Double.MIN_NORMAL);
+                 for(int i=0;i<count;i++)if(Math.abs(jacobian[i][band])<floor)jacobian[i][band]=-floor;
+-                double[] step=solveBanded(jacobian,band,residual);boolean accepted=false;double largest=0,took=0;
++                double[] step=solveBanded(jacobian,band,residual);boolean accepted=false,swept=false;double largest=0,took=0;
+                 if(step!=null) {
+                     for(double s:step)largest=Math.max(largest,Math.abs(s));
+                     double limit=Math.min(1,.5*(high-low)/Math.max(largest,Double.MIN_NORMAL));
++                    // A step longer than half the hull puts the linear model's root outside the island's pressures: a flat row's, a
++                    // junction whose every line is choked or one-way, and the sweep bisects such a junction onto its root. So the
++                    // sweep goes first there and the Newton only where it does not improve. Cold fuzz seed 430's mint: in its second
++                    // round the steps were 1e13 to 1e16 Pa, the line search took 4e-8 of each for 1e-7 of the merit as a descent,
++                    // and thirty iterations never reached the sweep (on the secants over 1e-7 of the pressure the tenth escaped by chance).
++                    if(limit<1&&sweeps<12) {
++                        swept=true;sweeps++;double[] was=p.clone(),wasResidual=residual.clone();sweep(p);double next=residual(p,residual,null);
++                        if(next<merit){merit=next;accepted=true;}
++                        else{System.arraycopy(was,0,p,0,nodes);System.arraycopy(wasResidual,0,residual,0,count);}
++                    }
+                     double[] trial=p.clone(),trialResidual=new double[count];
+-                    for(double fraction=limit;fraction>1e-3*limit;fraction*=.5) {
++                    for(double fraction=limit;!accepted&&fraction>1e-3*limit;fraction*=.5) {
+                         for(int i=0;i<nodes;i++)if(unknown[i]>=0)trial[i]=Math.clamp(p[i]-fraction*step[unknown[i]],low,high);
+                         double trialMerit=residual(trial,trialResidual,null);
+                         if(trialMerit<(1-1e-4*fraction)*merit){System.arraycopy(trial,0,p,0,nodes);System.arraycopy(trialResidual,0,residual,0,count);merit=trialMerit;accepted=true;took=fraction;break;}
+@@ -2569,7 +2579,7 @@ public final class PassiveStepSolver {
+                 // Where the Newton step does not descend (a cap or a one-way kink), one Gauss-Seidel sweep, kept only where it
+                 // improves on the Newton's point: a sweep across a choked junction's flat range can walk away from a root the
+                 // Newton has all but reached, and then neither method improves on the other.
+-                if(!accepted){if(++sweeps>12)break;double[] was=p.clone(),wasResidual=residual.clone();double wasMerit=merit;sweep(p);merit=residual(p,residual,null);
++                if(!accepted){if(swept||++sweeps>12)break;double[] was=p.clone(),wasResidual=residual.clone();double wasMerit=merit;sweep(p);merit=residual(p,residual,null);
+                     if(!(merit<wasMerit)){System.arraycopy(was,0,p,0,nodes);System.arraycopy(wasResidual,0,residual,0,count);merit=wasMerit;break;}
+                     double moved=0;for(int i=0;i<nodes;i++)if(unknown[i]>=0)moved=Math.max(moved,Math.abs(p[i]-was[i])/Math.max(1,Math.abs(was[i])));
+                     if(moved<1e-12)break;}
+@@ -2651,7 +2661,13 @@ public final class PassiveStepSolver {
+             return true;
+         }
+         /** The mixture per kilogram at {@code pressure} with the delivered specific enthalpy: the engine's PH answer, else a
+-         * temperature bisection inside the streams' window (20 K either side, inside the numerical box: no data range narrows a seed, owner rule of 2026-10-16). */
++         * temperature bisection inside the streams' window (20 K either side, inside the numerical box: no data range narrows a seed, owner rule of 2026-10-16).
++         * The bisection ends on the bracket side whose state is nearer the delivered enthalpy. Water alone (no engine answer) has
++         * no two-phase TP state at its own vapour pressure: its enthalpy jumps by the latent heat across the saturation, and the
++         * midpoint's side was round-off. Bundled fuzz seed 889: water reaching a pump suction the balance holds at its vapour
++         * pressure, 0.06 K warmer from the friction of its 309 kPa descent (1e-4 of it flashes), was stated all steam, and the
++         * step's junction held a steam stock no pass could empty; the liquid side is 1e-4 of the latent heat away, the steam
++         * side all of it. */
+         private FluidThermodynamics.State mixed(double[] amounts,double mass,double heat,double tMix,double tLow,double tHigh,double pressure,Runnable checkpoint) {
+             double[] y=new double[amounts.length];for(int c=0;c<y.length;c++)y[c]=amounts[c]/mass;
+             double hydrocarbon=0;for(int c=0;c<y.length-1;c++)hydrocarbon+=y[c];
+@@ -2662,7 +2678,9 @@ public final class PassiveStepSolver {
+                 double t=.5*(lower+upper);var point=model.flashTP(t,pressure,y.clone(),checkpoint);
+                 if(point.enthalpy()/point.mass()<heat/mass)lower=t;else upper=t;
+             }
+-            return model.folded(model.flashTP(.5*(lower+upper),pressure,y.clone(),checkpoint),true);
++            var below=model.flashTP(lower,pressure,y.clone(),checkpoint);var above=model.flashTP(upper,pressure,y.clone(),checkpoint);
++            double target=heat/mass;
++            return model.folded(Math.abs(below.enthalpy()/below.mass()-target)<=Math.abs(above.enthalpy()/above.mass()-target)?below:above,true);
+         }
+     }
+     // ======== end of the t44 balance ========

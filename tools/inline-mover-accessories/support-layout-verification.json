@@ -1,0 +1,14 @@
+{
+  "date": "2026-10-25",
+  "implementation": "b2269322",
+  "branch": "codex/inline-mover-supports",
+  "tests": 1,
+  "failures_and_errors": 0,
+  "target": "InlineMoverAccessoryTest.eligibilityAndMeshesCoverBothAxesHeadingsAndDiameterExtremes",
+  "native_views": 242,
+  "minecraft_runs": 0,
+  "merge": "paused at owner request",
+  "integration_target": "ff9fdfedfec01b4cf44f6364804f358e7af6629d",
+  "local_target_files_preserved": 10,
+  "jar_sha256": "af787772ea9ba71e92d4f76918da465f8c2f21815aaff6cb711af4292bfb59cf"
+}

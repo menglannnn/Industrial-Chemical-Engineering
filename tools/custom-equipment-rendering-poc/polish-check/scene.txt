@@ -1,0 +1,18 @@
+gamemode creative
+tp @s 445 -55 -12
+createcheme equipment place 400 -60 0 3 4 vertical 2 north
+createcheme equipment place 408 -60 0 3 4 vertical 4 north
+createcheme equipment place 416 -60 0 2 4 vertical 3 north
+setblock 420 -60 -8 createcheme:fluid_pipe[facing=east,east=true]
+setblock 421 -60 -8 createcheme:fluid_pipe[facing=east,west=true,east=true]
+setblock 422 -60 -8 createcheme:fluid_pipe[facing=east,west=true]
+setblock 424 -60 -8 createcheme:fluid_pipe[facing=east]
+createcheme equipment unit 440 -60 0 air_cooler 3 6 5 north
+createcheme equipment unit 454 -60 0 air_cooler 2 4 5 north 3 2
+createcheme equipment unit 470 -60 0 air_cooler 1.5 4 5 north
+createcheme equipment unit 480 -60 0 ejector 0.05 1 1 north
+createcheme equipment unit 483 -60 0 ejector 0.1 1 1 north
+createcheme equipment unit 486 -60 0 ejector 0.2 1 2 north
+createcheme equipment unit 490 -60 0 ejector 0.25 1 2 north
+setblock 400 -60 -24 createcheme:equipment_constructor[facing=south]
+setblock 410 -60 -24 createcheme:equipment_constructor[facing=south]

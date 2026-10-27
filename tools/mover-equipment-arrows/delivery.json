@@ -1,0 +1,17 @@
+{
+  "implementation": "7cb42268",
+  "delivery": "2fe26e21",
+  "branch": "codex/mover-arrows-on-equipment",
+  "base": "b70e92aa",
+  "compile_jar": "PASS",
+  "connection_cases": 120,
+  "render_cases": 28,
+  "tests": "not run; minimum verification preference",
+  "integration": "not requested for this follow-up",
+  "versions": {
+    "mod": "0.11.2",
+    "checkpoint": 18,
+    "unit": 11
+  },
+  "client": "old integration client exited normally at 16:23:54; no client launched for this feature branch"
+}

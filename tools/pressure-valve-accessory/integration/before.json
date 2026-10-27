@@ -1,0 +1,50 @@
+{
+  "target": "D:\\Minecraft\\Modding\\1.21\\CreateChemE\\.claude\\worktrees\\rename-ichem-mod-30e50c",
+  "branch": "claude/floating-roof-tanks-81d68b",
+  "head": "b70e92aa84ab180b854bcb173c84d1b578132f9f",
+  "incoming": "4ad6dc979fe0218b0808d0e5e8ee27ca867bdbb8",
+  "files": {
+    "src/main/java/com/wormzjl/icheme/science/equipment/CentrifugalCompressorDesign.java": {
+      "status": " M",
+      "sha256": "537596719e5a3d42861c91a695fadd6556a72687ce36c5aecdea6b24a18a448e"
+    },
+    "src/main/java/com/wormzjl/icheme/science/equipment/CondensingTurbineDesign.java": {
+      "status": " M",
+      "sha256": "2e3130c2fef176f00ab7553ff09f2e5ac8deee353a70a73208d087f40cc7a749"
+    },
+    "src/main/java/com/wormzjl/icheme/science/equipment/DelayedCokerPlan.java": {
+      "status": " M",
+      "sha256": "a56b8a6c629efa628f0318aced2386155f5f72584dd4dc4b277a2c8df68b7ff8"
+    },
+    "src/main/java/com/wormzjl/icheme/science/equipment/EbullatedBedReactorDesign.java": {
+      "status": " M",
+      "sha256": "9403719911f0246e31daf1be77ea4191928aed3223182b5e6723628870b5580f"
+    },
+    "src/main/java/com/wormzjl/icheme/science/equipment/GrateBoilerDesign.java": {
+      "status": " M",
+      "sha256": "f0b62acd4f44a3006084717141997c830c06d58004868ca24c970cac0c9ecd8f"
+    },
+    "src/main/java/com/wormzjl/icheme/science/equipment/HydroprocessingParts.java": {
+      "status": " M",
+      "sha256": "9514589bde905719336ceadc0574216674e097673af34ab9de18592f509df983"
+    },
+    "src/main/java/com/wormzjl/icheme/science/equipment/ProcessUnit.java": {
+      "status": " M",
+      "sha256": "d6e4b1f1b29452ab60f00db83dfae759f73c621f5da7c910e75aeb784aa1212a"
+    },
+    "src/main/java/com/wormzjl/icheme/science/equipment/ShapeRasterizer.java": {
+      "status": " M",
+      "sha256": "d5dca34a0c67e30601f37404d4719517ec9f266a0e7ce2fcda41671c749ac975"
+    },
+    "src/main/java/com/wormzjl/icheme/science/equipment/TrickleBedReactorDesign.java": {
+      "status": " M",
+      "sha256": "27eeb1d8689b89ab0627eb79153ab7c8c5dba7c8f103d9adc9dc9c3ab13f5ae9"
+    },
+    "src/test/java/com/wormzjl/icheme/science/equipment/TmpDiagTest.java": {
+      "status": "??",
+      "sha256": "0cb17707bc30c77a825e610243166a14bbbd110ede6a010bd2b869368b650a0c"
+    }
+  },
+  "overlap": "src/main/java/com/wormzjl/icheme/science/equipment/ProcessUnit.java",
+  "expectedNormalizedSha256": "9c1d61cf7c1a695a455a46babb89e1494d3620b3ce4a895fe1a3756b612f7b44"
+}

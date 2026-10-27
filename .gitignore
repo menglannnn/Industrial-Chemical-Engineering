@@ -70,8 +70,6 @@ CLAUDE.md
 /.mcp.json
 
 # Local working material (owner decision 2026-10-14): documents, tools and research are not tracked. examples/ stays tracked (AGENTS.md).
-/documentation/
-/tools/
 /research/
 /examples/cold-flow/
 /examples/audit_residue_viscosity_units.py

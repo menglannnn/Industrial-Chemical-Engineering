@@ -1,0 +1,24 @@
+diff -ru a/src/main/java/com/wormzjl/createcheme/science/fluid/network/InventoryEquilibrium.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/InventoryEquilibrium.java
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/InventoryEquilibrium.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/InventoryEquilibrium.java
+@@ -188,7 +188,7 @@
+                 // Decisions D28 A', D39 and D40 A: a failed closure's last iterate is a trial layout, not a state: the phases it
+                 // empties are folded, and it proposes nothing. Laid out again with the solids of the pass's state (the vessel's
+                 // own closure: its inventory's).
+-                var checked=model.folded(closure.iterate(state,failure.lastVariables()),false,from);
++                var checked=model.folded(closure.iterate(state,failure.lastVariables()),false);
+                 if(regime(checked).equals(regime(state)))throw failure;
+                 state=checked.withSolids(state.solids());continue;
+             }
+diff -ru a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+@@ -2238,7 +2238,7 @@
+     private List<FluidThermodynamics.State> foldedIterate(PassiveNetwork graph,List<FluidThermodynamics.State> states) {
+         for(int i=0;i<states.size();i++) {
+             var state=states.get(i);var node=graph.reservoirs().get(i);if(node.fixed())continue;
+-            var folded=model.folded(state,node.junction(),inputStates.get(i));
++            var folded=model.folded(state,node.junction());
+             if(folded==state)continue;
+             var corrected=new ArrayList<>(states);corrected.set(i,folded);return corrected;
+         }

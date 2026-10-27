@@ -1,0 +1,12 @@
+# WTI pump fix integration review
+
+2026-10-24. Owner authorized merge and running client. Fast-forward a591404f -> cb89f23a on claude/floating-roof-tanks-81d68b; source codex/wti-pumping-rate-hold. No main merge/version bump (0.11.2).
+
+- Fixed phase-inconsistent starts specifically when a pump/compressor limit mode carries; passive seeding and all physical equations remain unchanged. Accepted pump limits/refusals are normal device ERROR statuses; actual unsolved island status remains visible.
+- Nine focused tests pass, including WTI 1.5 -> 2 m3/s and component/energy conservation. Disabled-rule test fails as required and restores exact source bytes. Final required unit gates retain only five known baseline failures (1368 quick/four, 185 slow/one). Existing GameTest sources and jar compile after the final inlet-message correction.
+- Final scope has no new held world or increased hold publication in 1200 matched cases (seeds 1-200 and 401-600, three distributions). Cold 183/555 are clean. One prior complete-point full campaign/reference lane was used; its passive-loop expansion was then removed, so it is not represented as a second full qualification of final source. Exact chain-100 zero deviation and 33 junction references were read once. Fresh GameTests were incomplete at the bounded 180 s, with four failures/timeouts; no full-green claim.
+- All ten pre-existing local equipment/test files match SHA-256 before/after. No stash, staging or commit of local files; no overlap with feature paths; ignored tracked file check empty. Target jar passes with those edits retained.
+- Ordinary runClient is left running in the target run directory (PID 15508, session 85707), with a Minecraft NeoForge window and render/resource initialization complete. No user world opened or desktop keyboard/mouse input sent by the agent. No test suite/campaign overlapped this client.
+- Code-guide snapshots/contracts, batch/tool indexes and Unreleased changelog are updated. Offline probes, traces, cohorts, preservation manifests, final focused evidence and startup logs are canonical in tools/wti-pumping-rate-hold/; compressed archive wti-pump-fix-logs-2026-10-24.tar.gz. No tracked diagnostic tooling detached or gate-suite scope changed.
+
+Owner manual check: open the saved current-format world, allow the existing scheduled retry/publication, raise WTI pumping from 1.5 to 2 m3/s, and verify network advancement with the pump pressure-limit error. Also check cavitation, unsuitable inlet, Off, recovery and that other equipment views remain unaffected.

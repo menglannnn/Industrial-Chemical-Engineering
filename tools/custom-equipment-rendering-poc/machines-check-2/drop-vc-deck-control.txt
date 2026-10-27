@@ -1,0 +1,2 @@
+effect give @s minecraft:instant_health 1 5
+tp @s 685.476 -49.21 2.089 -101 0

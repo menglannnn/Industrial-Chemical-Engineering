@@ -1,0 +1,119 @@
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+index 13f73e17..475d7c22 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+@@ -581,10 +581,7 @@ public final class PassiveStepSolver {
+                 // at a stalled point are -1.14e-6 kg/s on a line whose generator drives it
+                 // forwards, and reading them as backflow let the tank's nitrogen into both of the
+                 // filter's zero-holdup junctions; see documentation/JUNCTION_PHANTOM_TRACE.md.
+-                // Owner decisions D28 A' and D39: the same holds for its phases. The iterate's check folds what the iterate
+-                // empties and proposes nothing (cold seed 430: TP answers at a junction on the 1 Pa box floor seeded later
+-                // passes with 13 300 m3 of gas at 51 K, and a third fluid phase at 17 K was held about a non-state).
+-                var changedSeeds=foldedIterate(graph,equations.states(failure.lastVariables()));
++                var changedSeeds=phaseCorrection(graph,equations.states(failure.lastVariables()),checkpoint,null,foldedPhases.clone());
+                 // Decision D11: a phase a vessel's ports draw at their full capacity leaves the vessel within the step; a
+                 // pass whose seed still holds it may have no root (see drainedSeeds).
+                 if(changedSeeds==null)changedSeeds=equations.drainedSeeds(checkpoint);
+@@ -2131,9 +2128,9 @@ public final class PassiveStepSolver {
+         return mode==FlowControl.Mode.VELOCITY_LIMITED||mode==FlowControl.Mode.PUMP_VELOCITY_LIMIT||mode==FlowControl.Mode.VALVE_VELOCITY_LIMIT;
+     }
+     /**
+-     * The outer phase check of a converged pass's point, node by node ({@link FluidThermodynamics#phaseCheck}, owner
+-     * decisions D25 and D26): a phase leaves a node only when the solve empties it (the trace fold of the point, which the
+-     * reconstruction has already applied, and the vanishing rule of owner decision
++     * The outer phase check of a pass's point, node by node ({@link FluidThermodynamics#phaseCheck}, owner decisions D25 and
++     * D26): a phase leaves a node only when the solve empties it (the trace fold of the point, at a converged point whose
++     * reconstruction already folded it as at an unsuccessful pass's last iterate, and the vanishing rule of owner decision
+      * D38 C: a phase under {@link FluidThermodynamics#VANISHING_SHARE} of the node's fluid amount and at a smaller share than
+      * at the step's start, {@link #inputStates}, in a junction as in a vessel), a phase the node's TP answer holds and
+      * the node does not is added at the node's own split (a junction's PH answer, a vessel's closure of what the point
+@@ -2146,9 +2143,8 @@ public final class PassiveStepSolver {
+      * {@code foldedPhases}, when given, holds per node the phases ({@link #phaseCode} bits) the trace rule removed in this
+      * solve and those a node's own split refused (A85; the D26 amendment): the check does not add them back, and writes
+      * there a phase its fold removes from a converged point and a phase its own split refuses there, so the sequence of
+-     * passes stays finite and a refused phase costs one own split per solve. A polished or reused point is checked on a
+-     * copy. A failed pass's last iterate is not checked here: it is no state, and it is only folded ({@link #foldedIterate},
+-     * owner decisions D28 and D39).
++     * passes stays finite and a refused phase costs one own split per solve. A failed pass's iterate is checked on a copy
++     * (decision D28 A'): its check is a trial layout, which reads the record and never writes to it.
+      */
+     private List<FluidThermodynamics.State> phaseCorrection(PassiveNetwork graph,List<FluidThermodynamics.State> states,Runnable checkpoint,FluidThermodynamics.Prepared[] prepared,int[] foldedPhases) {
+         for(int i=0;i<states.size();i++) {
+@@ -2162,24 +2158,6 @@ public final class PassiveStepSolver {
+         }
+         return null;
+     }
+-    /**
+-     * The check of a failed pass's last iterate, node by node (owner decisions D28 A' and D39,
+-     * {@link FluidThermodynamics#folded(FluidThermodynamics.State,boolean,FluidThermodynamics.State)}): the iterate with the
+-     * phases it empties folded, by the trace fold and the vanishing rule against the step's start ({@link #inputStates}),
+-     * one node per call as {@link #phaseCorrection} corrects; null when it empties none. A failed iterate is not a state:
+-     * this trial layout neither reads nor writes the A85 record, and it adds no phase, so no TP answer or own split is
+-     * formed and no hold is raised at a point the network never reaches. A phase the pass needs appears at a converged
+-     * point's check or at a smaller step.
+-     */
+-    private List<FluidThermodynamics.State> foldedIterate(PassiveNetwork graph,List<FluidThermodynamics.State> states) {
+-        for(int i=0;i<states.size();i++) {
+-            var state=states.get(i);var node=graph.reservoirs().get(i);if(node.fixed())continue;
+-            var folded=model.folded(state,node.junction(),inputStates.get(i));
+-            if(folded==state)continue;
+-            var corrected=new ArrayList<>(states);corrected.set(i,folded);return corrected;
+-        }
+-        return null;
+-    }
+     /**
+      * Owner decision D26: a vessel's own split at a pass's point {@code state} ({@link InventoryEquilibrium#split}), from
+      * {@code start}: the closure of what the point holds, its amounts and internal energy, the wall's work booked from its
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/FluidThermodynamics.java b/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/FluidThermodynamics.java
+index 3dd3bb03..11531c2f 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/FluidThermodynamics.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/FluidThermodynamics.java
+@@ -853,17 +853,6 @@ public final class FluidThermodynamics {
+      * water vapour in the free water. Nothing leaves the node and nothing is booked, as for the trace fold.
+      */
+     public State folded(State state,boolean junction){return folded(state,junction,0);}
+-    /**
+-     * The check of a failed pass's last iterate (owner decisions D28 and D39): {@link #folded(State,boolean)} with the
+-     * phases vanishing since {@code from} folded too (D38 C, {@link #vanishing}), and nothing else. A failed iterate is not
+-     * a state, so its check only folds what the iterate empties and proposes nothing: no TP answer and no own split of a
+-     * non-state, so no phase is added and no typed hold is raised there. A phase the pass needs appears at a converged
+-     * point's check ({@link #phaseCheck}) or at a smaller step. Cold seed 430's tank, fed LNG and CO2-rich gas at
+-     * 1 atm, fills at its bubble point near 112 K; its failed iterates held a junction on the numerical box's 1 Pa floor,
+-     * whose PH answer seeded it at 51 K with 13 300 m3 of gas, and the tank's iterates then fell to 17 K, where the TP
+-     * answer raised a third fluid phase about a state the network never reached.
+-     */
+-    public State folded(State state,boolean junction,State from){return folded(state,junction,from==null?0:vanishing(from,state));}
+     /** {@link #folded(State,boolean)} with the phases {@code vanishing} names folded as traces too (owner decision D38 C,
+      * {@link #foldTracePhases(double[],double[],double[],int)}). */
+     private State folded(State state,boolean junction,int vanishing) {
+@@ -896,11 +885,10 @@ public final class FluidThermodynamics {
+      * <li>a phase leaves only when the solve empties it: the trace fold ({@link #folded}, D34) removes a phase {@code state}
+      * holds below the trace share, and a phase it holds below {@link #VANISHING_SHARE} and at a smaller share than at
+      * {@code from} is vanishing and is folded by the same rule (owner decision D38 C: {@link #vanishing}, the D26
+-     * amendment's test given to the solve's own point), in a junction as in a vessel, also where {@code state} is a
+-     * vessel closure's unsuccessful last iterate (D28 A'; a step's failed iterate is only folded,
+-     * {@link #folded(State,boolean,State)}, owner decision D39). A phase the fold removed as vanishing is not proposed
+-     * again by this check, so the fold and the proposal below judge it by one test (the TP answer at the folded point
+-     * otherwise offers it back at once, the pass is laid out as before, and the pass loop cycles);</li>
++     * amendment's test given to the solve's own point), in a junction as in a vessel, also where {@code state} is an
++     * unsuccessful solve's last iterate. A phase the fold removed as vanishing is not proposed again by this check, so
++     * the fold and the proposal below judge it by one test (the TP answer at the folded point otherwise offers it back at
++     * once, the pass is laid out as before, and the pass loop cycles);</li>
+      * <li>a node holding every phase its material can form (both hydrocarbon phases or none, both water phases or none)
+      * has none to add, and no TP answer is formed. A stand-in liquid ({@link #condensedShareOnly}: a crystal's share
+      * carried condensed between refreshes, crystal species only beside a vapour) is no liquid of the node's own (owner
+@@ -934,10 +922,10 @@ public final class FluidThermodynamics {
+      *
+      * <p>{@code record}, {@code at}: the solve's A85 record of the node's phases ({@link #phaseBits}), {@code record[at]}:
+      * read as the phases the solve removed or refused, which are not added, and written with the phases this check removes
+-     * (the fold, a phase the seed lacks) and refuses; {@code null} reads none and writes nothing. A trial check (a vessel
+-     * closure's failed iterate, decision D28 A') passes a copy. {@code junction}: whether the node is a pipe junction (the
+-     * carried gas of D41 in the fold, its own split the PH answer); {@code from}: the node's state where the solve that
+-     * reached {@code state} started (a step: the node at the step's start; a vessel's closure: the state it closes from), which
++     * (the fold, a phase the seed lacks) and refuses; {@code null} reads none and writes nothing. A trial check (a failed
++     * iterate, decision D28 A') passes a copy. {@code junction}: whether the node is a pipe junction (the carried gas of
++     * D41 in the fold, its own split the PH answer); {@code from}: the node's state where the solve that reached
++     * {@code state} started (a step: the node at the step's start; a vessel's closure: the state it closes from), which
+      * the vanishing rule reads, or {@code null} for none; {@code prepared}, when given, is the node's prepared temperature
+      * state (used only at exactly that temperature); {@code vesselSplit}, a vessel's own split from a start holding the
+      * phases to lay it out with, or {@code null} where the vessel's flash fails (ignored for a junction).

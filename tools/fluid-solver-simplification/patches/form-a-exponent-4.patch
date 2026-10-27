@@ -1,0 +1,11 @@
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+@@ -1676,7 +1676,7 @@
+      * law for every mode that throttles ({@link #saturates}: passive, a pump on its head or suction limit, an open valve); a
+      * pump at its target and a regulating valve state their own flow or pressure and are not saturated.
+      */
+-    static final double CAP_EXPONENT=8;
++    static final double CAP_EXPONENT=4;
+     /** The transported flow of the law's flow {@code qLaw} under the cap {@code qCap}; {@code qLaw} itself without a cap. */
+     static double saturated(double qLaw,double qCap) {
+         if(!(qCap>0)||!(qCap<Double.POSITIVE_INFINITY))return qLaw;

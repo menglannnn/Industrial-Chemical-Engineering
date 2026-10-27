@@ -1,0 +1,4 @@
+com.wormzjl.createcheme.science.fluid.solver.DirectLiquidJacobianRowsTest
+com.wormzjl.createcheme.science.fluid.solver.PhaseLayoutTest
+com.wormzjl.createcheme.science.fluid.solver.SparseNewtonTest
+com.wormzjl.createcheme.science.fluid.solver.TraceTruncationLayoutTest

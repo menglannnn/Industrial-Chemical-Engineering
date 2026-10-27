@@ -1,0 +1,2 @@
+tp @s 520 -50 -30 0 0
+createcheme equipment column 520 -60 0 6 20 3 north water no_ejector kettle

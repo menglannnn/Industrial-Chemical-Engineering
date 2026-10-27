@@ -1,0 +1,44 @@
+# M4b: the design review's forms, the choice, its gates and fixes (2026-10-16)
+
+Batch `2026-09-24-coolprop-low-temperature`, branch `claude/unified-thermo-port` (review `UNIFIED_THERMO_PORT_REVIEW.md`); tools and logs `tools/unified-thermo-port-forms/`. Code guide: no change here (a merge task).
+
+**Physics.** A vessel on a phase boundary keeps its phase set: an LNG tank liquid-full beside 68 kg of dry ice at its bubble point does not boil (its pressure rises and holds the liquid; seed 48); a drop in a gas tank at its dew point beside 0.03 kg of frost re-evaporates (seed 183). The TP flash at a step's point says "a phase"; the vessel's own closure, at its energy and volume, says "none", and that is the steady state.
+
+| Form (cold: pilot package, 200 seeds; bundled: random / defaults) | cold clean | Newton | own splits | refusals | cold hold classes | bundled |
+|---|---|---|---|---|---|---|
+| head 76e87740 | 179 | 4.63 M | 160 518 | - | B3 C6 E5 3 E6 2 E7 4 F3 | 195 / 200 |
+| A (D31 A, D26 amendment, D31 B) | 184 | 4.41 M | 146 236 | 55 994 | B1 C3 E5 2 E7 6 F3, new E9 (55) | as head |
+| A + D33 | 183 | 4.35 M | 143 924 | 55 022 | as A, 101 E5 (D33 draws gas 95 times) | as A |
+| form 4 (chosen) | 183 | 2.36 M | 64 460 | 23 793 | B3 C2 E5 2 E7 6 F3, new E8 (48) | as A |
+
+**F1.** Liquid CO2 let down into an empty 1 bar tank flashes to dry ice and vapour at 194.6 K; until the refresh the frost's latent heat rides on the stand-in liquid. D31 B took the stand-in's vote away, so the step had no condensed share for that heat and the vapour fell below 90 K (M3's let-down gate fails at 40a44732 with 237 domain rejections, passes at 91a2c14a).
+
+**Choice: form 4** (owner's go 2026-10-16): (i) a stand-in is a phase like any other, decided by the vessel's own split (58d9dac4); (ii) a phase the vessel's own closure drives to nothing (under 1e-6 of its moles and shrinking) leaves (2ab43f23). Cold Newton -49 %, own splits -60 %; bundled identical to A. Seeds 48 / 183: Newton 4 012 976 / 356 400 (head), 3 822 424 / 299 059 (A), 280 238 / 212 758 (form 4); own splits 142 079 / 15 490 to 1 738 / 4 272. Moves: 110 C to B, 101 E5 to B, 77 E5 to F, 55 E9 to E5, 48 F to E8. E8 traced (seed 48): after the fold of the tank's last bubble (1e-9 of its moles) the reconstruction's closure check (1e-8) reads 1.89e-8, 10 224 times; the island recovers and ends FULL.
+
+**Gates** (each run alone with its rule off, `rule-off/apply.pl`; logs `gates/14-33`):
+- (a) `aLiquidFullLngTankBesideDryIceAtItsBubblePointHoldsNoVapour`: refusals off (final code): "the vapour is refused for the solve" 0 of 2.
+- (a') `aLiquidFullLngTankWhoseClosureStopsShortOfNothingHoldsNoVapour`: without (ii), or refusals off: active-set cycle.
+- (b) `aFrostedGasTanksStandInIsDecidedByItsOwnSplitAndRefused`: without (i): no own split decides the stand-in. F1: M3's let-down gate fails without (i), passes with it.
+- (c) `aFrostingTanksSideOutletPassesGasAndKeepsTheFrost`: gas half off, the gas does not leave; rest half off, 199 kPa across the closure reads as rest.
+- D32 `LoneBoundaryJoinTest`: without the fix the generator sits in two islands ([4, 11]); passes on main with the fix.
+- Typed holds: `NetworkPhaseEngineTest#aSplitWhoseProductStabilityIsUnresolvedIsHeldTyped` (seed 55's arrival point; off: a plain refusal); `WaterIntoCryogenicMethaneTest` now asserts the hold names the vessel (off: no node).
+- F4 `aRefreshFreezesCrystalMassAtTheSizeOfTheLiquidItFrozeFrom`: phi after the freeze gives the slush 0.25 mm (0.513 mm expected); phi before the freeze without the no-liquid rule gives frost 1.01 mm.
+
+**Fixes after the choice.** 15220a07 D32: a pipe joining a lone boundary ends its island of one (cherry-picks cleanly onto ffeafe8a). 81129851 typed holds: `VesselCrystals.frozen` is a CRYSTAL_STEP hold the refresh names; the engine prefixes an unresolved product `UNRESOLVED_PRODUCT` and the network holds it as THREE_PHASES (a seed keeps its guess, an island names the node); `Nonconvergence.at` names the hold a failed closure carries (the water-domain gap, same family). 60b62694 F4: phi is read from the liquid before the freeze, 0 where none is left beside the crystals (frost, snow): methane with 30 % CO2 freezes at 0.51 mm, frost at 0.25 mm.
+
+**Full test** (60b62694): 1457 tests, 0 failures, 3 min 11 s. Printed lines 8586 (M4: 8583); 10 classes move, each bisected on the lane (61a1eba0, 0b995f1c, 40a44732, c9e7c128, 2ab43f23, head); no reference re-recorded:
+- D31 A (an empty bag's own split): EmptyTankFillsTest 73, CarriedGasTest 1, TracePhaseFoldTest 1, all at rounding (at most 1e-12).
+- D33: CompressorTest 2 (a dry donor's bulk end passes gas: no NO_LIQUID_CARRIER closures), FullTankSolidsEventTest 3 (no t = 0 closures; the tank moves 0.01 Pa, 3e-5 of 510 kg).
+- Form 4 (ii): PhasePortPriorityTest 40 of 4713 (oil-water overflow slices 43-79: the exhausted gas cap is refused, its active-set cycle goes, 0.26 g of 1.61 kg of gas leaves as oil; the port order holds).
+- D32: VoidColumnTest (the void's stale island of one is gone; flows identical), InlineFilterLineHoldTest (island and node ids +2; states identical).
+- F4: CrystalDepositionIslandTest (d), 70 % CO2 in ethane: 0.870 to 0.917 mm. PrecipitatedSolidsTest: four new gate lines.
+
+**F2, a pump under a vented LNG slurry tank never starts (owner's fix A, ed2cdff4).** Physics: at 5 L/s the pump draws about 2.2 kg/s of slurry, 2.55 m/s in the 5 cm bore, above the 1.02 m/s that keeps 0.25 mm dry ice moving. Code: the mint left the suction junction at the compile's placeholder, the 298 K nitrogen of the island's first boundary. `seedAt` swallowed no flash failure: it declined before any flash, because its window is clipped to each carried component's fluid range, CO2's from its triple point (216.59 K), while the pilot admits CO2 down to 90 K; LNG at 111.6 K with CO2 dissolved found no window (the round stops on the same clip). The t0 rate solve converted the target at 1.1 kg/m3 (0.006 kg/s, 7e-3 m/s), the line closed on deposition at t = 0, and the next slice read "inlet dry" through that closure.
+- Fix: a mover's suction line is minted from the stream it draws (the supplier's own phase at its own T and P, built without a flash, kept through the balance-pressure re-seed); the slice's inlet decision and the device view read the closures open (D33, `NetworkReduction.reopened`).
+- Gate `SlurryTankPumpTest`: from the mint the pump draws 2.17 kg/s through an open line (junction minted at 111.65 K, 432 kg/m3); a line the 0.5 L/s target closed on deposition (0.25 m/s) opens under the raised 5 L/s. Stream seed off (`f2seed`): junction 298.15 K, 1.1 kg/m3, both fail (DEPOSITION at 7.1e-3 m/s, 0 kg/s). Closures read as they stood (`f2inlet`): the second fails, INLET_WRONG_PHASE.
+
+**D23-1 gate (c63e9a8b)** `LiquidCo2LetDownTest`, built as the world forms the island (a one-tick job, then 5 s jobs). 4 mm: 184.81 K and 101.3 to 101.5 kPa at every job, 2.0 kg of dry ice after 20 s. 5 cm: 184.81 K and 101.3 kPa after the tick, 1.69 kg of dry ice at the refresh; then about 90 kg/s floods the tank through its 5 cm vent at 1.37 MPa and 242 K, above the triple point, and the dry ice melts (the rig read 1.39 MPa, 242.6 K at 2ab43f23), so 184.8 K holds at 5 cm for the first tick only. Form 4 (i) off: both hold at the second job, "CarbonDioxide temperature < 90 K".
+
+**Checks after the report** (no second full test; M5's gates run covers it). The four new gates and 51 affected classes (pump, inlet, solids transport, mint, M3's) on the index lane: 327/327 (head 60b62694: 323/323); printed lines 2 of 1161 moved, both PumpCavitationTest at rounding (1e-14 Pa, a 1e-23 kg/s residual). Bundled quick check (41, c63e9a8b): 195/200 random, 200/200 defaults, the seeds and classes of form 4's check (22); the island lists differ by D32's removed islands of one. Since check 22 restIntervals rose 12 % in both distributions and phase seeds by 84 in random; D32, the typed holds and F4 lie between, and F2 cannot raise either (it leaves the phase checks alone, and open closures only free movers, which ends rests). Not attributed further: one check.
+
+**Open.** E8: re-close the restated vessel after the fold rather than check it (proposition). D33 on islands with no filter, solids or liquid: the plain integrate keeps the graph's closure masks, so such a closure survives at zero flow (gate (c) asserts the rest test only). The second refresh per interval is kept (about 1 % of Newton; proving bit identity needs another pair of quick checks). F2's root: `seedAt`'s window and the round's clip read the fluid ranges where the domain admits the crystal floors, so a pump fed through a branch of cold CO2-carrying streams still mints on the placeholder (proposition: clip both to the domain's own floor per component, one `FluidDomain` accessor).

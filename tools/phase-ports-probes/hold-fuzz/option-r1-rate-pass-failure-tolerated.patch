@@ -1,0 +1,17 @@
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/network/SolidEventIntegrator.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/SolidEventIntegrator.java
+index deb89abd..b9ace82b 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/SolidEventIntegrator.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/SolidEventIntegrator.java
+@@ -278,7 +278,11 @@ final class SolidEventIntegrator {
+         // connection that carried material last interval carries none in this one.
+         for(int attempt=0;SolidMobility.requiresFull(model,graph)&&attempt<=2*blocked.length;attempt++) {
+             checkpoint.run();graph=masks(graph,blocked);
+-            var candidate=rate(graph,checkpoint);var failure=failed(graph,candidate.states(),candidate.massFlows());
++            // OPTION R1 PROTOTYPE (hold search, not committed): a rate pass that fails declares no closure at t0, as the
++            // interval solver's own port-rate check does; the steps' guards still see every transition.
++            PassiveStepSolver.Result candidate;
++            try{candidate=rate(graph,checkpoint);}catch(SparseNewton.Nonconvergence|IllegalArgumentException failedRate){break;}
++            var failure=failed(graph,candidate.states(),candidate.massFlows());
+             if(failure==null)break;
+             blocked[failure.edge]|=failure.direction;
+             // A cake the last interval's final step left at capacity is declared here, at the next interval's t0, and

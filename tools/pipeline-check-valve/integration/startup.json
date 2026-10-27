@@ -1,0 +1,17 @@
+{
+  "head": "b70e92aa",
+  "pid": 29920,
+  "gradleSession": 42383,
+  "window": "Minecraft NeoForge* 1.21.1 - Singleplayer",
+  "worldInputIssuedByAgent": false,
+  "observedReset": {
+    "fromFormat": 17,
+    "toFormat": 18,
+    "at": "2026-10-24T16:01:26+08:00",
+    "discarded": [
+      "fluid inventories",
+      "controls",
+      "pending events"
+    ]
+  }
+}

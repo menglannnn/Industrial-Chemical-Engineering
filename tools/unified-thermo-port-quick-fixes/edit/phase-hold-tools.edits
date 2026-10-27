@@ -1,0 +1,57 @@
+@@ unified-thermo-port-forms/harness/HoldFuzzTest.java 1
+        if(status.startsWith(ProcessSolveServices.THERMO_DOMAIN))return "c:thermo-domain";
+>>
+        // A phase hold, by its prefix since 2026-10-17 or its old one: literals, so the harness compiles against either code.
+        if(status.startsWith("HELD (phases)")||status.startsWith("HELD (thermo domain)"))return "c:phase-hold";
+@@ unified-thermo-port-forms/harness/HoldFuzzTest.java 1
+"phaseSeeds","phaseSeedFallbacks","phaseRefusals");
+>>
+"phaseSeeds","phaseRefusals");
+@@ unified-thermo-port-forms/harness/HoldFuzzTest.java 1
+"phaseSeeds","phaseSeedFallbacks","phaseRefusals"))
+>>
+"phaseSeeds","phaseRefusals"))
+@@ unified-thermo-port-forms/hold-fuzz-cold/src/HoldFuzzTest.java 1
+        if(status.startsWith(ProcessSolveServices.THERMO_DOMAIN))return "c:thermo-domain";
+>>
+        // A phase hold, by its prefix since 2026-10-17 or its old one: literals, so the harness compiles against either code.
+        if(status.startsWith("HELD (phases)")||status.startsWith("HELD (thermo domain)"))return "c:phase-hold";
+@@ unified-thermo-port-forms/hold-fuzz-cold/src/HoldFuzzTest.java 1
+"phaseSeeds","phaseSeedFallbacks");
+>>
+"phaseSeeds");
+@@ unified-thermo-port-forms/hold-fuzz-cold/src/HoldFuzzTest.java 1
+"phaseSeeds","phaseSeedFallbacks","phaseRefusals"))
+>>
+"phaseSeeds","phaseRefusals"))
+@@ unified-thermo-port-forms/hold-fuzz-bundled/src/HoldFuzzTest.java 1
+        if(status.startsWith(ProcessSolveServices.THERMO_DOMAIN))return "c:thermo-domain";
+>>
+        // A phase hold, by its prefix since 2026-10-17 or its old one: literals, so the harness compiles against either code.
+        if(status.startsWith("HELD (phases)")||status.startsWith("HELD (thermo domain)"))return "c:phase-hold";
+@@ unified-thermo-port-forms/hold-fuzz-bundled/src/HoldFuzzTest.java 1
+"phaseSeeds","phaseSeedFallbacks");
+>>
+"phaseSeeds");
+@@ unified-thermo-port-forms/hold-fuzz-bundled/src/HoldFuzzTest.java 1
+"phaseSeeds","phaseSeedFallbacks","phaseRefusals"))
+>>
+"phaseSeeds","phaseRefusals"))
+@@ phase-ports-probes/hold-fuzz/classify.sh 1
+  if (s ~ /^HELD \(thermo domain\)/) return "C  thermo-domain wait (typed)";
+>>
+  # Class C keys on the prefix of a phase hold: "HELD (phases)" since 2026-10-17, "HELD (thermo domain)" in older reports.
+  if (s ~ /^HELD \((phases|thermo domain)\)/) return "C  phase hold (typed)";
+@@ phase-ports-probes/hold-fuzz/classify.sh 1
+  if (s ~ /partial pressure below the numerical floor/ || s ~ /Water-vapor approximation outside/) return "E3 vapour partial-pressure floor";
+>>
+  # E3: the old floor message, and since 2026-10-17 the numerical box of a partial pressure (NumericalBox).
+  if (s ~ /partial pressure below the numerical floor/ || s ~ /Partial pressure .* outside the numerical box/ || s ~ /Water-vapor approximation outside/) return "E3 vapour partial-pressure floor or box";
+@@ jdk-determinism/rehearsal/fuzzcmp.js 1
+  if (/^HELD \(thermo domain\)/.test(s)) return 'C';
+>>
+  if (/^HELD \((phases|thermo domain)\)/.test(s)) return 'C'; // a phase hold: its prefix since 2026-10-17, or the old one
+@@ jdk-determinism/rehearsal/fuzzcmp.js 1
+  if (/partial pressure below the numerical floor/.test(s) || /Water-vapor approximation outside/.test(s)) return 'E3';
+>>
+  if (/partial pressure below the numerical floor/.test(s) || /Partial pressure .* outside the numerical box/.test(s) || /Water-vapor approximation outside/.test(s)) return 'E3';

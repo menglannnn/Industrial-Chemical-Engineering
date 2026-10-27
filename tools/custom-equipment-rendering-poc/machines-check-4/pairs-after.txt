@@ -1,0 +1,13 @@
+| kind | shapes | same cell | face | edge or corner |
+| AIR_COOLER | 12 | 0 | 0 | 0 |
+| CABIN_HEATER | 27 | 0 | 0 | 0 |
+| COLUMN | 5 | 0 | 0 | 0 |
+| COMPRESSOR | 66 | 0 | 0 | 0 |
+| DRUM HORIZONTAL | 20 | 0 | 0 | 0 |
+| DRUM VERTICAL | 20 | 0 | 0 | 0 |
+| EJECTOR | 20 | 0 | 0 | 0 |
+| EXCHANGER | 27 | 0 | 0 | 0 |
+| KETTLE | 21 | 0 | 0 | 0 |
+| PUMP | 15 | 0 | 0 | 0 |
+| VERTICAL_HEATER | 60 | 0 | 0 | 0 |
+0 pairs

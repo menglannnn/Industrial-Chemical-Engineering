@@ -1,0 +1,5 @@
+com.wormzjl.icheme.science.thermo.PairInteractionsTest
+com.wormzjl.icheme.science.thermo.PengRobinson78Test
+com.wormzjl.icheme.science.thermo.PengRobinsonKernelPairInteractionsTest
+com.wormzjl.icheme.science.thermo.PengRobinsonKernelRootPrecisionTest
+com.wormzjl.icheme.science.thermo.TangentPlaneStabilityTest

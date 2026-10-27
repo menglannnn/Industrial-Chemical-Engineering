@@ -1,0 +1,21 @@
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/FluidThermodynamics.java b/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/FluidThermodynamics.java
+index 11531c2f..ab60b07f 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/FluidThermodynamics.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/FluidThermodynamics.java
+@@ -1155,6 +1155,8 @@ public final class FluidThermodynamics {
+ 
+     /** The engine's answer as a network state (see {@link #equilibriumTP}), or its typed refusal; {@code terms}, when
+      * given, is the prepared Peng-Robinson workspace of exactly {@code t}. */
++    /** M8 trace hook (tools/unified-thermo-port-m5/trace, never tracked): told of each typed phase hold adopt raises. */
++    public static volatile java.util.function.Consumer<String> M8_HOLD;
+     State adopt(double t,double p,double[] overall,EquilibriumResult result,TranslatedPengRobinson.Workspace terms) {
+         switch(result.status()) {
+             case CONVERGED->{}
+@@ -1165,6 +1167,7 @@ public final class FluidThermodynamics {
+                 // the re-check left unresolved is the same hold short of the proof: the split is no answer, and a third
+                 // phase is not excluded (the design review's E9: a junction's arrival flash held untyped, naming no node).
+                 boolean unstable=result.detail().startsWith(EquilibriumResult.UNSTABLE_PRODUCT);
++                if(M8_HOLD!=null&&(unstable||result.detail().startsWith(EquilibriumResult.UNRESOLVED_PRODUCT)))M8_HOLD.accept("THREE_PHASES t="+t+" p="+p+" overall="+java.util.Arrays.toString(overall)+" detail="+result.detail());
+                 if(unstable||result.detail().startsWith(EquilibriumResult.UNRESOLVED_PRODUCT))throw new UnsupportedPhases(domain.packageId(),t,p,
+                         UnsupportedPhases.Kind.THREE_PHASES,"a third fluid phase is "+(unstable?"indicated":"not excluded")+" ("+result.detail()
+                         +"); the fluid network carries one hydrocarbon liquid and one hydrocarbon vapour");

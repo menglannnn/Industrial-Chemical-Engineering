@@ -1,0 +1,58 @@
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+@@ -427,6 +427,7 @@
+             byte[] modeCodes=new byte[modes.size()];for(int i=0;i<modeCodes.length;i++)modeCodes[i]=(byte)modes.get(i).ordinal();
+             var supports=supports(graph,seeds,reachable,promoted);
+             var equations=new Equations(graph,dt,modes,boundaryClosed,seeds,reachable,supports,pipeIdentities);
++            trace("pass",equations,equations.initial(),pass,dt,"modes="+modes+" phases="+Arrays.toString(phases)+" folded="+Arrays.toString(foldedPhases)+" proposal="+(proposal==null?"none":proposal.node()+"/"+proposal.phases())+" emptying="+Arrays.toString(emptying));
+             // The active-set state is what varies between passes, so the structure key is also the cycle key: repeating one
+             // means the pass sequence cannot make progress. The frozen junction donors and the phase-port segments belong to
+             // it for the same reason the modes do: they decide which equations this pass states (see {@link PassKey}).
+@@ -457,6 +458,7 @@
+             try{numerical=SparseNewton.solve(equations,equations.initial(),new SparseNewton.Settings(SparseNewton.ITERATIONS,tolerance,1e-6,24),checkpoint,workspace);}
+             catch(SparseNewton.Nonconvergence failure) {
+                 if(failure.lastVariables()==null)throw failure;
++                trace("fail",equations,failure.lastVariables(),pass,dt,failure.getMessage());
+                 double[] trialFlows=Arrays.copyOfRange(failure.lastVariables(),equations.edgeOffset,equations.edgeOffset+graph.pipes().size());
+                 // Owner decision D59 (4): a pump whose target or head limit pulled its suction below the vapour pressure of the
+                 // water it draws cavitates; the pass is solved again with it on its suction limit.
+@@ -490,6 +492,7 @@
+             }
+             // A pass that converges ends the proposal it was laid out with (D39 B): the network's closure kept it.
+             proposal=null;
++            trace("converged",equations,numerical.variables(),pass,dt,"iterations="+numerical.iterations()+" residual="+numerical.residualNorm());
+             double[] x=numerical.variables();var states=equations.states(x);double[] flows=new double[graph.pipes().size()],heads=new double[flows.length];
+             // The edge unknowns are the law flows; the transported flows are their saturation at the caps (saturated).
+             double[] lawFlows=Arrays.copyOfRange(x,equations.edgeOffset,equations.edgeOffset+flows.length);
+@@ -760,6 +763,31 @@
+             return 31*hash+Arrays.hashCode(junctionDonors);
+         }
+     }
++    // TEMPORARY t38 trace probe (reverted before the commit): -Dcreatecheme.fluid.trace=true prints every pass's point.
++    static final boolean TRACE=Boolean.getBoolean("createcheme.fluid.trace");
++    private void trace(String what,Equations e,double[] x,int pass,double dt,String extra) {
++        if(!TRACE)return;
++        var sb=new StringBuilder();sb.append("TRACE ").append(what).append(" pass=").append(pass).append(" dt=").append(dt).append(' ').append(extra).append('\n');
++        try {
++            var states=e.states(x);
++            for(int node=0;node<states.size();node++){var s=states.get(node);var r=e.graph.reservoirs().get(node);
++                sb.append(String.format(java.util.Locale.ROOT,"  node %d id=%d kind=%s z=%.1f P=%.8g T=%.5f m=%.6g liqV=%.5g vapV=%.5g V=%.4g layout=%s%n",node,r.id(),r.kind(),r.elevation(),s.pressure(),s.temperature(),s.mass(),s.liquidVolume(),s.vaporVolume(),r.inventory().volume(),e.layout[node]==null?"none":String.valueOf(e.layout[node].size())));}
++            for(int edge=0;edge<e.graph.pipes().size();edge++){double y=x[e.edgeOffset+edge];double cap=e.cap(edge,y,e.cachedTransport);double q=e.flow(edge,y,e.cachedTransport);
++                sb.append(String.format(java.util.Locale.ROOT,"  edge %d %d->%d mode=%s closed=%b y=%.8g cap=%.8g q=%.8g slope=%.3g head=%s%n",edge,e.graph.pipes().get(edge).first(),e.graph.pipes().get(edge).second(),e.modes.get(edge),e.boundaryClosed[edge],y,cap,q,saturationSlope(y,cap),e.controlOffsets[edge]<0?"-":String.valueOf(x[e.controlOffsets[edge]]*1e5)));}
++            double[] f=e.residual(x);Integer[] order=new Integer[f.length];for(int i=0;i<f.length;i++)order[i]=i;
++            Arrays.sort(order,(a,b)->Double.compare(Math.abs(f[b]),Math.abs(f[a])));
++            for(int k=0;k<Math.min(8,f.length);k++){int row=order[k];sb.append(String.format(java.util.Locale.ROOT,"  row %d %s f=%.4e x=%.8g%n",row,rowName(e,row),f[row],x[row]));}
++            if(SparseNewton.TRACE_VARS!=null)for(int v:SparseNewton.TRACE_VARS){if(v>=x.length)continue;double[] t=x.clone();t[v]+=.5;double[] g=e.residual(t);sb.append("  dep ").append(v).append(':');
++                for(int row=0;row<g.length;row++)if(g[row]!=f[row])sb.append(String.format(java.util.Locale.ROOT," %d:%.3e",row,(g[row]-f[row])/.5));sb.append('\n');}
++        }catch(RuntimeException failure){sb.append("  (decode failed: ").append(failure).append(")\n");}
++        System.err.print(sb);
++    }
++    private static String rowName(Equations e,int row) {
++        for(int node=0;node<e.layout.length;node++)if(e.layout[node]!=null&&row>=e.offsets[node]&&row<e.offsets[node]+e.layout[node].size()){int local=row-e.offsets[node];return "node "+node+" local "+local+(local==e.layout[node].pressureVariable()?" pressure":e.layout[node].totalAmountVariable(local)?" amount":e.layout[node].solidVariable(local)?" solid":"");}
++        if(row>=e.edgeOffset&&row<e.edgeOffset+e.graph.pipes().size())return "edge "+(row-e.edgeOffset)+" hydraulic";
++        for(int edge=0;edge<e.graph.pipes().size();edge++){if(e.controlOffsets[edge]==row)return "edge "+edge+" actuator";if(e.filterOffsets[edge]==row)return "edge "+edge+" filter";}
++        return "?";
++    }
+     /**
+      * The cycle key of one active-set pass: its structure and the phase-port segments it froze ({@link PhaseDraw.Segment},
+      * which change a port stream's values but no structural entry, so they are not part of the workspace key), plus the

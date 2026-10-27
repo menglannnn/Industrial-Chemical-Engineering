@@ -1,0 +1,420 @@
+commit 8e5274ea09d1ca0f4eb66938e7411264031f2787
+Author: wormzjl <wormzjl@gmail.com>
+Date:   Fri Sep 25 03:42:01 2026 +0800
+
+    Decide the network's phases with the equilibrium engine (P3 WP7)
+    
+    flashTP is now an adapter over FluidTpEquilibrium TP with the network's own
+    free-water model (NetworkPhaseEngine): placement and boundary charges, the
+    solver's seeds, the outer active-set check and the inventory refresh take
+    the engine's stability test, split, critical band and free-water rule,
+    stated with the network's own phase evaluations. The Wilson-started flash
+    and the vaporBranch root heuristic are retired; PhaseIdentification is the
+    one liquid/vapour rule. A critical-band failure is the typed
+    CriticalBandHold on the existing hold path. A vessel of one pure
+    hydrocarbon across its saturation line takes the engine's UV coexistence
+    instead of flipping its slot, so a nitrogen tank condenses and boils.
+    
+    The two WP4 runtime failures: the trace-water flash cost (six-tank first
+    slice 2,084,304 to 214,660 checkpoints) and fix E2, a pump connection's
+    column is its suction's density (pumped line on its own steady state).
+    
+    Nitrogen, methane and the network envelope reach 10 MPa (fluid_domain;
+    the crude_19 envelopes follow the loader rule, the cuts keep 2 MPa); the
+    eight bundled pins are unchanged. A liquid-slot supercritical component
+    takes its dilute viscosity. FORMULATION direct-liquid-v1:tp-engine-v1;
+    the legacy digest is re-printed. Fresh world.
+    
+    Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+
+diff --git a/src/main/resources/data/createcheme/materials/packages/bonga_tjl20.json b/src/main/resources/data/createcheme/materials/packages/bonga_tjl20.json
+index a57129892..b8bb4416b 100644
+--- a/src/main/resources/data/createcheme/materials/packages/bonga_tjl20.json
++++ b/src/main/resources/data/createcheme/materials/packages/bonga_tjl20.json
+@@ -14,8 +14,8 @@
+     "temperature_min_kelvin": 273.16,
+     "temperature_max_kelvin": 900,
+     "pressure_min_pascal": 100,
+-    "pressure_max_pascal": 2000000,
+-    "evidence": "Fluid network envelope: from the water model triple point (273.16 K; ice is not modelled), the lowest minimum of any component of this package, to the 900 K of the caloric fits; 100 Pa..2 MPa is the span the fluid network evaluates (liquid reference 2 MPa). Every component declares its own range inside it."
++    "pressure_max_pascal": 10000000,
++    "evidence": "Fluid network envelope: from the water model triple point (273.16 K; ice is not modelled), the lowest minimum of any component of this package, to the 900 K of the caloric fits; 100 Pa..10 MPa holds the methane record's declared range (P3 WP7); every other component keeps its own 2 MPa, and a state is valid only inside the range of every component it carries. Every phase at its own pressure (P3 WP4). Every component declares its own range inside it."
+   },
+   "aliases": {},
+   "advisory_evidence": [
+diff --git a/src/main/resources/data/createcheme/materials/packages/cold_lake_blend_tjl20.json b/src/main/resources/data/createcheme/materials/packages/cold_lake_blend_tjl20.json
+index a1e65b713..f6cc24823 100644
+--- a/src/main/resources/data/createcheme/materials/packages/cold_lake_blend_tjl20.json
++++ b/src/main/resources/data/createcheme/materials/packages/cold_lake_blend_tjl20.json
+@@ -14,8 +14,8 @@
+     "temperature_min_kelvin": 273.16,
+     "temperature_max_kelvin": 900,
+     "pressure_min_pascal": 100,
+-    "pressure_max_pascal": 2000000,
+-    "evidence": "Fluid network envelope: from the water model triple point (273.16 K; ice is not modelled), the lowest minimum of any component of this package, to the 900 K of the caloric fits; 100 Pa..2 MPa is the span the fluid network evaluates (liquid reference 2 MPa). Every component declares its own range inside it."
++    "pressure_max_pascal": 10000000,
++    "evidence": "Fluid network envelope: from the water model triple point (273.16 K; ice is not modelled), the lowest minimum of any component of this package, to the 900 K of the caloric fits; 100 Pa..10 MPa holds the methane record's declared range (P3 WP7); every other component keeps its own 2 MPa, and a state is valid only inside the range of every component it carries. Every phase at its own pressure (P3 WP4). Every component declares its own range inside it."
+   },
+   "aliases": {},
+   "advisory_evidence": [
+diff --git a/src/main/resources/data/createcheme/materials/packages/dalia_tjl20.json b/src/main/resources/data/createcheme/materials/packages/dalia_tjl20.json
+index f21351b6f..bbd7200b2 100644
+--- a/src/main/resources/data/createcheme/materials/packages/dalia_tjl20.json
++++ b/src/main/resources/data/createcheme/materials/packages/dalia_tjl20.json
+@@ -14,8 +14,8 @@
+     "temperature_min_kelvin": 273.16,
+     "temperature_max_kelvin": 900,
+     "pressure_min_pascal": 100,
+-    "pressure_max_pascal": 2000000,
+-    "evidence": "Fluid network envelope: from the water model triple point (273.16 K; ice is not modelled), the lowest minimum of any component of this package, to the 900 K of the caloric fits; 100 Pa..2 MPa is the span the fluid network evaluates (liquid reference 2 MPa). Every component declares its own range inside it."
++    "pressure_max_pascal": 10000000,
++    "evidence": "Fluid network envelope: from the water model triple point (273.16 K; ice is not modelled), the lowest minimum of any component of this package, to the 900 K of the caloric fits; 100 Pa..10 MPa holds the methane record's declared range (P3 WP7); every other component keeps its own 2 MPa, and a state is valid only inside the range of every component it carries. Every phase at its own pressure (P3 WP4). Every component declares its own range inside it."
+   },
+   "aliases": {},
+   "advisory_evidence": [
+diff --git a/src/main/resources/data/createcheme/materials/packages/tjl19.json b/src/main/resources/data/createcheme/materials/packages/tjl19.json
+index 8e33ac6d7..f406bafae 100644
+--- a/src/main/resources/data/createcheme/materials/packages/tjl19.json
++++ b/src/main/resources/data/createcheme/materials/packages/tjl19.json
+@@ -15,7 +15,7 @@
+     "temperature_max_kelvin": 900,
+     "pressure_min_pascal": 100,
+     "pressure_max_pascal": 2000000,
+-    "evidence": "Fluid network envelope: from the water model triple point (273.16 K; ice is not modelled), the lowest minimum of any component of this package, to the 900 K of the caloric fits; 100 Pa..2 MPa is the span the fluid network evaluates (liquid reference 2 MPa). Every component declares its own range inside it."
++    "evidence": "Fluid network envelope: from the water model triple point (273.16 K; ice is not modelled), the lowest minimum of any component of this package, to the 900 K of the caloric fits; 100 Pa..2 MPa is the span the fluid network evaluates, every phase at its own pressure (P3 WP4). Every component declares its own range inside it."
+   },
+   "aliases": {},
+   "advisory_evidence": [
+diff --git a/src/main/resources/data/createcheme/materials/packages/tjl20.json b/src/main/resources/data/createcheme/materials/packages/tjl20.json
+index 3ab9bbc5d..3990e0935 100644
+--- a/src/main/resources/data/createcheme/materials/packages/tjl20.json
++++ b/src/main/resources/data/createcheme/materials/packages/tjl20.json
+@@ -14,8 +14,8 @@
+     "temperature_min_kelvin": 273.16,
+     "temperature_max_kelvin": 900,
+     "pressure_min_pascal": 100,
+-    "pressure_max_pascal": 2000000,
+-    "evidence": "Fluid network envelope: from the water model triple point (273.16 K; ice is not modelled), the lowest minimum of any component of this package, to the 900 K of the caloric fits; 100 Pa..2 MPa is the span the fluid network evaluates (liquid reference 2 MPa). Every component declares its own range inside it."
++    "pressure_max_pascal": 10000000,
++    "evidence": "Fluid network envelope: from the water model triple point (273.16 K; ice is not modelled), the lowest minimum of any component of this package, to the 900 K of the caloric fits; 100 Pa..10 MPa holds the methane record's declared range (P3 WP7); every other component keeps its own 2 MPa, and a state is valid only inside the range of every component it carries. Every phase at its own pressure (P3 WP4). Every component declares its own range inside it."
+   },
+   "aliases": {},
+   "advisory_evidence": [
+diff --git a/src/main/resources/data/createcheme/materials/packages/tjl20_nitrogen.json b/src/main/resources/data/createcheme/materials/packages/tjl20_nitrogen.json
+index b3cc8bd5b..034b9afec 100644
+--- a/src/main/resources/data/createcheme/materials/packages/tjl20_nitrogen.json
++++ b/src/main/resources/data/createcheme/materials/packages/tjl20_nitrogen.json
+@@ -14,8 +14,8 @@
+     "temperature_min_kelvin": 63.151,
+     "temperature_max_kelvin": 900,
+     "pressure_min_pascal": 100,
+-    "pressure_max_pascal": 2000000,
+-    "evidence": "Fluid network envelope: from the nitrogen triple point (63.151 K, the lowest minimum of any component) to the 900 K of the caloric fits; 100 Pa..2 MPa is the span the network evaluates (liquid reference 2 MPa). The crude components keep 293.15 K and water its 273.16 K triple point inside it."
++    "pressure_max_pascal": 10000000,
++    "evidence": "Fluid network envelope: from the nitrogen triple point (63.151 K, the lowest minimum of any component) to the 900 K of the caloric fits; 100 Pa..10 MPa since P3 WP7 (design section 8.1): nitrogen and methane are declared to 10 MPa, the crude components, ethane and the light ends keep their own 2 MPa, and a state is valid only inside the range of every component it carries. Every phase at its own pressure (P3 WP4). The crude components keep 293.15 K and water its 273.16 K triple point inside it."
+   },
+   "aliases": {},
+   "advisory_evidence": [
+@@ -26,7 +26,7 @@
+     "METHANE_EXTENSION: NIST ideal-gas Cp fit; CoolProp PR constants; methane binary interactions assumed zero, not fitted",
+     "METHANE_ASSAY: synthetic 0.5 mol% methane blend; hypothetical liquid-density metadata is unused by the molar feed and PR equations",
+     "NITROGEN_EXTENSION: initial charge is conserved inventory; nitrogen/hydrocarbon PR interactions estimated zero; no nitrogen dissolution in the separate free-water phase.",
+-    "NITROGEN_CRYOGENIC: valid from its 63.151 K triple point (Cp segment below 273.16 K, NIST viscosity tables); PR78 Psat at 77.355 K +1.23 %, liquid density +0.34 % against NIST (F4)",
++    "NITROGEN_CRYOGENIC: valid from its 63.151 K triple point (Cp segment below 273.16 K, NIST viscosity tables); PR78 Psat at 77.355 K +1.21 %, liquid density -0.07 % against NIST (F4, P3 WP4 direct liquid path)",
+     "ESTIMATED_REGROUPING: PC08-12 mass/volume-constrained Tia Juana reconstruction; heavy Tc/Pc extrapolated; global Dalia transport"
+   ],
+   "liquid_mixture": {
+diff --git a/src/main/resources/data/createcheme/materials/packages/upper_zakum_tjl20.json b/src/main/resources/data/createcheme/materials/packages/upper_zakum_tjl20.json
+index 495161f95..767c1f266 100644
+--- a/src/main/resources/data/createcheme/materials/packages/upper_zakum_tjl20.json
++++ b/src/main/resources/data/createcheme/materials/packages/upper_zakum_tjl20.json
+@@ -14,8 +14,8 @@
+     "temperature_min_kelvin": 273.16,
+     "temperature_max_kelvin": 900,
+     "pressure_min_pascal": 100,
+-    "pressure_max_pascal": 2000000,
+-    "evidence": "Fluid network envelope: from the water model triple point (273.16 K; ice is not modelled), the lowest minimum of any component of this package, to the 900 K of the caloric fits; 100 Pa..2 MPa is the span the fluid network evaluates (liquid reference 2 MPa). Every component declares its own range inside it."
++    "pressure_max_pascal": 10000000,
++    "evidence": "Fluid network envelope: from the water model triple point (273.16 K; ice is not modelled), the lowest minimum of any component of this package, to the 900 K of the caloric fits; 100 Pa..10 MPa holds the methane record's declared range (P3 WP7); every other component keeps its own 2 MPa, and a state is valid only inside the range of every component it carries. Every phase at its own pressure (P3 WP4). Every component declares its own range inside it."
+   },
+   "aliases": {},
+   "advisory_evidence": [
+diff --git a/src/main/resources/data/createcheme/materials/packages/wti_light_export_tjl20.json b/src/main/resources/data/createcheme/materials/packages/wti_light_export_tjl20.json
+index 7f451587c..25bb7d1d6 100644
+--- a/src/main/resources/data/createcheme/materials/packages/wti_light_export_tjl20.json
++++ b/src/main/resources/data/createcheme/materials/packages/wti_light_export_tjl20.json
+@@ -14,8 +14,8 @@
+     "temperature_min_kelvin": 273.16,
+     "temperature_max_kelvin": 900,
+     "pressure_min_pascal": 100,
+-    "pressure_max_pascal": 2000000,
+-    "evidence": "Fluid network envelope: from the water model triple point (273.16 K; ice is not modelled), the lowest minimum of any component of this package, to the 900 K of the caloric fits; 100 Pa..2 MPa is the span the fluid network evaluates (liquid reference 2 MPa). Every component declares its own range inside it."
++    "pressure_max_pascal": 10000000,
++    "evidence": "Fluid network envelope: from the water model triple point (273.16 K; ice is not modelled), the lowest minimum of any component of this package, to the 900 K of the caloric fits; 100 Pa..10 MPa holds the methane record's declared range (P3 WP7); every other component keeps its own 2 MPa, and a state is valid only inside the range of every component it carries. Every phase at its own pressure (P3 WP4). Every component declares its own range inside it."
+   },
+   "aliases": {},
+   "advisory_evidence": [
+diff --git a/src/main/resources/data/createcheme/materials/properties/crude_pc01.json b/src/main/resources/data/createcheme/materials/properties/crude_pc01.json
+index eef1d8138..a4858fef9 100644
+--- a/src/main/resources/data/createcheme/materials/properties/crude_pc01.json
++++ b/src/main/resources/data/createcheme/materials/properties/crude_pc01.json
+@@ -16,7 +16,7 @@
+     "temperature_max_kelvin": 900,
+     "pressure_min_pascal": 100,
+     "pressure_max_pascal": 2000000,
+-    "evidence": "Fluid network only (not the column range): the 298.15..900 K caloric fit continued to 293.15 K (the bundled ambient continuation qualified in the fluid-network batch, with the pure-component viscosity tables sampled from 293.15 K); 100 Pa..2 MPa is the span the network evaluates this record over (PR78 at the 2 MPa liquid reference with the global compressibility response)."
++    "evidence": "Fluid network only (not the column range): the 298.15..900 K caloric fit continued to 293.15 K (the bundled ambient continuation qualified in the fluid-network batch, with the pure-component viscosity tables sampled from 293.15 K); 100 Pa..2 MPa is the span the network evaluates this record over (PR78 with every phase at its own pressure since P3 WP4; above 2 MPa this record is not qualified)."
+   },
+   "estimated_heavy_residue": false,
+   "ideal_gas_cp": {
+diff --git a/src/main/resources/data/createcheme/materials/properties/crude_pc02.json b/src/main/resources/data/createcheme/materials/properties/crude_pc02.json
+index 8f0cacb9e..fbe4ba2b7 100644
+--- a/src/main/resources/data/createcheme/materials/properties/crude_pc02.json
++++ b/src/main/resources/data/createcheme/materials/properties/crude_pc02.json
+@@ -16,7 +16,7 @@
+     "temperature_max_kelvin": 900,
+     "pressure_min_pascal": 100,
+     "pressure_max_pascal": 2000000,
+-    "evidence": "Fluid network only (not the column range): the 298.15..900 K caloric fit continued to 293.15 K (the bundled ambient continuation qualified in the fluid-network batch, with the pure-component viscosity tables sampled from 293.15 K); 100 Pa..2 MPa is the span the network evaluates this record over (PR78 at the 2 MPa liquid reference with the global compressibility response)."
++    "evidence": "Fluid network only (not the column range): the 298.15..900 K caloric fit continued to 293.15 K (the bundled ambient continuation qualified in the fluid-network batch, with the pure-component viscosity tables sampled from 293.15 K); 100 Pa..2 MPa is the span the network evaluates this record over (PR78 with every phase at its own pressure since P3 WP4; above 2 MPa this record is not qualified)."
+   },
+   "estimated_heavy_residue": false,
+   "ideal_gas_cp": {
+diff --git a/src/main/resources/data/createcheme/materials/properties/crude_pc03.json b/src/main/resources/data/createcheme/materials/properties/crude_pc03.json
+index 689811191..8f11ad1f7 100644
+--- a/src/main/resources/data/createcheme/materials/properties/crude_pc03.json
++++ b/src/main/resources/data/createcheme/materials/properties/crude_pc03.json
+@@ -16,7 +16,7 @@
+     "temperature_max_kelvin": 900,
+     "pressure_min_pascal": 100,
+     "pressure_max_pascal": 2000000,
+-    "evidence": "Fluid network only (not the column range): the 298.15..900 K caloric fit continued to 293.15 K (the bundled ambient continuation qualified in the fluid-network batch, with the pure-component viscosity tables sampled from 293.15 K); 100 Pa..2 MPa is the span the network evaluates this record over (PR78 at the 2 MPa liquid reference with the global compressibility response)."
++    "evidence": "Fluid network only (not the column range): the 298.15..900 K caloric fit continued to 293.15 K (the bundled ambient continuation qualified in the fluid-network batch, with the pure-component viscosity tables sampled from 293.15 K); 100 Pa..2 MPa is the span the network evaluates this record over (PR78 with every phase at its own pressure since P3 WP4; above 2 MPa this record is not qualified)."
+   },
+   "estimated_heavy_residue": false,
+   "ideal_gas_cp": {
+diff --git a/src/main/resources/data/createcheme/materials/properties/crude_pc04.json b/src/main/resources/data/createcheme/materials/properties/crude_pc04.json
+index 14fa5976b..f1a6060cc 100644
+--- a/src/main/resources/data/createcheme/materials/properties/crude_pc04.json
++++ b/src/main/resources/data/createcheme/materials/properties/crude_pc04.json
+@@ -16,7 +16,7 @@
+     "temperature_max_kelvin": 900,
+     "pressure_min_pascal": 100,
+     "pressure_max_pascal": 2000000,
+-    "evidence": "Fluid network only (not the column range): the 298.15..900 K caloric fit continued to 293.15 K (the bundled ambient continuation qualified in the fluid-network batch, with the pure-component viscosity tables sampled from 293.15 K); 100 Pa..2 MPa is the span the network evaluates this record over (PR78 at the 2 MPa liquid reference with the global compressibility response)."
++    "evidence": "Fluid network only (not the column range): the 298.15..900 K caloric fit continued to 293.15 K (the bundled ambient continuation qualified in the fluid-network batch, with the pure-component viscosity tables sampled from 293.15 K); 100 Pa..2 MPa is the span the network evaluates this record over (PR78 with every phase at its own pressure since P3 WP4; above 2 MPa this record is not qualified)."
+   },
+   "estimated_heavy_residue": false,
+   "ideal_gas_cp": {
+diff --git a/src/main/resources/data/createcheme/materials/properties/crude_pc05.json b/src/main/resources/data/createcheme/materials/properties/crude_pc05.json
+index 34a71e414..214d14863 100644
+--- a/src/main/resources/data/createcheme/materials/properties/crude_pc05.json
++++ b/src/main/resources/data/createcheme/materials/properties/crude_pc05.json
+@@ -16,7 +16,7 @@
+     "temperature_max_kelvin": 900,
+     "pressure_min_pascal": 100,
+     "pressure_max_pascal": 2000000,
+-    "evidence": "Fluid network only (not the column range): the 298.15..900 K caloric fit continued to 293.15 K (the bundled ambient continuation qualified in the fluid-network batch, with the pure-component viscosity tables sampled from 293.15 K); 100 Pa..2 MPa is the span the network evaluates this record over (PR78 at the 2 MPa liquid reference with the global compressibility response)."
++    "evidence": "Fluid network only (not the column range): the 298.15..900 K caloric fit continued to 293.15 K (the bundled ambient continuation qualified in the fluid-network batch, with the pure-component viscosity tables sampled from 293.15 K); 100 Pa..2 MPa is the span the network evaluates this record over (PR78 with every phase at its own pressure since P3 WP4; above 2 MPa this record is not qualified)."
+   },
+   "estimated_heavy_residue": false,
+   "ideal_gas_cp": {
+diff --git a/src/main/resources/data/createcheme/materials/properties/crude_pc06.json b/src/main/resources/data/createcheme/materials/properties/crude_pc06.json
+index f8f16cb4d..d13d30b62 100644
+--- a/src/main/resources/data/createcheme/materials/properties/crude_pc06.json
++++ b/src/main/resources/data/createcheme/materials/properties/crude_pc06.json
+@@ -16,7 +16,7 @@
+     "temperature_max_kelvin": 900,
+     "pressure_min_pascal": 100,
+     "pressure_max_pascal": 2000000,
+-    "evidence": "Fluid network only (not the column range): the 298.15..900 K caloric fit continued to 293.15 K (the bundled ambient continuation qualified in the fluid-network batch, with the pure-component viscosity tables sampled from 293.15 K); 100 Pa..2 MPa is the span the network evaluates this record over (PR78 at the 2 MPa liquid reference with the global compressibility response)."
++    "evidence": "Fluid network only (not the column range): the 298.15..900 K caloric fit continued to 293.15 K (the bundled ambient continuation qualified in the fluid-network batch, with the pure-component viscosity tables sampled from 293.15 K); 100 Pa..2 MPa is the span the network evaluates this record over (PR78 with every phase at its own pressure since P3 WP4; above 2 MPa this record is not qualified)."
+   },
+   "estimated_heavy_residue": false,
+   "ideal_gas_cp": {
+diff --git a/src/main/resources/data/createcheme/materials/properties/crude_pc07.json b/src/main/resources/data/createcheme/materials/properties/crude_pc07.json
+index 6c8325408..cc5f19ee3 100644
+--- a/src/main/resources/data/createcheme/materials/properties/crude_pc07.json
++++ b/src/main/resources/data/createcheme/materials/properties/crude_pc07.json
+@@ -16,7 +16,7 @@
+     "temperature_max_kelvin": 900,
+     "pressure_min_pascal": 100,
+     "pressure_max_pascal": 2000000,
+-    "evidence": "Fluid network only (not the column range): the 298.15..900 K caloric fit continued to 293.15 K (the bundled ambient continuation qualified in the fluid-network batch, with the pure-component viscosity tables sampled from 293.15 K); 100 Pa..2 MPa is the span the network evaluates this record over (PR78 at the 2 MPa liquid reference with the global compressibility response)."
++    "evidence": "Fluid network only (not the column range): the 298.15..900 K caloric fit continued to 293.15 K (the bundled ambient continuation qualified in the fluid-network batch, with the pure-component viscosity tables sampled from 293.15 K); 100 Pa..2 MPa is the span the network evaluates this record over (PR78 with every phase at its own pressure since P3 WP4; above 2 MPa this record is not qualified)."
+   },
+   "estimated_heavy_residue": false,
+   "ideal_gas_cp": {
+diff --git a/src/main/resources/data/createcheme/materials/properties/crude_pc08.json b/src/main/resources/data/createcheme/materials/properties/crude_pc08.json
+index 3a3735b12..a4e398a8a 100644
+--- a/src/main/resources/data/createcheme/materials/properties/crude_pc08.json
++++ b/src/main/resources/data/createcheme/materials/properties/crude_pc08.json
+@@ -16,7 +16,7 @@
+     "temperature_max_kelvin": 900,
+     "pressure_min_pascal": 100,
+     "pressure_max_pascal": 2000000,
+-    "evidence": "Fluid network only (not the column range): the 298.15..900 K caloric fit continued to 293.15 K (the bundled ambient continuation qualified in the fluid-network batch, with the pure-component viscosity tables sampled from 293.15 K); 100 Pa..2 MPa is the span the network evaluates this record over (PR78 at the 2 MPa liquid reference with the global compressibility response)."
++    "evidence": "Fluid network only (not the column range): the 298.15..900 K caloric fit continued to 293.15 K (the bundled ambient continuation qualified in the fluid-network batch, with the pure-component viscosity tables sampled from 293.15 K); 100 Pa..2 MPa is the span the network evaluates this record over (PR78 with every phase at its own pressure since P3 WP4; above 2 MPa this record is not qualified)."
+   },
+   "estimated_heavy_residue": true,
+   "ideal_gas_cp": {
+diff --git a/src/main/resources/data/createcheme/materials/properties/crude_pc09.json b/src/main/resources/data/createcheme/materials/properties/crude_pc09.json
+index 0675ddb18..0c66ac5e1 100644
+--- a/src/main/resources/data/createcheme/materials/properties/crude_pc09.json
++++ b/src/main/resources/data/createcheme/materials/properties/crude_pc09.json
+@@ -16,7 +16,7 @@
+     "temperature_max_kelvin": 900,
+     "pressure_min_pascal": 100,
+     "pressure_max_pascal": 2000000,
+-    "evidence": "Fluid network only (not the column range): the 298.15..900 K caloric fit continued to 293.15 K (the bundled ambient continuation qualified in the fluid-network batch, with the pure-component viscosity tables sampled from 293.15 K); 100 Pa..2 MPa is the span the network evaluates this record over (PR78 at the 2 MPa liquid reference with the global compressibility response)."
++    "evidence": "Fluid network only (not the column range): the 298.15..900 K caloric fit continued to 293.15 K (the bundled ambient continuation qualified in the fluid-network batch, with the pure-component viscosity tables sampled from 293.15 K); 100 Pa..2 MPa is the span the network evaluates this record over (PR78 with every phase at its own pressure since P3 WP4; above 2 MPa this record is not qualified)."
+   },
+   "estimated_heavy_residue": true,
+   "ideal_gas_cp": {
+diff --git a/src/main/resources/data/createcheme/materials/properties/crude_pc10.json b/src/main/resources/data/createcheme/materials/properties/crude_pc10.json
+index 0805162cc..cedad6648 100644
+--- a/src/main/resources/data/createcheme/materials/properties/crude_pc10.json
++++ b/src/main/resources/data/createcheme/materials/properties/crude_pc10.json
+@@ -16,7 +16,7 @@
+     "temperature_max_kelvin": 900,
+     "pressure_min_pascal": 100,
+     "pressure_max_pascal": 2000000,
+-    "evidence": "Fluid network only (not the column range): the 298.15..900 K caloric fit continued to 293.15 K (the bundled ambient continuation qualified in the fluid-network batch, with the pure-component viscosity tables sampled from 293.15 K); 100 Pa..2 MPa is the span the network evaluates this record over (PR78 at the 2 MPa liquid reference with the global compressibility response)."
++    "evidence": "Fluid network only (not the column range): the 298.15..900 K caloric fit continued to 293.15 K (the bundled ambient continuation qualified in the fluid-network batch, with the pure-component viscosity tables sampled from 293.15 K); 100 Pa..2 MPa is the span the network evaluates this record over (PR78 with every phase at its own pressure since P3 WP4; above 2 MPa this record is not qualified)."
+   },
+   "estimated_heavy_residue": true,
+   "ideal_gas_cp": {
+diff --git a/src/main/resources/data/createcheme/materials/properties/crude_pc11.json b/src/main/resources/data/createcheme/materials/properties/crude_pc11.json
+index 4d5b40ae0..20229a2ad 100644
+--- a/src/main/resources/data/createcheme/materials/properties/crude_pc11.json
++++ b/src/main/resources/data/createcheme/materials/properties/crude_pc11.json
+@@ -16,7 +16,7 @@
+     "temperature_max_kelvin": 900,
+     "pressure_min_pascal": 100,
+     "pressure_max_pascal": 2000000,
+-    "evidence": "Fluid network only (not the column range): the 298.15..900 K caloric fit continued to 293.15 K (the bundled ambient continuation qualified in the fluid-network batch, with the pure-component viscosity tables sampled from 293.15 K); 100 Pa..2 MPa is the span the network evaluates this record over (PR78 at the 2 MPa liquid reference with the global compressibility response)."
++    "evidence": "Fluid network only (not the column range): the 298.15..900 K caloric fit continued to 293.15 K (the bundled ambient continuation qualified in the fluid-network batch, with the pure-component viscosity tables sampled from 293.15 K); 100 Pa..2 MPa is the span the network evaluates this record over (PR78 with every phase at its own pressure since P3 WP4; above 2 MPa this record is not qualified)."
+   },
+   "estimated_heavy_residue": true,
+   "ideal_gas_cp": {
+diff --git a/src/main/resources/data/createcheme/materials/properties/crude_pc12.json b/src/main/resources/data/createcheme/materials/properties/crude_pc12.json
+index 8e20423f8..b294abdf6 100644
+--- a/src/main/resources/data/createcheme/materials/properties/crude_pc12.json
++++ b/src/main/resources/data/createcheme/materials/properties/crude_pc12.json
+@@ -16,7 +16,7 @@
+     "temperature_max_kelvin": 900,
+     "pressure_min_pascal": 100,
+     "pressure_max_pascal": 2000000,
+-    "evidence": "Fluid network only (not the column range): the 298.15..900 K caloric fit continued to 293.15 K (the bundled ambient continuation qualified in the fluid-network batch, with the pure-component viscosity tables sampled from 293.15 K); 100 Pa..2 MPa is the span the network evaluates this record over (PR78 at the 2 MPa liquid reference with the global compressibility response)."
++    "evidence": "Fluid network only (not the column range): the 298.15..900 K caloric fit continued to 293.15 K (the bundled ambient continuation qualified in the fluid-network batch, with the pure-component viscosity tables sampled from 293.15 K); 100 Pa..2 MPa is the span the network evaluates this record over (PR78 with every phase at its own pressure since P3 WP4; above 2 MPa this record is not qualified)."
+   },
+   "estimated_heavy_residue": true,
+   "ideal_gas_cp": {
+diff --git a/src/main/resources/data/createcheme/materials/properties/nitrogen.json b/src/main/resources/data/createcheme/materials/properties/nitrogen.json
+index a19f5fde8..05b7b2f2f 100644
+--- a/src/main/resources/data/createcheme/materials/properties/nitrogen.json
++++ b/src/main/resources/data/createcheme/materials/properties/nitrogen.json
+@@ -15,8 +15,8 @@
+     "temperature_min_kelvin": 63.151,
+     "temperature_max_kelvin": 900,
+     "pressure_min_pascal": 100,
+-    "pressure_max_pascal": 2000000,
+-    "evidence": "Nitrogen triple point 63.151 K (Span et al. 2000 via NIST) to 900 K. Validated in F4 (FluidNitrogenCryogenicTest): ideal-gas Cp below 273.16 K within 0.02 % of NIST zero-pressure Cp; PR78 saturation pressure at 77.355 K +1.23 %, saturated liquid density +0.34 %; vapour Cp at 100 K and 200 K, 1 atm, within 1 %; viscosity tables cover the range."
++    "pressure_max_pascal": 10000000,
++    "evidence": "Nitrogen triple point 63.151 K (Span et al. 2000 via NIST) to 900 K. Validated in F4 (FluidNitrogenCryogenicTest): ideal-gas Cp below 273.16 K within 0.02 % of NIST zero-pressure Cp; vapour Cp at 100 K and 200 K, 1 atm, within 1 %; viscosity tables cover the temperature range. Every phase at its own pressure (P3 WP4): PR78 saturation pressure at 77.355 K +1.21 %, saturated liquid density -0.07 %; compressed liquid to 10 MPa within 0.19, 0.34, 1.15 % of the Helmholtz reference at Tr 0.6, 0.7, 0.8 (3.55 % at Tr 0.9) and -0.17 % at 77.36 K, 10 MPa (DirectLiquidContinuityTest; P1 study). 10 MPa per P3 design section 8.1: the declared critical band (Tr 0.95-1.1 x Pr 0.8-1.5, 119.9-138.8 K x 2.72-5.09 MPa, and the plan's two smaller boxes) is research-only, typed by the equilibrium engine (P3 WP7). Viscosity above 2 MPa for dense states is a reference-pressure value."
+   },
+   "estimated_heavy_residue": false,
+   "ideal_gas_cp": {
+diff --git a/src/main/resources/data/createcheme/materials/properties/tjl19_ethane.json b/src/main/resources/data/createcheme/materials/properties/tjl19_ethane.json
+index 5cd2099eb..57df8cd5c 100644
+--- a/src/main/resources/data/createcheme/materials/properties/tjl19_ethane.json
++++ b/src/main/resources/data/createcheme/materials/properties/tjl19_ethane.json
+@@ -16,7 +16,7 @@
+     "temperature_max_kelvin": 900,
+     "pressure_min_pascal": 100,
+     "pressure_max_pascal": 2000000,
+-    "evidence": "Fluid network only (not the column range): the 298.15..900 K caloric fit continued to 293.15 K (the bundled ambient continuation qualified in the fluid-network batch, with the pure-component viscosity tables sampled from 293.15 K); 100 Pa..2 MPa is the span the network evaluates this record over (PR78 at the 2 MPa liquid reference with the global compressibility response)."
++    "evidence": "Fluid network only (not the column range): the 298.15..900 K caloric fit continued to 293.15 K (the bundled ambient continuation qualified in the fluid-network batch, with the pure-component viscosity tables sampled from 293.15 K); 100 Pa..2 MPa is the span the network evaluates this record over (PR78 with every phase at its own pressure since P3 WP4; above 2 MPa this record is not qualified)."
+   },
+   "estimated_heavy_residue": false,
+   "ideal_gas_cp": {
+diff --git a/src/main/resources/data/createcheme/materials/properties/tjl19_isobutane.json b/src/main/resources/data/createcheme/materials/properties/tjl19_isobutane.json
+index f8e434da4..197c4d4e1 100644
+--- a/src/main/resources/data/createcheme/materials/properties/tjl19_isobutane.json
++++ b/src/main/resources/data/createcheme/materials/properties/tjl19_isobutane.json
+@@ -16,7 +16,7 @@
+     "temperature_max_kelvin": 900,
+     "pressure_min_pascal": 100,
+     "pressure_max_pascal": 2000000,
+-    "evidence": "Fluid network only (not the column range): the 298.15..900 K caloric fit continued to 293.15 K (the bundled ambient continuation qualified in the fluid-network batch, with the pure-component viscosity tables sampled from 293.15 K); 100 Pa..2 MPa is the span the network evaluates this record over (PR78 at the 2 MPa liquid reference with the global compressibility response)."
++    "evidence": "Fluid network only (not the column range): the 298.15..900 K caloric fit continued to 293.15 K (the bundled ambient continuation qualified in the fluid-network batch, with the pure-component viscosity tables sampled from 293.15 K); 100 Pa..2 MPa is the span the network evaluates this record over (PR78 with every phase at its own pressure since P3 WP4; above 2 MPa this record is not qualified)."
+   },
+   "estimated_heavy_residue": false,
+   "ideal_gas_cp": {
+diff --git a/src/main/resources/data/createcheme/materials/properties/tjl19_isopentane.json b/src/main/resources/data/createcheme/materials/properties/tjl19_isopentane.json
+index e9cdc8b30..36f4f8c8c 100644
+--- a/src/main/resources/data/createcheme/materials/properties/tjl19_isopentane.json
++++ b/src/main/resources/data/createcheme/materials/properties/tjl19_isopentane.json
+@@ -16,7 +16,7 @@
+     "temperature_max_kelvin": 900,
+     "pressure_min_pascal": 100,
+     "pressure_max_pascal": 2000000,
+-    "evidence": "Fluid network only (not the column range): the 298.15..900 K caloric fit continued to 293.15 K (the bundled ambient continuation qualified in the fluid-network batch, with the pure-component viscosity tables sampled from 293.15 K); 100 Pa..2 MPa is the span the network evaluates this record over (PR78 at the 2 MPa liquid reference with the global compressibility response)."
++    "evidence": "Fluid network only (not the column range): the 298.15..900 K caloric fit continued to 293.15 K (the bundled ambient continuation qualified in the fluid-network batch, with the pure-component viscosity tables sampled from 293.15 K); 100 Pa..2 MPa is the span the network evaluates this record over (PR78 with every phase at its own pressure since P3 WP4; above 2 MPa this record is not qualified)."
+   },
+   "estimated_heavy_residue": false,
+   "ideal_gas_cp": {
+diff --git a/src/main/resources/data/createcheme/materials/properties/tjl19_n_butane.json b/src/main/resources/data/createcheme/materials/properties/tjl19_n_butane.json
+index b7205042d..ac0f48875 100644
+--- a/src/main/resources/data/createcheme/materials/properties/tjl19_n_butane.json
++++ b/src/main/resources/data/createcheme/materials/properties/tjl19_n_butane.json
+@@ -16,7 +16,7 @@
+     "temperature_max_kelvin": 900,
+     "pressure_min_pascal": 100,
+     "pressure_max_pascal": 2000000,
+-    "evidence": "Fluid network only (not the column range): the 298.15..900 K caloric fit continued to 293.15 K (the bundled ambient continuation qualified in the fluid-network batch, with the pure-component viscosity tables sampled from 293.15 K); 100 Pa..2 MPa is the span the network evaluates this record over (PR78 at the 2 MPa liquid reference with the global compressibility response)."
++    "evidence": "Fluid network only (not the column range): the 298.15..900 K caloric fit continued to 293.15 K (the bundled ambient continuation qualified in the fluid-network batch, with the pure-component viscosity tables sampled from 293.15 K); 100 Pa..2 MPa is the span the network evaluates this record over (PR78 with every phase at its own pressure since P3 WP4; above 2 MPa this record is not qualified)."
+   },
+   "estimated_heavy_residue": false,
+   "ideal_gas_cp": {
+diff --git a/src/main/resources/data/createcheme/materials/properties/tjl19_n_pentane.json b/src/main/resources/data/createcheme/materials/properties/tjl19_n_pentane.json
+index ae4a98a56..b998a201d 100644
+--- a/src/main/resources/data/createcheme/materials/properties/tjl19_n_pentane.json
++++ b/src/main/resources/data/createcheme/materials/properties/tjl19_n_pentane.json
+@@ -16,7 +16,7 @@
+     "temperature_max_kelvin": 900,
+     "pressure_min_pascal": 100,
+     "pressure_max_pascal": 2000000,
+-    "evidence": "Fluid network only (not the column range): the 298.15..900 K caloric fit continued to 293.15 K (the bundled ambient continuation qualified in the fluid-network batch, with the pure-component viscosity tables sampled from 293.15 K); 100 Pa..2 MPa is the span the network evaluates this record over (PR78 at the 2 MPa liquid reference with the global compressibility response)."
++    "evidence": "Fluid network only (not the column range): the 298.15..900 K caloric fit continued to 293.15 K (the bundled ambient continuation qualified in the fluid-network batch, with the pure-component viscosity tables sampled from 293.15 K); 100 Pa..2 MPa is the span the network evaluates this record over (PR78 with every phase at its own pressure since P3 WP4; above 2 MPa this record is not qualified)."
+   },
+   "estimated_heavy_residue": false,
+   "ideal_gas_cp": {
+diff --git a/src/main/resources/data/createcheme/materials/properties/tjl19_propane.json b/src/main/resources/data/createcheme/materials/properties/tjl19_propane.json
+index 72608258e..2a9246fcb 100644
+--- a/src/main/resources/data/createcheme/materials/properties/tjl19_propane.json
++++ b/src/main/resources/data/createcheme/materials/properties/tjl19_propane.json
+@@ -16,7 +16,7 @@
+     "temperature_max_kelvin": 900,
+     "pressure_min_pascal": 100,
+     "pressure_max_pascal": 2000000,
+-    "evidence": "Fluid network only (not the column range): the 298.15..900 K caloric fit continued to 293.15 K (the bundled ambient continuation qualified in the fluid-network batch, with the pure-component viscosity tables sampled from 293.15 K); 100 Pa..2 MPa is the span the network evaluates this record over (PR78 at the 2 MPa liquid reference with the global compressibility response)."
++    "evidence": "Fluid network only (not the column range): the 298.15..900 K caloric fit continued to 293.15 K (the bundled ambient continuation qualified in the fluid-network batch, with the pure-component viscosity tables sampled from 293.15 K); 100 Pa..2 MPa is the span the network evaluates this record over (PR78 with every phase at its own pressure since P3 WP4; above 2 MPa this record is not qualified)."
+   },
+   "estimated_heavy_residue": false,
+   "ideal_gas_cp": {
+diff --git a/src/main/resources/data/createcheme/materials/properties/tjl20_methane.json b/src/main/resources/data/createcheme/materials/properties/tjl20_methane.json
+index effb97a44..c0ebda1b2 100644
+--- a/src/main/resources/data/createcheme/materials/properties/tjl20_methane.json
++++ b/src/main/resources/data/createcheme/materials/properties/tjl20_methane.json
+@@ -15,8 +15,8 @@
+     "temperature_min_kelvin": 293.15,
+     "temperature_max_kelvin": 900,
+     "pressure_min_pascal": 100,
+-    "pressure_max_pascal": 2000000,
+-    "evidence": "Fluid network only (not the column range): the 298.15..900 K caloric fit continued to 293.15 K (the bundled ambient continuation qualified in the fluid-network batch, with the pure-component viscosity tables sampled from 293.15 K); 100 Pa..2 MPa is the span the network evaluates this record over (PR78 at the 2 MPa liquid reference with the global compressibility response)."
++    "pressure_max_pascal": 10000000,
++    "evidence": "Fluid network only (not the column range): the 298.15..900 K caloric fit continued to 293.15 K (the bundled ambient continuation qualified in the fluid-network batch, with the pure-component viscosity tables sampled from 293.15 K); 100 Pa..10 MPa: every phase at its own pressure (P3 WP4 direct path), and above its 293.15 K floor methane (Tc 190.56 K) is a supercritical gas outside every declared critical-band box (P3 WP7); PR78 density +0.95 % at 300 K and 10 MPa against the Helmholtz reference (P1 study section 2.5). Viscosity above 2 MPa is a reference-pressure value."
+   },
+   "estimated_heavy_residue": false,
+   "ideal_gas_cp": {

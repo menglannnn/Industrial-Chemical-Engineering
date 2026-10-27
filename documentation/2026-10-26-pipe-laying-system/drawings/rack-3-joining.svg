@@ -1,0 +1,116 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="560" viewBox="0 0 1100 560" font-family="Segoe UI, Arial, sans-serif">
+  <title>Layered pipe rack, option A: facing, corners and joining, plan views and one end view</title>
+  <rect width="1100" height="560" fill="#ffffff"/>
+  <text x="40" y="50" font-size="16" fill="#2C2C2A">Facing, corners and joining (plan views, north up)</text>
+
+  <text x="40" y="100" font-size="13" fill="#2C2C2A">In line: one rack</text>
+  <g fill="none" stroke="#B4B2A9" stroke-dasharray="5 4">
+    <rect x="60" y="130" width="70" height="70"/><rect x="60" y="200" width="70" height="70"/><rect x="60" y="270" width="70" height="70"/><rect x="60" y="340" width="70" height="70"/>
+  </g>
+  <g stroke="#378ADD" stroke-width="4">
+    <line x1="75.3" y1="130" x2="75.3" y2="410"/><line x1="88.4" y1="130" x2="88.4" y2="410"/><line x1="101.6" y1="130" x2="101.6" y2="410"/><line x1="114.7" y1="130" x2="114.7" y2="410"/>
+  </g>
+  <g fill="#5F5E5A">
+    <rect x="62" y="130" width="5" height="5"/><rect x="123" y="130" width="5" height="5"/><rect x="62" y="340" width="5" height="5"/><rect x="123" y="340" width="5" height="5"/>
+    <rect x="62" y="405" width="5" height="5"/><rect x="123" y="405" width="5" height="5"/>
+  </g>
+  <g fill="#7F77DD">
+    <polygon points="145,152 139,166 151,166"/><polygon points="145,222 139,236 151,236"/><polygon points="145,292 139,306 151,306"/><polygon points="145,362 139,376 151,376"/>
+  </g>
+  <g font-size="11" fill="#185FA5" text-anchor="middle">
+    <text x="75.3" y="123">0</text><text x="88.4" y="123">1</text><text x="101.6" y="123">2</text><text x="114.7" y="123">3</text>
+  </g>
+  <g font-size="12" fill="#444441">
+    <text x="40" y="440">Same or opposite facing</text><text x="40" y="456">in line: joins straight.</text>
+    <text x="40" y="476">Squares: bent posts.</text>
+  </g>
+
+  <text x="250" y="100" font-size="13" fill="#2C2C2A">Corner: perpendicular facings</text>
+  <g fill="none" stroke="#B4B2A9" stroke-dasharray="5 4">
+    <rect x="300" y="130" width="70" height="70"/>
+    <rect x="300" y="200" width="70" height="70"/><rect x="300" y="270" width="70" height="70"/><rect x="300" y="340" width="70" height="70"/>
+    <rect x="370" y="130" width="70" height="70"/><rect x="440" y="130" width="70" height="70"/><rect x="510" y="130" width="70" height="70"/>
+  </g>
+  <g fill="none" stroke="#378ADD" stroke-width="4">
+    <line x1="315.3" y1="200" x2="315.3" y2="410"/><line x1="328.4" y1="200" x2="328.4" y2="410"/><line x1="341.6" y1="200" x2="341.6" y2="410"/><line x1="354.7" y1="200" x2="354.7" y2="410"/>
+    <line x1="370" y1="145.3" x2="580" y2="145.3"/><line x1="370" y1="158.4" x2="580" y2="158.4"/><line x1="370" y1="171.6" x2="580" y2="171.6"/><line x1="370" y1="184.7" x2="580" y2="184.7"/>
+    <path d="M315.3 200 A54.7 54.7 0 0 1 370 145.3"/><path d="M328.4 200 A41.6 41.6 0 0 1 370 158.4"/>
+    <path d="M341.6 200 A28.4 28.4 0 0 1 370 171.6"/><path d="M354.7 200 A15.3 15.3 0 0 1 370 184.7"/>
+  </g>
+  <g fill="#5F5E5A">
+    <rect x="302" y="132" width="5" height="5"/><rect x="363" y="132" width="5" height="5"/><rect x="302" y="193" width="5" height="5"/>
+  </g>
+  <g fill="#7F77DD">
+    <polygon points="385,222 379,236 391,236"/><polygon points="385,292 379,306 391,306"/><polygon points="385,362 379,376 391,376"/>
+    <polygon points="412,211 398,205 398,217"/><polygon points="482,211 468,205 468,217"/><polygon points="552,211 538,205 538,217"/>
+  </g>
+  <g font-size="11" fill="#185FA5" text-anchor="middle">
+    <text x="315.3" y="424">0</text><text x="328.4" y="424">1</text><text x="341.6" y="424">2</text><text x="354.7" y="424">3</text>
+  </g>
+  <g font-size="11" fill="#185FA5">
+    <text x="588" y="149">0</text><text x="588" y="162">1</text><text x="588" y="175">2</text><text x="588" y="188">3</text>
+  </g>
+  <g font-size="12" fill="#444441">
+    <text x="250" y="456">A rack facing N with a rack facing E at the side of its</text>
+    <text x="250" y="472">end: that end block turns by itself. Positions keep</text>
+    <text x="250" y="488">their order round the bend; nested bends never cross.</text>
+  </g>
+
+  <text x="640" y="100" font-size="13" fill="#2C2C2A">Side by side: one wide rack</text>
+  <g fill="none" stroke="#B4B2A9" stroke-dasharray="5 4">
+    <rect x="660" y="200" width="70" height="70"/><rect x="660" y="270" width="70" height="70"/><rect x="660" y="340" width="70" height="70"/>
+    <rect x="730" y="200" width="70" height="70"/><rect x="730" y="270" width="70" height="70"/><rect x="730" y="340" width="70" height="70"/>
+  </g>
+  <g stroke="#378ADD" stroke-width="4">
+    <line x1="675.3" y1="200" x2="675.3" y2="410"/><line x1="688.4" y1="200" x2="688.4" y2="410"/><line x1="701.6" y1="200" x2="701.6" y2="410"/><line x1="714.7" y1="200" x2="714.7" y2="410"/>
+    <line x1="745.3" y1="200" x2="745.3" y2="410"/><line x1="758.4" y1="200" x2="758.4" y2="410"/><line x1="771.6" y1="200" x2="771.6" y2="410"/><line x1="784.7" y1="200" x2="784.7" y2="410"/>
+  </g>
+  <g fill="#5F5E5A">
+    <rect x="662" y="200" width="5" height="5"/><rect x="793" y="200" width="5" height="5"/><rect x="662" y="405" width="5" height="5"/><rect x="793" y="405" width="5" height="5"/>
+  </g>
+  <g fill="#7F77DD">
+    <polygon points="815,222 809,236 821,236"/><polygon points="815,292 809,306 821,306"/><polygon points="815,362 809,376 821,376"/>
+  </g>
+  <g font-size="11" fill="#185FA5" text-anchor="middle">
+    <text x="675.3" y="192">0</text><text x="688.4" y="192">1</text><text x="701.6" y="192">2</text><text x="714.7" y="192">3</text>
+    <text x="745.3" y="192">4</text><text x="758.4" y="192">5</text><text x="771.6" y="192">6</text><text x="784.7" y="192">7</text>
+  </g>
+  <g font-size="12" fill="#444441">
+    <text x="640" y="440">Same facing, side by side: one</text>
+    <text x="640" y="456">rack with eight positions; posts</text>
+    <text x="640" y="472">on the outer lines only.</text>
+  </g>
+
+  <text x="870" y="100" font-size="13" fill="#2C2C2A">Stacked and side by side</text>
+  <text x="870" y="118" font-size="12" fill="#5F5E5A">End view, 2 x 2 blocks</text>
+  <g fill="none" stroke="#B4B2A9" stroke-dasharray="5 4">
+    <rect x="880" y="200" width="70" height="70"/><rect x="950" y="200" width="70" height="70"/><rect x="880" y="270" width="70" height="70"/><rect x="950" y="270" width="70" height="70"/>
+  </g>
+  <g stroke="#BA7517" stroke-width="1" stroke-dasharray="5 3">
+    <line x1="872" y1="213.1" x2="1028" y2="213.1"/><line x1="872" y1="326.9" x2="1028" y2="326.9"/>
+  </g>
+  <g stroke="#BA7517" stroke-width="2" stroke-dasharray="5 3">
+    <line x1="872" y1="256.9" x2="1028" y2="256.9"/><line x1="872" y1="283.1" x2="1028" y2="283.1"/>
+  </g>
+  <g fill="#B4B2A9" stroke="#5F5E5A" stroke-width="0.6">
+    <rect x="882.2" y="241" width="4.4" height="99"/><rect x="1013.4" y="241" width="4.4" height="99"/>
+    <rect x="882.2" y="241" width="135.6" height="4.4"/><rect x="882.2" y="311" width="135.6" height="4.4"/>
+  </g>
+  <g fill="#85B7EB" stroke="#185FA5" stroke-width="0.8">
+    <circle cx="895.3" cy="235" r="6"/><circle cx="908.4" cy="235" r="6"/><circle cx="921.6" cy="235" r="6"/><circle cx="934.7" cy="235" r="6"/>
+    <circle cx="965.3" cy="235" r="6"/><circle cx="978.4" cy="235" r="6"/><circle cx="991.6" cy="235" r="6"/><circle cx="1004.7" cy="235" r="6"/>
+    <circle cx="895.3" cy="305" r="6"/><circle cx="908.4" cy="305" r="6"/><circle cx="921.6" cy="305" r="6"/><circle cx="934.7" cy="305" r="6"/>
+    <circle cx="965.3" cy="305" r="6"/><circle cx="978.4" cy="305" r="6"/><circle cx="991.6" cy="305" r="6"/><circle cx="1004.7" cy="305" r="6"/>
+  </g>
+  <g font-size="12" fill="#444441">
+    <text x="870" y="372">Bold dashes: the two</text>
+    <text x="870" y="388">crossing levels between</text>
+    <text x="870" y="404">layers. Each beam just under</text>
+    <text x="870" y="420">its lines; posts run on up.</text>
+  </g>
+
+  <g font-size="12" fill="#2C2C2A">
+    <text x="40" y="520">Facing comes from the player's look when placing, as for stairs, and orders the positions 0-3 from left to right.</text>
+    <text x="40" y="540">No tee shape: a rack meeting the side of a run stays a separate rack; its lines enter through the run's side faces.</text>
+  </g>
+</svg>

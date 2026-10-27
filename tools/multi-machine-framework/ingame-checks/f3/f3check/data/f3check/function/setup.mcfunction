@@ -1,0 +1,2 @@
+gamemode creative @s
+setblock ~ ~ ~3 icheme:equipment_constructor[facing=south]{Bank:[I;1,1],Boot:0b,Column:{Condenser:"AIR_COOLER",Diameter:2.0d,Ejector:1b,Kettle:1b,PumparoundPumps:["STANDARD"],RefluxPump:"STANDARD",Trays:[I;20,12,1,9,1,21,1,7,5]},Connections:[I;3,5,0],Diameter:2.0d,Form:"column",Offsets:[I;1,0,0],Outlet:0,Paint:[I;10592672,5990509],Support:2,TangentLength:4,Trays:[I;20,10,0,0,0]} replace

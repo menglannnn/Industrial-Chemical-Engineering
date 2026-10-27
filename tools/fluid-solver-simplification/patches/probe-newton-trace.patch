@@ -1,0 +1,43 @@
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/solver/SparseNewton.java b/src/main/java/com/wormzjl/createcheme/science/fluid/solver/SparseNewton.java
+index cc9a655a..af25d203 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/solver/SparseNewton.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/solver/SparseNewton.java
+@@ -153,6 +153,9 @@ public final class SparseNewton {
+         }
+     }
+ 
++    // TEMPORARY t38 trace probe (reverted before the commit).
++    static final boolean TRACE=Boolean.getBoolean("createcheme.fluid.trace");
++    public static final int[] TRACE_VARS=System.getProperty("createcheme.fluid.trace.vars")==null?null:java.util.Arrays.stream(System.getProperty("createcheme.fluid.trace.vars").split(",")).mapToInt(Integer::parseInt).toArray();
+     public static Result solve(Equations equations,double[] initial,Settings settings,Runnable checkpoint) {
+         return solve(equations,initial,settings,checkpoint,new Workspace());
+     }
+@@ -171,6 +174,7 @@ public final class SparseNewton {
+         ThermoHold hold=null;
+         for(int iteration=0;iteration<=settings.iterations();iteration++) {
+             checkpoint.run();
++            if(TRACE)System.err.printf(java.util.Locale.ROOT,"NEWTON it=%d norm=%.4e refresh=%b%n",iteration,norm,refresh);
+             if(norm<=settings.tolerance())return new Result(x,norm,iteration,calls,lastNonzeros,pattern.groups.size());
+             if(iteration==settings.iterations())break;
+             hold=null;
+@@ -189,7 +193,12 @@ public final class SparseNewton {
+             lastNonzeros=workspace.matrix.nonzeroCount();
+             try{direction=workspace.factorization.solve(rhs,SparseLuSolver.Verification.UNTIL_VERIFIED);}
+             catch(SparseLuSolver.SolveFailure failure){if(!fresh){SolverDiagnostics.count(SolverDiagnostics.newtonRefreshesFailed);refresh=true;continue;}workspace.invalidate();throw new Nonconvergence("Singular Newton Jacobian: "+failure.getMessage(),x);}
++            if(TRACE&&TRACE_VARS!=null)for(int v:TRACE_VARS){if(v>=n)continue;var sb=new StringBuilder(String.format(java.util.Locale.ROOT,"NEWTON   var %d x=%.8g f=%.4e d=%.4e",v,x[v],f[v],direction[v]));
++                if(fresh){var m=workspace.matrix;sb.append(" col:");for(int e=m.columnStart(v);e<m.columnEnd(v);e++)sb.append(String.format(java.util.Locale.ROOT," %d:%.3e",m.rowAt(e),m.valueAt(e)));
++                    sb.append(" row:");for(int c=0;c<n;c++)for(int e=m.columnStart(c);e<m.columnEnd(c);e++)if(m.rowAt(e)==v)sb.append(String.format(java.util.Locale.ROOT," %d:%.3e",c,m.valueAt(e)));}
++                System.err.println(sb);}
+             double alpha=Math.min(1,equations.maximumStep(x,direction));boolean accepted=false;
++            if(TRACE)System.err.printf(java.util.Locale.ROOT,"NEWTON   maximumStep=%.4g%n",alpha);
+             if(!Double.isFinite(alpha)||alpha<=0)throw new Nonconvergence("No feasible Newton direction",x);
+             for(int backtrack=0;backtrack<settings.backtracks();backtrack++,alpha*=.5) {
+                 checkpoint.run();if(backtrack>0)SolverDiagnostics.count(SolverDiagnostics.newtonBacktracks);
+@@ -212,6 +221,7 @@ public final class SparseNewton {
+                         descent=nextMerit<merit*(1-1e-4*alpha);reduction=nextMerit/merit;
+                     }
+                     if(descent) {
++                        if(TRACE)System.err.printf(java.util.Locale.ROOT,"NEWTON   accepted alpha=%.4g backtrack=%d next=%.4e reduction=%.4f fresh=%b%n",alpha,backtrack,nextNorm,reduction,fresh);
+                         // Residual evaluation and triangular solves are much cheaper than a new
+                         // colored Jacobian. Keep a contracting chord iteration a little longer;
+                         // stalled searches still force a fresh Jacobian immediately.

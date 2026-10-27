@@ -1,0 +1,28 @@
+{
+  "base": "955d6618",
+  "branch": "codex/inline-pump-accessory",
+  "tests": 53,
+  "failures_and_errors": 0,
+  "classes": [
+    "com.wormzjl.icheme.runtime.fluid.InlineMoverAccessoryTest",
+    "com.wormzjl.icheme.runtime.fluid.PhysicalFluidTopologyTest",
+    "com.wormzjl.icheme.runtime.fluid.PipelineFilterAccessoryTest",
+    "com.wormzjl.icheme.runtime.fluid.PipelinePressureValveTest",
+    "com.wormzjl.icheme.runtime.fluid.PipelineShutoffValveTest",
+    "com.wormzjl.icheme.runtime.fluid.PipePresentationTest",
+    "com.wormzjl.icheme.runtime.fluid.SlurryTankPumpTest",
+    "com.wormzjl.icheme.runtime.instrument.GaugeAccessoriesTest",
+    "com.wormzjl.icheme.science.fluid.network.CompressorTest"
+  ],
+  "renders": 74,
+  "minecraft_runs": 0,
+  "formats": {
+    "checkpoint": 19,
+    "unit": 12,
+    "accessories": 1,
+    "process": "fluid-14",
+    "instruments": "instruments-1"
+  },
+  "jar": "icheme-0.11.2.jar",
+  "implementation": "e61751aa"
+}

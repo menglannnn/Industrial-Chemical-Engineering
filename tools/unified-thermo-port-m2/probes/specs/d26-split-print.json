@@ -1,0 +1,3 @@
+[
+ {"from": "        try{return close(model,start,inventory,null,workFrom,checkpoint);}\n        catch(SparseNewton.Nonconvergence failure) {\n            if(failure.lastVariables()==null)return null;\n", "to": "        try{var m2c=close(model,start,inventory,null,workFrom,checkpoint);System.out.println(\"M2PROBE split closed\");return m2c;}\n        catch(SparseNewton.Nonconvergence failure) {\n            System.out.println(\"M2PROBE split last: \"+failure.getMessage());\n            if(failure.lastVariables()==null)return null;\n"}
+]

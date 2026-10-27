@@ -1,0 +1,223 @@
+# 2026-09-24-coolprop-low-temperature
+
+Purpose: Preliminary unified engine plan: extend current-package T/P for CDU/VDU, coking, hydrotreating and light-compound steam cracking; test a small engine pilot before staged DB expansion
+
+Status: Implemented 2026-10-19 (0.9.0). Index: [../INDEX.md](../INDEX.md).
+
+## Documents
+
+- [UNIFIED_MULTIPHASE_THERMO_PLAN.md](UNIFIED_MULTIPHASE_THERMO_PLAN.md) (revision 3)
+- [DECISION_LOG.md](DECISION_LOG.md)
+- [P0_BASELINE_COVERAGE_AND_SOURCES.md](P0_BASELINE_COVERAGE_AND_SOURCES.md) (P0 done 2026-09-24: before/target coverage table, baseline case manifest, proposed G0 acceptance targets, source manifest in `research/<batch>/sources/`, process anchors confirmed or corrected, D5 confirmed)
+- [P1_ALPHA_AND_LIQUID_PATH_STUDY.md](P1_ALPHA_AND_LIQUID_PATH_STUDY.md) (P1 items 2 and 4 measured 2026-09-24: D1 anchor and D3 Soave confirmed, critical band to widen)
+- [P1_STABILITY_TEST.md](P1_STABILITY_TEST.md) (P1 item 3 done 2026-09-24: `science.thermo.TangentPlaneStability` with tests, verdicts verified on 130,660 binary and 1,243 network-package states, 1 to 14 microseconds per call; scans in `tools/tangent-plane-stability-scans/`)
+- [P2_DATA_SPINE.md](P2_DATA_SPINE.md) (P2 data side done 2026-09-24: `spine` and `crystals` record kinds, pilot set N2/CH4/C2H6/CO2 in test resources, 18 tests, bundled fingerprints pinned; methane CEA-vs-JANAF conflict declared; tool `tools/spine-join-measurement/`)
+- [P2_PHASE_CONTRACTS.md](P2_PHASE_CONTRACTS.md) (P2 phase side done 2026-09-24: `science.thermo.phase` contracts, cubic adapter at state pressure, fluid-only TP equilibrium, water/phase-competition/domain/identity rules, 23 tests; scans in `tools/phase-equilibrium-scans/`)
+- [P3_PILOT_ENGINE_PLAN.md](P3_PILOT_ENGINE_PLAN.md) (P3 design 2026-09-24: nine design answers, WP1 to WP11, risks, D9 to D13)
+- [P3_EPPR78_KIJ.md](P3_EPPR78_KIJ.md) (WP1: kernel kij(T) mode)
+- [P3_PILOT_PACKAGE_AND_SPINE.md](P3_PILOT_PACKAGE_AND_SPINE.md) (WP2/WP3: E-PPR78 record kind, bundled pilot package with Tr = 0.8 anchors; WP5 appends)
+- [P3_DIRECT_LIQUID_PATH.md](P3_DIRECT_LIQUID_PATH.md) (WP4: state-pressure liquids and water, chain-100 deviation table, two runtime failures)
+- [P3_EQUILIBRIUM_ENGINE.md](P3_EQUILIBRIUM_ENGINE.md) (WP6a: Newton finish, band, PIP labels, free water; WP6b appends)
+- [P3_REFERENCES_WP8_WP10.md](P3_REFERENCES_WP8_WP10.md) (GERG-2008 bubble points, methane ideal-gas reference and the D13 proposal)
+- [P3_WP4_RUNTIME_DIAGNOSIS.md](P3_WP4_RUNTIME_DIAGNOSIS.md) (the two runtime failures: trace-water flash bisection, pump static column)
+- [G3_QUALIFICATION_REPORT.md](G3_QUALIFICATION_REPORT.md) (WP9b: families F1 to F10, the process-indexed domain table, the D15 proposals, the WP7d re-run)
+- [P3_PILOT_ENGINE_REVIEW.md](P3_PILOT_ENGINE_REVIEW.md) (WP11: what P3 delivered per package, gates before and after the cleanup, chain-100 re-capture numbers, benchmark window, the tool folders, decisions D9 to D15, fresh-world statement, open items for P4 to P8)
+- [P4_SOLID_CO2_MODEL.md](P4_SOLID_CO2_MODEL.md) (P4 stage 1: the Jäger-Span model and record kind, the anchoring mathematics, oracle and pilot measurements, the fusion-enthalpy decision, what stage 2 and P5 need)
+- [P4_P5_HOLDOUT_DATA_SURVEY.md](P4_P5_HOLDOUT_DATA_SURVEY.md) (availability table per gate, the transcribed open datasets, corrections to the plan's holdout list, the owner request list, what G4 and G5 can be qualified with today)
+- [P4_GAS_SOLID_EQUILIBRIUM.md](P4_GAS_SOLID_EQUILIBRIUM.md) (P4 stage 2a: the crystal competition contract, the vapour-solid algorithm and its hold rule, verification tables, the methane-gas frost-point holdout scores, cost, what stage 2b and P5 need, D17)
+- [P4_NETWORK_COUPLING.md](P4_NETWORK_COUPLING.md) (P4 stage 2b: the network contract, the crystal inventory and closures, the UV-driven equilibration, format 6, presentation, the island tests, the G4 status with G4F2, the hold behaviour, D18)
+- [P5_SOLID_LIQUID_EQUILIBRIUM.md](P5_SOLID_LIQUID_EQUILIBRIUM.md) (P5: the generalised crystal solve and the remaining holds, the fusion-enthalpy measurement, the G5 families with targets, the re-run holds, the network liquid-solid tests, the G5 status and allowlist, D19)
+- [P6_PILOT_ACCEPTANCE.md](P6_PILOT_ACCEPTANCE.md) (P6: the pilot as built, consumer refusals, the bubble-point fix, the crystal UV warm start and scheduler budgets, the fresh-world GUI check with screenshots, record texts, the morphology policy D20, known limits and in-game findings, tooling state, the G6 verdict)
+- [PRECIPITATED_SOLIDS_PLAN.md](PRECIPITATED_SOLIDS_PLAN.md) (2026-10-15: the size and blocking rule for crystals as solids and its effect on main's solver; inputs `main-adaptation/PRECIPITATED_SOLIDS_RESEARCH.md`, `SOLID_SYSTEM_AND_CONVERGENCE.md`)
+- [MAIN_ADAPTATION_REVIEW.md](MAIN_ADAPTATION_REVIEW.md) (the M5 review, 2026-10-17)
+- [M5_WORSE_WORLDS_TRACE.md](M5_WORSE_WORLDS_TRACE.md) (seeds 322 and 47, 2026-10-17)
+- [M7_NEW_COLD_HOLDS_TRACE.md](M7_NEW_COLD_HOLDS_TRACE.md) (cold seeds 30 and 19, 2026-10-17)
+- [M8_CAMPAIGN_WORSE_WORLDS_TRACE.md](M8_CAMPAIGN_WORSE_WORLDS_TRACE.md) (cold seeds 430 and 48, 2026-10-18)
+- [TEST_WORLD_RIG_HOLDS_TRACE.md](TEST_WORLD_RIG_HOLDS_TRACE.md) (rig holds H1 to H4, 2026-10-18)
+- [MAIN_ADAPTATION_PLAN.md](MAIN_ADAPTATION_PLAN.md) (2026-10-15: what main 0.8.0 changed for this branch, the port route and work packages M0 to M5, references that move, owner decisions; analyses `main-adaptation/THERMO_MATERIALS_LAYER.md`, `NETWORK_SOLVER_LAYER.md`, `RUNTIME_FORMATS_GUI_LAYER.md`)
+- [P6B_RUNTIME_FAILURE_DIAGNOSIS.md](P6B_RUNTIME_FAILURE_DIAGNOSIS.md) (P6b: the four pilot-world runtime failures reproduced from the saved checkpoint, root causes scientific or code, three fixes with before/after numbers, the options for the near-pure CO2 case, the liquidus finding, gates)
+- review `UNIFIED_MULTIPHASE_THERMO_PLAN_REVIEW.md` (route: extend the in-house cubic, Helmholtz oracle port, CO2-only pilot solids, data sources by class; probe in `research/2026-09-24-coolprop-low-temperature/pr78-vs-coolprop/`)
+- supporting `COOLPROP_LOW_TEMPERATURE_REVIEW.md`
+- [MIXTURE_FREEZING_FEASIBILITY_REVIEW.md](MIXTURE_FREEZING_FEASIBILITY_REVIEW.md)
+- [SOLID_GAS_FEASIBILITY_REVIEW.md](SOLID_GAS_FEASIBILITY_REVIEW.md)
+- [UNIFIED_THERMO_ENGINE_REVIEW.md](UNIFIED_THERMO_ENGINE_REVIEW.md)
+- [SUPERCRITICAL_SUPPORT_REVIEW.md](SUPERCRITICAL_SUPPORT_REVIEW.md)
+- [THERMODYNAMIC_SOFTWARE_MARKET_REVIEW.md](THERMODYNAMIC_SOFTWARE_MARKET_REVIEW.md)
+- [NON_CONVERGED_CASES_REVIEW.md](NON_CONVERGED_CASES_REVIEW.md) (t37, 2026-10-18: the 103 held campaign seeds at `688f4cd7` and rig holds H4, H5 sorted into eight mechanism groups K1-K8, six row traces; verdict: none a capability limit, degenerate world or artefact, all solver or model defects, four structural propositions for the owner; tools `unified-thermo-holds-review/`)
+- [MERGE_STACK_PLAN.md](MERGE_STACK_PLAN.md) and `MERGE_STACK_DRAFTS.md` (t47, 2026-10-19: merge plan for the stack port → consolidation → simplification → junction seeding at `798bedd9`; main unmoved at `ffeafe8a`; recommended a fast-forward plus `Release 0.9.0`; CHANGELOG, version and code guide drafts per chapter with a new `equilibrium-engine.md`; no blocking finding; awaiting the owner)
+
+## Code areas
+
+Planned: material DB, common phase engine, fluid/column consumers, state/checkpoints and gates
+
+## History
+
+- Implemented 2026-10-19 (main `5b49f940`, mod 0.9.0, release 0.9.0 by fast-forward of `claude/junction-seeding` with the pre-merge commits `9ce2553a`, `47391899`, `81bf147f`
+- not pushed
+- final gates t48 (m16 at `798bedd9`): full test 1482/0, G2 exact, fluid GameTests 31/31, campaign cold 944 / bundled 988 / defaults 1000
+- t49 (m17 at `81bf147f`): 1482/0, G2 exact
+- merge plan `2026-09-24-coolprop-low-temperature/MERGE_STACK_PLAN.md`
+- code guide refreshed at `5b49f940`).
+- Open: the in-game check after the merge (test-world rows 3 to 12, rig rows 5 (H5) and 10 (H4))
+- the review's ice, notice and GUI items (`MAIN_ADAPTATION_REVIEW.md`).
+- Next: the custom equipment rendering branch merges as its own batch with checkpoint format 12.
+- History: in progress since 2026-09-24 (plan revision 3
+- decisions D1 to D5 in `DECISION_LOG.md`, D6 proposed
+- P0 and the bounded P1 study done 2026-09-24 on `claude/coolprop-multiphase-thermo-37f6b0` from main f9d6be1 with opus agents: Helmholtz oracle in Java tests (`6ded7c7`), alpha and liquid-path measurement, tangent-plane stability service (`4500e58`)
+- gate G1 met
+- D6 (single ideal-gas source) and D7 (G0 acceptance targets) taken 2026-09-24 under the owner's standing instruction
+- P2 done 2026-09-24 and gate G2 met (spine and crystal record kinds `dc82327`, phase and equilibrium contracts `cbaa791`, D8 water and phase-competition rules)
+- P3 designed 2026-09-24 (`P3_PILOT_ENGINE_PLAN.md`, D9 to D13)
+- stage 1 done 2026-09-25 (WP1 kernel kij(T) `43d1081`, WP2 E-PPR78 data `6ec5c2c`, WP3 bundled pilot package `50dfe31`, WP8 GERG-2008 fixture `eb1ed10`, WP10 methane ideal-gas reference, WP6a engine completion `f5ffcf8`, WP4 direct liquid path `959ea0d` with two runtime failures under diagnosis)
+- stage 2 done 2026-09-25 (WP5 spine wiring `e4d355f`, WP6b PH/UV `f116a78`
+- the two WP4 runtime failures diagnosed to the trace-water flash bisection and the pump's static column, `P3_WP4_RUNTIME_DIAGNOSIS.md`)
+- stage 3 done 2026-09-25 (WP9a spine r2 `271d84a`, WP7 network integration `8e5274e`: engine-decided phases, both runtime fixes, 10 MPa envelope, 30/30 GameTests
+- D14 revises four G0 rows as declared errors)
+- stage 4: WP7b `aed9a9b`+`181302e` (fixed-point wet flash), WP7c `f2d5221` (hot-gas label PIP > max(1, Z)), WP9b `4eec712` (ten G3 fixture families, `G3_QUALIFICATION_REPORT.md`
+- six rows taken as declared errors in D15)
+- WP7d `774cb82` (four engine defects fixed, D15 bounds in the fixtures)
+- gate G3 met 2026-09-25 at the declared-error grade
+- WP11 done 2026-09-25 (`a3716ed` liquid-liquid guard and typed holds, `ac6ebc1` chain-100 re-capture, `8a10bfd` probes detached, `7afa990` changelog): P3 complete on the branch at `7afa990`, 28 commits over main f9d6be1, full suite 1226 green, exact regression 0, 30/30 GameTests, review `P3_PILOT_ENGINE_REVIEW.md`
+- NOT MERGED (owner's instruction 2026-09-25: do not merge now)
+- 2026-09-25 the owner provided the Jaubert 2022 Supporting Information and the solid CO2 papers (Jäger and Span 2012, Trusler 2011): WP2b `f0d4cf8` rebuilt the E-PPR78 record from Table S4 (356 pairs, pilot pairs identical, no pin moved)
+- P4 stage 1 done 2026-09-25 (`edb9f7f`, `bab0cdc`: the Jäger-Span 2012 solid CO2 Gibbs function on the P2 crystal contract, D16 pilot anchor fusion enthalpy 9019 J/mol, full suite 1241 green, fluidScienceTest 219)
+- P4/P5 holdout survey concluded 2026-09-25 (`P4_P5_HOLDOUT_DATA_SURVEY.md`: open CO2 frost points in methane gas and the CO2 liquidus in liquid methane collected into `research/.../sources/solid-co2-holdouts/`
+- no open CO2 + N2 frost points, owner request list of 12 items led by the Sonntag 1960 dissertation, Smith 1964, Maltby 2025, Davis 1962 and the Trusler erratum)
+- P4 stage 2a done 2026-09-25 (`5f2bd7d`, `8144935`: gas-solid equilibrium in the engine with the crystal competition, `SOLID_LIQUID` typed hold, onsets, G4F1 frost-point holdouts MAD 1.35 K, D17
+- full suite 1256 green)
+- owner-provided papers (13) transcribed the same day (`P4_P5_HOLDOUT_DATA_SURVEY.md` section 9)
+- P4 stage 2b done 2026-09-25 (`0ea358a` to `c284f59`: the network on the crystal competition, immobile crystal inventory, checkpoint format 6 fresh world, G4F2 nitrogen frost points 0.42 K, D18)
+- gate G4 met 2026-09-25 at the declared-error grade
+- P5 done 2026-09-25 (`33b4ebe` to `4929e0f`: crystal beside a liquid in engine and network, G5F1 to G5F6 green, fusion enthalpy kept at 9019 J/mol, D19)
+- gate G5 met 2026-09-25 at the declared-error grade
+- P6 done 2026-09-26 (`dd3da29` to `4d26a45`: consumers refuse crystal packages typed, morphology policy D20, the liquid-full bubble-point limit fixed, crystal UV warm start, fresh-world GUI check through the MCP bridge)
+- gate G6 met 2026-09-26 at the declared-error grade with four runtime limits for P7/P8
+- the pilot (P0 to P6) is complete on the branch, NOT MERGED
+- P6b 2026-09-26 (`db43b22` to `4c21104`, `P6B_RUNTIME_FAILURE_DIAGNOSIS.md`): three of the four pilot-world runtime failures fixed, the near-pure CO2 sublimation-line hold diagnosed and awaiting the owner's decision D21
+- then the owner's test world
+- P7 (compound rollout) awaits the owner's go
+- prior feasibility surveys concluded
+- 2026-10-15: main moved to 0.8.0 (`ffeafe8a`), the branch no longer merges or compiles on it, adaptation planned in `MAIN_ADAPTATION_PLAN.md` (port onto a new branch from main in five work packages
+- owner decisions OD-P1 and OD-P3 to OD-P7 and D21 open
+- OD-P2 decided 2026-10-15: adapt the engine to main's removed derivative chain, restore nothing)
+- owner answered the rest 2026-10-15: D21 and D22 recorded (port route, crystals become solids of a phase-transition kind beside custom solids, homogeneous particles in vessels, precipitation in transport blocks the pipe, particle-size proposal pending)
+- M0 done, M1 in progress on `claude/unified-thermo-port` from `ffeafe8a`
+- M1 DONE 2026-10-15 (`348d06e1`..`de34347c` engine and data bundled-neutral: chain-100 exact 0 against main's record, 33 junction lines identical, MIXED_GAS_COST 339, full `test` 1357/0
+- D21 in the engine `7a3ea017`: near-pure crystal steps with fluid trace bound 1e-4, typed CRYSTAL_STEP hold, triple-point targets answered before any search
+- report `M1_ENGINE_PORT.md`, tools `unified-thermo-port-m1/`
+- five owner items in the report, decided 2026-10-15 as recommended: theta 1e-6 -> 1e-5 and the inner UV secant reset land as M3's first commit)
+- a mistaken Create PR click pushed the branch at `7a3ea017` and opened PR wormzjl/CreateChemE#2 on 2026-10-15
+- the owner said it was the wrong button, the PR was closed and the remote branch deleted minutes later
+- the branch stays local and unpushed
+- M2 launched 2026-10-15, stopped at `0ab70bc8` (`c91e3234` 10 MPa data, `0ab70bc8` model on the engine, compressibility key deleted, checkpoint 9 / unit 2
+- report `M2_FLUID_THERMO_PORT.md`, tools `unified-thermo-port-m2/`) for owner decision D24 (THREE_PHASES holds where a gas carries crude traces: Rachford-Rice resolves the trace liquid only to 1 %
+- option A, solving in the minor phase's fraction, recommended) and proposal D25 (pure-water node on its saturation line, E7 seed 116, M3)
+- quick check random clean 195 -> 191, defaults 200 -> 200
+- M2 resumed on the decision-independent tests commit and two water-stiffness deviations
+- D24 decided 2026-10-15 (A) and D25 decided with the owner's direction "not limited to pure compounds" (the outer phase check adds missing phases and drops a phase only when the solve empties it, for any composition
+- moved from M3 to M2 so bundled references move once)
+- M2 stopped again 2026-10-16 at `8a06b22f` (`26b1511e` deferred tests, `e59da6ee` D24 A: THREE_PHASES worlds and seeds 156/168/173 clean, `8a06b22f` D25: seed 116 clean, LiquidFullBubblePointTest 4/4 without vesselSplit
+- quick check random 193 clean with new E7 seeds 35 and 86 from D25's 1e-6 nucleus) for proposals D26 (seed an added phase at the node's own UV/PH split, the nucleus constant removed) and D27 (cadence reference pair 0.25/0.125 s
+- re-archive the McpGameplay tank under the new water law)
+- M3a launched 2026-10-16 for the approved D21 follow-ups (theta 1e-5, inner UV secant reset) while the lane waits
+- D26 decided 2026-10-16 (A: seed at the node's own split), D27 going ahead as proposed (forced
+- owner informed)
+- M3a DONE 2026-10-16 (`cc1a39a1`: theta 1e-5, inner UV secant within one classification
+- engine families unchanged but G5F6 residuals
+- report `M3A_D21_FOLLOWUPS.md`, tools `unified-thermo-port-m3a/`
+- watch item for M3: 13/42 near-triple-point UV targets above theta fail at the binary three-phase step)
+- M2 resumed 2026-10-16 for D26, D27 and the single re-record
+- M2 COMPLETE 2026-10-16 (`54c1d24d` D26 A, `33ebad06` D27, `a0f20364` Legacy pin, spine revision line and chain-100: quick check at `33ebad06` equals main's classes in both distributions (random 195, defaults 200), chain-100 re-captured (mass 2.9e-5, flows 2.2e-4: PR78 liquid and Region 1 water at state pressure), 8 LIQUID_JUNCTION lines moved with reasons, 24 MIXED_GAS lines and MIXED_GAS_COST 339 unchanged, full `test` 1414 with 1 failure STACK_PASS, proposed as D28 (a failed pass's last iterate is not a state; option A recommended))
+- M3 launched 2026-10-16 (crystals as solids
+- D28 to be messaged when decided)
+- M3 stopped 2026-10-16 at `1eeb8673` (`acc775b6` ThermoHold supertype, `675db18b` crystal kind with one size per solid and slush at 0.5, `4f7ba970` D23 refresh, `92d39275` condensed stand-in, `34b80286` solid islands rest, tests `7b5f1f4c` `aef76c89` `1eeb8673`
+- full `test` 1441 with 1 failure STACK_PASS
+- 9 of 9 unit gates fail with their rule off
+- row E 5.8k/31k/53k checkpoints in intervals 1-3 against 1.3M/5.0M/10.5M on the old branch
+- bundled quick check identical to `a0f20364`
+- cold fuzz 174 clean with the stand-in against 181 on `a0f20364`
+- report `M3_CRYSTALS_AS_SOLIDS.md`, tools `unified-thermo-port-m3/`) for owner proposal D29 (the stand-in with trace support from the answer's fluid phases, a fourth form) and lead decision D30 (the joint closure runs inside `InventoryEquilibrium.solve`'s pass loop)
+- M3 resumed on D30
+- D30 implemented 2026-10-16 (`63926c52`: the pass loop is `InventoryEquilibrium.passes` over the vessel's or the joint closure
+- cold seeds 35 and 148 clean, 72 back at the hold `a0f20364` has)
+- D29 option A staged unmeasured (`tools/unified-thermo-port-m3/staging/`)
+- D28 restated 2026-10-16 as A' (a failed iterate's fold reads the A85 record and never writes it
+- the old A would undo D30), A' probed 2026-10-16 (STACK_PASS passes with 0.0 g of water left
+- seeds 35 and 148 keep their crystal
+- seed 72 reaches the hold `a0f20364` has
+- active-set passes -21 %, Newton iterations -29 % on the three seeds)
+- D28 A' and D29 A decided by the owner 2026-10-16 ("ok"
+- D29 is the go for a fourth form)
+- M3 complete 2026-10-16 at `76e87740` (D28 A′ `741ce603`, D29 A `76e87740`
+- full test 1441, 0 failures
+- bundled quick check identical
+- cold 179 clean against 181 at `a0f20364`, new holds 34, 98 and 114 at methane's floor traced in `M3_COLD_ARRIVAL_TRACE.md`: an empty tank laid out by an isothermal TP flash of the arriving LNG gets the stand-in's pure-CO2 liquid, methane cannot condense into it
+- owner proposal D31 A, the empty tank at its own split, probed 2026-10-16: seeds 114, 34 and 98 clean, 27 classes 147 of 147, printed lines within 1.9e-12)
+- owner-requested general design review (Fable, max effort) done 2026-10-16, `UNIFIED_THERMO_PORT_REVIEW.md`: the cold cost and classes E7/F are one mechanism, an own split that seeds a phase its closure drove to nothing (seed 48, 87 % of the cold Newton iterations)
+- proposals: the own closure decides by where it goes (D26 amendment), the stand-in loses its vote (D31), solids ride the liquid and closures reopen each interval (D33)
+- forms head, A (D26 + D31), A + D33
+- owner go 2026-10-16 on the forms and D32 A
+- measured (cold clean/Newton: head 179/4.63 M, A 184/4.41 M, A + D33 183/4.35 M
+- bundled identical)
+- F1 traced to B's lost vote (M3's let-down gate fails)
+- form 4 (the stand-in proposed like any phase and decided by the own split
+- the amendment by direction) decided by the owner 2026-10-16, chosen and committed 2026-10-16 (cold 183 clean, Newton 2.36 M against 4.63 M at the head, own splits -60 %
+- bundled identical
+- report `M4B_REVIEW_FORMS.md`)
+- D32 fix `15220a07`, typed holds `81129851`, F4 `60b62694`, F2 fix A `ed2cdff4`, D23-1 gate `c63e9a8b`
+- full test 1457, 0 failures at `60b62694`, 327/327 affected classes after F2
+- open: E8 (seed 48: a fold's restated vessel is checked, not re-closed), D33 on islands without filter, solids or liquid (the plain integrate keeps closure masks), F2's root (seed windows clipped to fluid ranges, not the domain's floors)
+- owner rule 2026-10-16: data to a component's freezing point makes the package valid below it (`AGENTS.md`, `1b15fd43`)
+- E8 (`b46b4a81`: a vessel restated by a fold is closed again) and D33's gap (`1b75ce08`: every closure opens at an interval start on every path
+- `InletPhaseTest` fixture 4 and `PhasePortTest` restated) committed 2026-10-16 with gates (report `M4C_FREEZING_RULE_AND_FIXES.md`)
+- owner direction 2026-10-16: no hold for leaving a package's range, extrapolated data instead (supersedes the freezing-point questions), plan `RANGE_EXTRAPOLATION_PLAN.md` written 2026-10-16 (77 lines: every range hold surveyed, a smooth continuation per property model, one numerical box of 10 to 6000 K and 1 Pa to 1 GPa as trial rejection, a status-line notice instead of a hold, ice Ih as a segments crystal record with water's own freezing rule (owner decision C, replaces D8), ThermoDomainViolation deleted
+- WP1 to WP5
+- ten owner decisions), approved by the owner 2026-10-16 with option A in all ten ("ok keep things lightweight"
+- no-range-hold rule in `AGENTS.md`, `1d08ef1a`), WP1 to WP3 implemented 2026-10-16 (`333dd6e7`, `a169fa85`, `085676ea`, `90d68ca1`: continuations past every data end, numerical box 10 to 6000 K and 1 Pa to 1 GPa, `ThermoDomainViolation` deleted, EXTRAPOLATED grade, interim ICE hold, status-line notice
+- 83 classes and 446 tests on the index lane
+- report `RANGE_EXTRAPOLATION_WP1_WP3.md`), WP4 (ice Ih) implemented 2026-10-16 (`13bcfe31`, `1674e3db`, `ead6d6f2`: `crystals/ice_ih.json` fitted to IAPWS R10-06, water r2 with R14-08, `FreeWaterIce`, the freeze step in PH and UV, ice on every package as a D23 solid
+- 117 classes on the index lane
+- report `ICE_IH_WP4.md`), quick checks at `31e25f6f` (cold 185/200, against 183, with range holds gone
+- bundled defaults 200/200
+- bundled random 195/200, with 3 new uncaught EOS-root exceptions and 2 new cold E9 seeds under repair, report `QUICK_CHECK_FIXES.md`)
+- fixes `8220d4bc`..`7bd5fafc` 2026-10-17 (confirming quick checks: cold 186/200, bundled 197/200 and 200/200)
+- M5 measured 2026-10-17 at `7bd5fafc` (full test 1479 tests, 0 failures
+- G1 junction lines and MIXED_GAS_COST as main
+- G2 exact
+- GameTests 31/31
+- campaign cold 911/1000, bundled random 979 against main's 972 (`cl18`), defaults 1000
+- new budget holds bundled 47, 430, 678, 1000 and cold 348 confirmed alone
+- the worse worlds 322 and 47 traced (`M5_WORSE_WORLDS_TRACE.md`: 322 a 13 mg liquid trace at a tank's bottom port read as a liquid column, D25's stop condition met, options A to C; 47 a generator main refused below 293.15 K, admitted by the range rule, cost only, options A and B)
+- owner decisions 2026-10-17: D34 A (a port's static column is what fills its line, `4199dbe6`, `D34_STATIC_COLUMN.md`), D35 B (newly admitted worlds accepted), D36 (a gas column does not exist, `03bc70f6`, `D36_NO_GAS_COLUMN.md`)
+- simplification sweep by a fable max subagent (`SIMPLIFICATION_SWEEP_REVIEW.md`), D37 all six approved and implemented (S1 to S6, `bff22e37` to `65036f2b`, `SIMPLIFICATIONS_S1_S6.md`)
+- quick check at `65036f2b` cold 180 against 186, bisected alone to D36 (seed 19) and S1 (seeds 6, 30, 48, 161), traced (`M7_NEW_COLD_HOLDS_TRACE.md`): both only trigger older fragilities
+- D38 (owner): revert D36 (dense gas weighs 25-30 % of an LNG column) and one vanishing rule for every node (`26090bf0`, `67e5f3e7`, `D38_REVERT_D36_AND_VANISHING_RULE.md`)
+- final lane at `482264fc` 2026-10-18 (1470 tests green, chain-100 exact, GameTests 31/31, campaign cold 913, bundled 985, defaults 1000), its two smallest new worse worlds traced (`M8_CAMPAIGN_WORSE_WORLDS_TRACE.md`: 430 a typed hold at a failed iterate, 48 a bubble-point proposal)
+- D39 (owner): a failed iterate proposes nothing, a refuted proposal is refused (`1482c277`, `00ee8385`, `D39_FAILED_ITERATE_AND_REFUTED_PROPOSAL.md`)
+- final lane at `00ee8385` (1472 tests, chain-100 exact, GameTests 31/31, campaign cold 911, bundled 987, defaults 1000; Newton work cold -68 %)
+- test world rig at `00ee8385` held four rows (`TEST_WORLD_RIG_HOLDS_TRACE.md`)
+- D40 (owner, A for all three): a vessel seeds from its own state, a pump starts from its own lines, one UV step rule (`b81d3491`, `88817099`, `3db5e5d3`, `D40_SEEDS_PUMP_START_UV_STEP.md`)
+- final lane at `3db5e5d3` 2026-10-18 (1476 tests green, chain-100 exact, GameTests 31/31, campaign cold 911, bundled 986, defaults 1000; bundled 241 a real budget hold, new worse worlds not traced)
+- rig re-run at `3db5e5d3`: H1 to H3 gone, H4 (row 10, now a line-search stall) and H5 (row 5, an active-set cycle since `87c106f6`) still held
+- the in-game session stopped by the owner after rows 1 and 2, which ran as on the rig (2026-10-18)
+- review `MAIN_ADAPTATION_REVIEW.md` updated 2026-10-18
+- CHANGELOG `[Unreleased]` line `c9aea46e`, no version bump)
+- test world prepared 2026-10-16 (run sheet `TEST_WORLD_PLAN.md`: 13 rows plus 2 for D23 in one session, expectations replayed on the engine path at form A `40a44732` and A + D33 `c9e7c128`
+- tools `unified-thermo-port-test-world/`)
+- its findings F1 (liquid CO2 let down into an empty tank holds below 90 K: a regression of D31 B at `40a44732`, fixed by form 4) and F2 (a pump on a vented slurry tank never starts: on the port since `76e87740`, not on main
+- the pump junction keeps its placeholder density and the inlet stays refused through a DEPOSITION closure
+- fix A decided by the owner 2026-10-16), F3 accepted as a known approximation 2026-10-16 (the stand-in sits about 10 K under the frost point between refreshes), F3 (a tank fed below the frost point runs 13 K under equilibrium), F4 (crystal size read after the freeze), F5 (robustness holds) and F6 (PACKED_SLURRY message) for the owner
+- M4 complete 2026-10-16 at `61a1eba0` (checkpoint format 9, unit format 2, protocol `fluid-10`, crystals in the Solids tab, ledger totals and certificate replay
+- full test 1450, 0 failures
+- GUI checked through the bridge
+- report `M4_RUNTIME_FORMATS_GUI.md`)
+- proposals D32 (main 0.8.0 save crash: a pipe joining a lone boundary leaves its island of one behind) and D33 (a frosting tank's side outlet shuts its gas
+- the closure sticks at rest)
+- D23: precipitated particle size grows with the freezing phase's fraction, tanks well mixed with no settling, `PRECIPITATED_SOLIDS_PLAN.md`
+- D23 decided 2026-10-15: crystal mass moves only in the vessel refresh (about 5 s lag accepted), precipitation evaluated only in reservoirs (replaces transport blocking, D22 (7)), decisions 1 to 4, 6 and 7 as recommended
+- M3 and M4 of the adaptation plan rewritten to it
+- amended 2026-10-15: one size per solid in each stock (tanks, junction buffers, filter cakes merged at the refresh to the mass-weighted mean size), all solids, no size distribution for now, R10 snapping and onset-only sizing deleted)
+
+## Notes
+
+- revision-2 plan (2026-09-24). Major goal: current-package T/P extension covering hydrocarbon CDU/VDU, coking and hydrotreating, with steam cracking as the light-compound high-T reference. Shared parameters across unit regimes. Build/test/integrate a small pilot before G6 permits P7 broad species additions; H2 is required later for hydrotreating qualification. Solid-gas support remains data-limited. No implementation or backend choice yet. Reviewed 2026-09-24 (`UNIFIED_MULTIPHASE_THERMO_PLAN_REVIEW.md`): gating kept; recommended route = extend the in-house PR78 (liquids at state pressure, NASA CEA ideal-gas spine, E-PPR78 kij, stability test, triple-point-anchored solid Gibbs functions) with a Java port of the CoolProp Helmholtz equations as a test oracle, NeqSim offline only; measured: the 2 MPa liquid reference path fails above Psat = 2 MPa (to -95 % density), the degree-five Cp fits are -5.9 % (CH4) at 1143 K, the residual is < 0.1 % at steam-cracking conditions; CO2 proposed as the only solid-forming pilot species. Decisions accepted the same day ("use recommended decisions"): plan revision 3 and `DECISION_LOG.md` (D1 route = extend the in-house cubic + Java Helmholtz oracle, D2 CO2-only pilot solids, D3 Soave alpha with Twu measured, D4 oracle in Java tests, D5 VDU K-value policy settled in P0). P0 and P1 executed 2026-09-24 (opus agents on `claude/coolprop-multiphase-thermo-37f6b0`): Java Helmholtz oracle at 1e-10 parity, Soave kept (Twu measured), direct liquid evaluation to 10 MPa at about 2.6 % mean density error with the critical band widened, tangent-plane stability service at 1 to 14 microseconds per call, D5 settled (PR78 as characterized), D6 (single ideal-gas source) and the G0 acceptance targets proposed for the owner; G1 met. D6 and D7 taken 2026-09-24 under the owner's instruction to pause only for major decisions; P2 executed the same day (two opus agents in parallel, `build/gradle.lock` protocol): reference-spine and crystal record kinds with the pilot set and fingerprint pins (`dc82327`), phase evaluator / equilibrium contracts with a fluid-only TP implementation (`cbaa791`); G2 met; the E-PPR78 group matrix sourced from Clapeyron.jl (MIT transcription, manifest section 4); P3 designed (`P3_PILOT_ENGINE_PLAN.md`: separate bundled pilot package, direct liquid path with water at state pressure, Tr = 0.8 anchors, kij(T) kernel mode, spine wiring on the sensible datum, stability-driven phase count, PH/UV, ten fixture families, WP1 to WP11) and stage 1 (WP1, WP2+3, WP4, WP6a, WP8+10) launched. P3 COMPLETED 2026-09-25 on the branch (`7afa990`, 28 commits): kernel kij(T), E-PPR78 data and the bundled pilot package, the direct liquid path (breaking, fresh world), the spine wired into the network on the sensible datum, the equilibrium engine (TP/PH/UV, band, PIP labels, free water, liquid-liquid and three-phase typed holds), the network on the engine with the 10 MPa envelope and the two runtime fixes (pumped fill 2,084,304 to 36,961 checkpoints; pump column from the suction density), spine r2 with methane on GERG-2008's ideal gas, the ten G3 fixture families; gate G3 met at the declared-error grade (D14/D15 declared errors); chain-100 re-captured, full suite 1226 green, exact regression 0, 30/30 GameTests, one benchmark window; probes detached into `tools/`; not merged, no version bump.

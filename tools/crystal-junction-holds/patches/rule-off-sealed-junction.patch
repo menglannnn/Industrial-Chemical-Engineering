@@ -1,0 +1,11 @@
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+@@ -2262,7 +2262,7 @@
+         void sweep(double[] p) {
+             int[][] nodeEdges=incidence(graph);
+             for(int node=0;node<nodes;node++) {
+-                if(unknown[node]<0||sealed(node,p))continue;
++                if(unknown[node]<0)continue; // rule off: the sweep bisects a sealed junction too
+                 double lo=low,hi=high;
+                 for(int k=0;k<30&&hi-lo>1e-9*high;k++) {
+                     double mid=.5*(lo+hi),net=0;p[node]=mid;

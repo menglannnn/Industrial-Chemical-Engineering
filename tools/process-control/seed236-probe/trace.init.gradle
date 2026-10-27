@@ -1,0 +1,18 @@
+// Seed-236 trace: attaches the bundled hold-fuzz harness and this folder's probe sources to the test source set.
+//   ./gradlew --no-configuration-cache --offline --init-script tmp/seed236-trace/trace.init.gradle test --tests '*Trace236Test'
+// Needs the temporary hook patch (hook.patch) applied to PassiveStepSolver.
+gradle.projectsEvaluated {
+    def here = gradle.startParameter.initScripts.find { it.name == 'trace.init.gradle' }.parentFile
+    def root = gradle.rootProject
+    root.sourceSets.test.java.srcDir(new File(here, '../bundled/src'))
+    root.sourceSets.test.java.srcDir(new File(here, 'src'))
+    root.tasks.withType(Test).configureEach {
+        maxHeapSize = '8g'
+        systemProperty 'holdFuzz.wallNanos', '200000000000'
+        systemProperty 'holdFuzz.softNanos', '150000000000'
+        systemProperty 'trace236.from', root.findProperty('trace236From') ?: '5580'
+        systemProperty 'trace236.until', root.findProperty('trace236Until') ?: '13000'
+        testLogging { showStandardStreams = true }
+        outputs.upToDateWhen { false }
+    }
+}

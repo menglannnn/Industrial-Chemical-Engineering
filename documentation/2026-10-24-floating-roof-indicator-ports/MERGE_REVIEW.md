@@ -1,0 +1,12 @@
+# Tank instrument/port merge and launch
+
+2026-10-24. Owner-requested integration 81cabbe9 into claude/floating-roof-tanks-81d68b; mod 0.11.2 unchanged, no main merge.
+
+- Includes neutral gauge 08c7127e/031380ad, side access b853fe9f and front gauge 63ca8f91. All sizes retain the gauge .85 m beside the front ports; compact main ladders are on the right side with adjacent rest sections, keeping centered front/back pipe lanes clear.
+- Initial full checks caught the compact rear-ladder/pipe-cell overlap and a wrong assertion measuring nozzle separation at cells rather than flange faces. Both repaired before integration; the general pipe-room gate and updated small/normal front-gauge contract now pass.
+- Eight focused tests pass. Final required quick suite: 1383 cases, 1380 passed/three failures. Slow gates: 185, 184 passed/one failure. All four failure messages equal retained exact-base 35bad9b8 evidence from tools/fluid-gui-consistency/integration; no new failure. No test exclusion, threshold or solver change.
+- Existing quick failures: checkpoint assertion expects 13 instead of 18, pump shell-cell expectation, SightGlassDisplay Math.pow source rule. Existing slow failure: ProcessUnitTest largest-nozzle clearance sweep. This is baseline-qualified integration, not an all-green suite claim.
+- Final offline sweep passes 3108 plans, 60 compiled port/gauge layouts with empty neighboring pipe cells, outward gauge faces and 138 native refresh reframes preserving world binding. Updated actual-mesh renders inspected; no world was loaded for verification.
+- Preflight froze source/target/branch, clean index, empty ignored-tracked list and all ten local hashes. Incoming paths had no overlap. Fast-forward preserved nine modified equipment files and untracked TmpDiagTest.java byte-for-byte, without stash/reset or staging them.
+- Target compileJava/jar passed, then normal runClient launched there (PID 19828, session 42388). Renderer/JEI/world assets loaded and window responds. No automated game input or world loading. Later owner report of cap flicker was fixed directly as fde01628; see 2026-10-24-tank-gauge-cap-flicker. After the prior client closed normally with all dimensions saved, it was relaunched with the fix as PID 47252/session 27137.
+- Canonical docs/index/code-guide snapshots updated. tools/tank-indicator-ports/integration retains staged check logs/XML, guarded integrate.py, qualification/preservation manifests and startup snapshot; compressed merge archive in logs/. No product harness/instrumentation detached.

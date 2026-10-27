@@ -1,0 +1,31 @@
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveIntervalSolver.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveIntervalSolver.java
+index 31760678..d74ceb4b 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveIntervalSolver.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveIntervalSolver.java
+@@ -190,7 +190,7 @@ public final class PassiveIntervalSolver {
+         // segment made every closure cost another twenty accepted substeps climbing back out.
+         int transitionRejects=0;double beforeTransition=0;SolidEventIntegrator.Transition declared=null;
+         // The last refused state change and its step, for the algebraic-jump test.
+-        double previousStateChange=0,previousStateStep=0;
++        double previousStateChange=0,previousStateStep=0;boolean afterStateReject=false;
+         // Runs already reopened for the attempted step (same t0 and step).
+         var reopened=new HashSet<PassiveNetwork.Pipe.Identity>();double reopenElapsed=-1,reopenStep=-1;
+         // Rejections the property domain decided: the last one, how many, and whether the latest rejection was one.
+@@ -240,7 +240,7 @@ public final class PassiveIntervalSolver {
+                 coldSeed=null;coldSeedFor=null;implicit.releaseLastSolve();
+                 work+=result.pumpWorkJoule();boundaries.addAll(result.boundaries());pipeTransfers.add(result.pipeTransfers(),1);
+                 var flows=result.massFlows();for(int i=0;i<transferred.length;i++)transferred[i]+=step*flows[i];
+-                double factor=change>0?Math.clamp(.9*Math.sqrt(STATE_CAP/change),.5,2):2;
++                double factor=change>0?Math.clamp(.9*Math.sqrt(STATE_CAP/change),.5,2):2;if(afterStateReject)factor=Math.min(factor,1);afterStateReject=false;
+                 h=Math.min(settings.maximumStep,Math.max(h,step)*factor);
+             }catch(SolidEventIntegrator.Transition transition) {
+                 // A rejection kind of its own. The step is not accepted, so no accepted step ever
+@@ -265,7 +265,7 @@ public final class PassiveIntervalSolver {
+                 if(domain!=null){rejectionReasons.merge(domain.reasonKey(),1,Integer::sum);lastDomain=domain;domainRejections++;}
+                 else count(rejectionReasons,String.valueOf(rejected.getMessage()).replaceAll("[-+]?[0-9]+(?:\\.[0-9]+)?(?:[Ee][-+]?[0-9]+)?","#"));
+                 lastWasDomain=domain!=null;
+-                rejectedCount++;consecutiveRejects++;h=step*.5;
++                rejectedCount++;consecutiveRejects++;h=rejected instanceof StateChangeRejection?step*Math.clamp(.9*Math.sqrt(STATE_CAP/previousStateChange),.1,.9):step*.5;afterStateReject=rejected instanceof StateChangeRejection;
+                 if(consecutiveRejects>=20||elapsed+h==elapsed)throw new SparseNewton.Nonconvergence("Substep refinement exhausted: "+rejected.getMessage()+"; reasons="+rejectionReasons,null,domainCause(lastWasDomain,lastDomain,domainRejections,rejectedCount));
+             }
+         }

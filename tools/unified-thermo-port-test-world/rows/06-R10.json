@@ -1,0 +1,23 @@
+{
+  "id": "R10",
+  "title": "The crystal phase set the engine does not implement: N2/C2H6/CO2 40/55/5 at 95 K and 2 MPa is refused at Apply (CRYSTAL_PHASES); at 130 K it runs into a tank vented to a void, and the tank holds dry ice in the ethane liquid (E4 row 10, first part; acceptAtFence is exercised inside a network in row 12, R10-fence)",
+  "blocks": {
+    "G":  {"at": [20, 101, 60], "block": "generator"},
+    "P1": {"at": [21, 101, 60], "block": "pipe"},
+    "T":  {"at": [22, 101, 60], "block": "reservoir"},
+    "P2": {"at": [23, 101, 60], "block": "pipe"},
+    "V":  {"at": [24, 101, 60], "block": "void"}
+  },
+  "steps": [
+    {"op": "mark"},
+    {"op": "place", "ids": ["G"]},
+    {"op": "set", "id": "G", "mixture": "Pilot: N2/C2H6/CO2 40/55/5", "pressure": 2000000, "temperatureK": 95},
+    {"op": "read", "ids": ["G"], "views": ["overview"], "tag": "refused-95K"},
+    {"op": "set", "id": "G", "mixture": "Pilot: N2/C2H6/CO2 40/55/5", "pressure": 2000000, "temperatureK": 130},
+    {"op": "read", "ids": ["G"], "views": ["overview", "organic", "vapor"], "tag": "set-130K"},
+    {"op": "place", "ids": ["V", "P2", "P1", "T"]},
+    {"op": "wait", "s": 20},
+    {"op": "read", "ids": ["T"], "views": ["overview", "organic", "solids", "outlets"], "tag": "tank"},
+    {"op": "log", "grep": "fluid_island=|status=PHASE_HOLD", "tag": "R10"}
+  ]
+}

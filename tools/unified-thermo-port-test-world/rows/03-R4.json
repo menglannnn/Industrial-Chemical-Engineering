@@ -1,0 +1,39 @@
+{
+  "id": "R4",
+  "title": "Two tanks of different gases joined through a junction: warm N2 + 10 % CO2 (fed) and cold N2 charged from 110 K (closed off), the junction's third leg to an empty tank; then the feed raised to 500 kPa (E4 row 4)",
+  "blocks": {
+    "Ga": {"at": [20, 101, 36], "block": "generator"},
+    "Pa": {"at": [21, 101, 36], "block": "pipe"},
+    "Ta": {"at": [22, 101, 36], "block": "reservoir"},
+    "J1": {"at": [23, 101, 36], "block": "pipe"},
+    "J2": {"at": [24, 101, 36], "block": "pipe"},
+    "J3": {"at": [25, 101, 36], "block": "pipe"},
+    "Tb": {"at": [26, 101, 36], "block": "reservoir"},
+    "Pb": {"at": [27, 101, 36], "block": "pipe"},
+    "Gb": {"at": [28, 101, 36], "block": "generator"},
+    "Jc": {"at": [24, 101, 37], "block": "pipe"},
+    "Tc": {"at": [24, 101, 38], "block": "reservoir"}
+  },
+  "steps": [
+    {"op": "mark"},
+    {"op": "place", "ids": ["Ga", "Gb"]},
+    {"op": "set", "id": "Ga", "mixture": "Pilot: N2 + 10 % CO2", "pressure": 300000, "temperatureK": 250},
+    {"op": "set", "id": "Gb", "mixture": "Nitrogen", "pressure": 300000, "temperatureK": 110},
+    {"op": "place", "ids": ["Ta", "Pa", "Tb", "Pb"]},
+    {"op": "wait", "s": 30},
+    {"op": "read", "ids": ["Ta", "Tb"], "views": ["overview", "solids"], "tag": "charged"},
+    {"op": "note", "text": "the cold tank is closed off from its generator; the run J1-J2-J3 joins the two tanks, and J2 becomes a junction (main compiles a straight run as one pipe) by its third leg Jc to the empty tank Tc"},
+    {"op": "remove", "ids": ["Pb"]},
+    {"op": "place", "ids": ["Tc", "J1", "J3", "Jc", "J2"]},
+    {"op": "wait", "s": 30},
+    {"op": "read", "ids": ["Ta", "Tb", "Tc"], "views": ["overview", "vapor", "solids"], "tag": "joined"},
+    {"op": "read", "ids": ["J2", "J3"], "views": ["overview"], "tag": "joined"},
+    {"op": "set", "id": "Ga", "mixture": "Pilot: N2 + 10 % CO2", "pressure": 500000, "temperatureK": 250},
+    {"op": "wait", "s": 20},
+    {"op": "read", "ids": ["Tb", "Tc"], "views": ["overview", "vapor", "solids"], "tag": "raised"},
+    {"op": "wait", "s": 60},
+    {"op": "read", "ids": ["Ta", "Tb", "Tc"], "views": ["overview", "solids"], "tag": "settled"},
+    {"op": "read", "ids": ["J2"], "views": ["overview"], "tag": "settled"},
+    {"op": "log", "grep": "fluid_island=|status=PHASE_HOLD|active-set", "tag": "R4"}
+  ]
+}

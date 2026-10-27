@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "kind": "mixture",
+  "name": "Pilot: water + demo particles",
+  "translation_key": "",
+  "package": "icheme:pilot_cryogenic",
+  "basis": "mole",
+  "components": [
+    {"id": "Water", "amount": 1}
+  ],
+  "solids": {
+    "volume_fraction_percent": 10,
+    "grades": [
+      {"material": "icheme:demo_particle", "diameter_um": 100, "mass_share": 1}
+    ]
+  }
+}

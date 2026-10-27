@@ -1,0 +1,29 @@
+{
+  "date": "2026-10-25",
+  "implementation": "8a910a20",
+  "branch": "codex/inline-pump-accessory",
+  "previous_delivery": "1444b61a",
+  "classes": [
+    {
+      "name": "com.wormzjl.icheme.runtime.fluid.InlineMoverAccessoryTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "name": "com.wormzjl.icheme.runtime.fluid.PhysicalFluidTopologyTest",
+      "tests": 16,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  ],
+  "tests": 20,
+  "failures_and_errors": 0,
+  "native_views": 98,
+  "minecraft_runs": 0,
+  "jar": "icheme-0.11.2.jar",
+  "jar_sha256": "a0c1f49009123d58e46bb3d12c7689d8d9aa9e869cfb2c00eec6e7f62374774d",
+  "scope": "Drawing and static neighbor-flange metadata only; no physics/format/version change"
+}

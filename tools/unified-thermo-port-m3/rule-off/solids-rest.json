@@ -1,0 +1,1 @@
+[{"from":"            solids|=!node.inventory().solids().empty();","to":"            solids|=!node.inventory().solids().empty();if(solids)return false;"}]

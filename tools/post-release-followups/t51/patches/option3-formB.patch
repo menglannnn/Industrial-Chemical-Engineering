@@ -1,0 +1,101 @@
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+index 8dcbf2f4..b56909a6 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+@@ -1228,6 +1228,9 @@ public final class PassiveStepSolver {
+             if(!changed)break;
+         }
+     }
++    /** The law's flow of connection {@code edge} on its ends' states, uncapped: what the static drive across it pushes, a
++     * mover's suction target ({@link #lawFlow}); the solid events read it where the port graph has no rate solve. */
++    double drivenFlow(PassiveNetwork graph,int edge){return initialMassFlow(graph,graph.pipes().get(edge));}
+     /** The law's flow of one connection on its ends' states (the edge unknown's start, {@link #lawFlow}); a mover's its target. */
+     private double initialMassFlow(PassiveNetwork graph,PassiveNetwork.Pipe pipe) {
+         return lawFlow(graph,pipe,endPressure(graph,pipe,pipe.first()),endPressure(graph,pipe,pipe.second()));
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/network/SolidEventIntegrator.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/SolidEventIntegrator.java
+index 99608f75..f02364a2 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/SolidEventIntegrator.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/SolidEventIntegrator.java
+@@ -113,11 +113,13 @@ final class SolidEventIntegrator {
+     /**
+      * Owner decision of 2026-10-19, amending D33 (t51's trace of cold fuzz seed 15): a pipe the last interval closed that is
+      * still at this interval's start keeps its closure, because what closed it is still in it - the bed its slow carrier
+-     * let settle, the particle too wide for its bore, the slush. Still is the D42 reading of {@link #failed}: the rate solve
+-     * of the port graph with the pipe open drives at most its resolution flow through it, and a rate solve that fails
+-     * ({@code flows} null, read on the start states) shows no flow that could clear it. The closure stands while an end
+-     * holds what closed it (the mobility check fails with that end as the donor, read both ways, so no roundoff sign
+-     * picks the end); a pipe the drive would move is decided by {@link #failed} as any other. Without it, a pipe closed
++     * let settle, the particle too wide for its bore, the slush. {@code flows} is what the drive would push through each pipe:
++     * the rate solve's of the port graph with the pipes open, or, where the port graph has no rate solve with them open, the
++     * drive across the closed pipes ({@link #bedDrive}). A pipe that flow leaves still (at most its
++     * D42 resolution flow, the reading of {@link #failed}) keeps its closure while an end holds what closed it (the mobility
++     * check fails with that end as the donor, read both ways, so no roundoff sign picks the end); a pipe it moves keeps it
++     * while that flow does not carry what closed it (below the suspension velocity: the bed stays), and opens when it does
++     * (a pump drawing 2.5 m/s through a 10 mm suction line clears it: PumpCavitationTest's LNG supplier). Without it, a pipe closed
+      * in its interval ended with no flow, D33 reopened it, the still pipe raised nothing, and every interval found the
+      * closure again in its steps (seed 15 stalled on it for 500 ticks). Returns the first such closure, declared at t0.
+      */
+@@ -125,16 +127,39 @@ final class SolidEventIntegrator {
+         MixtureViscosity.Workspace scratch=null;var prepared=new SolidMobility.Donor[states.size()];
+         for(int i=0;i<blocked.length;i++) {
+             if(committed.pipes().get(i).blockedDirections()!=BOTH_DIRECTIONS||blocked[i]!=0)continue;
+-            if(flows!=null&&Math.abs(flows[i])>NetworkReduction.resolutionFlow(graph,model,i,scratch==null?scratch=new MixtureViscosity.Workspace():scratch))continue;
+-            // A vanishing flow of either sign, so each end is read as the donor in turn.
+-            double flow=Math.max(flows==null?0:Math.abs(flows[i]),Double.MIN_VALUE);
+-            for(double draw:new double[]{flow,-flow}) {
++            double driven=flows[i];
++            boolean still=Math.abs(driven)<=NetworkReduction.resolutionFlow(graph,model,i,scratch==null?scratch=new MixtureViscosity.Workspace():scratch);
++            // A still pipe is read with a vanishing flow of either sign, so each end is read as the donor in turn.
++            double flow=Math.max(Math.abs(driven),Double.MIN_VALUE);
++            for(double draw:still?new double[]{flow,-flow}:new double[]{driven}) {
+                 var check=mobility(graph,states,prepared,i,draw);
+                 if(!check.allowed())return new Transition(i,graph.pipes().get(i).id(),check,true);
+             }
+         }
+         return null;
+     }
++    /** The flows and states {@link #standing} reads where the port graph has no rate solve with the pipes open. */
++    private record Drive(List<FluidThermodynamics.State> states,double[] flows) {}
++    /**
++     * The drive across the pipes the last interval closed, with what closed them still in place: one rate solve of the port
++     * graph with them closed, and on its states each one's own law ({@link PassiveStepSolver#drivenFlow}), the flow the
++     * pressures it settles at would push through it. The interval's own states are no reading of it: a junction's
++     * pressure is the last step's, and on cold fuzz seed 15 they pushed 0.62 kg/s of clean liquid into the tank where the
++     * solved interval had carried 0.038 m/s out of it. Null where nothing stood closed or that rate solve fails too: then
++     * nothing shows the bed, and every closure is read open (D33).
++     */
++    private Drive bedDrive(PassiveNetwork graph,PassiveNetwork committed,int[] blocked,Runnable checkpoint) {
++        int[] closed=blocked.clone();boolean any=false;
++        for(int i=0;i<closed.length;i++)if(blocked[i]==0&&committed.pipes().get(i).blockedDirections()==BOTH_DIRECTIONS){closed[i]=BOTH_DIRECTIONS;any=true;}
++        if(!any)return null;
++        var rate=rates.portRate(masks(graph,closed),checkpoint);
++        if(rate==null)return null;
++        var nodes=new ArrayList<PassiveNetwork.Reservoir>(graph.reservoirs().size());
++        for(int n=0;n<graph.reservoirs().size();n++){var r=graph.reservoirs().get(n);nodes.add(new PassiveNetwork.Reservoir(r.id(),r.elevation(),rate.states().get(n),r.kind(),r.inventory()));}
++        var settled=new PassiveNetwork(nodes,graph.pipes(),graph.scheduledTransfers());double[] flows=new double[closed.length];
++        for(int i=0;i<flows.length;i++)if(closed[i]!=blocked[i])flows[i]=rates.drivenFlow(settled,i);
++        return new Drive(rate.states(),flows);
++    }
+     /** How far a connection is from carrying what it is asked to, as the shared closure rule orders
+      * it: the lowest ratio closes first, and a failure with no velocity of its own sorts ahead of
+      * every one that has one. */
+@@ -288,14 +313,14 @@ final class SolidEventIntegrator {
+         // Reconsider every closure on a new requested interval: a pipe the drive moves is decided by its flow, a still one
+         // keeps the closure the last interval left it while an end holds what closed it (standing). A closure the interval
+         // starts with is reported like any other, at the interval's own t0. The check reads one rate solve of the port graph
+-        // (PassiveStepSolver.portRate); a rate solve that fails declares no new closure and the steps decide (hold class E1),
+-        // but keeps a standing one, and is tried again with it closed (seed 15's port graph had no rate solve with it open).
++        // (PassiveStepSolver.portRate); a rate solve that fails declares no new closure and the steps decide (hold class E1);
++        // a standing one is then read on the drive across it (bedDrive: seed 15's port graph had no rate solve with it open).
+         for(int attempt=0;SolidMobility.closable(model,graph)&&attempt<=2*blocked.length;attempt++) {
+             checkpoint.run();graph=masks(graph,blocked);
+             var candidate=rates.portRate(graph,checkpoint);
+-            Transition failure;
+-            if(candidate==null)failure=standing(graph,committed,blocked,graph.reservoirs().stream().map(PassiveNetwork.Reservoir::state).toList(),null);
+-            else{failure=failed(graph,candidate.states(),candidate.massFlows());if(failure==null)failure=standing(graph,committed,blocked,candidate.states(),candidate.massFlows());}
++            Transition failure=null;
++            if(candidate!=null){failure=failed(graph,candidate.states(),candidate.massFlows());if(failure==null)failure=standing(graph,committed,blocked,candidate.states(),candidate.massFlows());}
++            else{var bed=bedDrive(graph,committed,blocked,checkpoint);if(bed!=null)failure=standing(graph,committed,blocked,bed.states(),bed.flows());}
+             if(failure==null)break;
+             blocked[failure.edge]|=BOTH_DIRECTIONS;
+             // A cake the last interval's final step left at capacity is declared here, at the next interval's t0, and

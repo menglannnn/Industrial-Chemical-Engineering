@@ -1,0 +1,24 @@
+{
+  "id": "R11",
+  "title": "An empty tank fills cold: N2 + 10 % CO2 at 175 K and 300 kPa, outlet to a void; slack for about 2 s, then taut at about 280 kPa, frost from the first refresh (E4 row 11, D54)",
+  "blocks": {
+    "G":  {"at": [20, 101, 44], "block": "generator"},
+    "P1": {"at": [21, 101, 44], "block": "pipe"},
+    "T":  {"at": [22, 101, 44], "block": "reservoir"},
+    "P2": {"at": [23, 101, 44], "block": "pipe"},
+    "V":  {"at": [24, 101, 44], "block": "void"}
+  },
+  "steps": [
+    {"op": "mark"},
+    {"op": "place", "ids": ["G"]},
+    {"op": "set", "id": "G", "mixture": "Pilot: N2 + 10 % CO2", "pressure": 300000, "temperatureK": 175},
+    {"op": "place", "ids": ["T", "V", "P2", "P1"]},
+    {"op": "wait", "s": 3},
+    {"op": "read", "ids": ["T"], "views": ["overview", "solids"], "tag": "early"},
+    {"op": "wait", "s": 20},
+    {"op": "read", "ids": ["T"], "views": ["overview", "vapor", "solids", "outlets"], "tag": "taut"},
+    {"op": "wait", "s": 60},
+    {"op": "read", "ids": ["T"], "views": ["overview", "solids"], "tag": "steady"},
+    {"op": "log", "grep": "fluid_island=|status=PHASE_HOLD", "tag": "R11"}
+  ]
+}

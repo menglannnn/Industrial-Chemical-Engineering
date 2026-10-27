@@ -1,0 +1,56 @@
+{
+  "implementation": "f44930f5",
+  "branch": "codex/fluid-gui-consistency",
+  "base": "e518862d",
+  "date": "2026-10-24",
+  "tests": {
+    "TEST-com.wormzjl.icheme.client.gui.common.FluidGuiConsistencyTest": {
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "TEST-com.wormzjl.icheme.client.gui.common.ProcessPresentationTest": {
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "TEST-com.wormzjl.icheme.runtime.fluid.FluidPacketCodecTest": {
+      "tests": 16,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "TEST-com.wormzjl.icheme.runtime.fluid.OpenTankRuntimeTest": {
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "TEST-com.wormzjl.icheme.runtime.fluid.PipePresentationTest": {
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "TEST-com.wormzjl.icheme.runtime.fluid.TankDisplayTest": {
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "TEST-com.wormzjl.icheme.runtime.fluid.TankOutletsTest": {
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "jar": "C:\\Users\\wormz\\.codex\\worktrees\\pipeline-tool\\CreateChemE\\build\\libs\\icheme-0.11.2.jar",
+  "jar_sha256": "13bf1db4c0ac2837548891fc61df8dacc0d7973efdb70c34232eb3893002c00b",
+  "protocol": "fluid-14",
+  "checkpoint": 18,
+  "unit": 11,
+  "in_game_checked": false
+}

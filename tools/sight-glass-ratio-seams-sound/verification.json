@@ -1,0 +1,46 @@
+{
+  "date": "2026-10-25",
+  "implementation": "5d9d3b42",
+  "base": "aed6a299",
+  "branch": "codex/sight-glass-sound-scale",
+  "tests": 6,
+  "failures_and_errors": 0,
+  "classes": [
+    {
+      "name": "com.wormzjl.icheme.runtime.fluid.SightGlassDisplayTest",
+      "tests": 3
+    },
+    {
+      "name": "com.wormzjl.icheme.science.equipment.LineGeometryTest",
+      "tests": 1
+    },
+    {
+      "name": "com.wormzjl.icheme.science.equipment.MoverSoundVolumeTest",
+      "tests": 2
+    }
+  ],
+  "old_seam_regression_failed": true,
+  "old_seam_setups": 7,
+  "animation_frames": 64,
+  "sound_scope": "constructed movers only",
+  "sound_gain_range": [
+    0.1,
+    0.6
+  ],
+  "gas_liquid_examples": {
+    "0.1": 1,
+    "1": 4,
+    "9": 7,
+    "99": 8
+  },
+  "checkpoint": 19,
+  "storage_unit": 12,
+  "wire": [
+    "sight-glass-2",
+    "mover-1"
+  ],
+  "minecraft_runs": 0,
+  "merge": "remains paused",
+  "target": "ff9fdfedfec01b4cf44f6364804f358e7af6629d",
+  "jar_sha256": "d1c4a5337d1c36d270793eefaee7a67a75b132a738714eb999dabd6addcf3861"
+}

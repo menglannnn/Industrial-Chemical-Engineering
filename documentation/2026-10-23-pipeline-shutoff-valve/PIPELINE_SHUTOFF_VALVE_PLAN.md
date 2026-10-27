@@ -1,0 +1,12 @@
+# Pipeline shutoff valve plan
+
+2026-10-23. Approved by owner; branch codex/pipeline-shutoff-valve, base 19117af7, owned pipeline-tool worktree.
+- Reference approved before implementation: https://valtorc.com/flanged-ball-valve-full-port-150-300-specs/ (Series 180 manual full-port ball valve); body, bolted flanges and quarter-turn lever, no branding.
+- Register icheme:pipeline_shutoff_valve, stack 64, creative/commands, no recipe, translated tooltip. Install with either hand, consume one in survival, ordinary breaking returns one. Duplicate application is a no-op.
+- Straight pipe sections only (including ends/unconnected), one accessory per section; sight glass and valve reject one another. Start open. Keep identity, BE, bore and settings; lock the installed run axis using existing facing. Side pipes never connect or eject the valve.
+- Empty-handed normal right-click toggles; both hands must be empty so offhand tools retain precedence. No settings GUI; existing debugger inspection and Pipeline Tool actions remain.
+- Open keeps ordinary pipe resistance; closed removes contacts and splits islands when no bypass remains. Keep mechanical joints drawn. Use queued registry edits; latest pending state composes rapid clicks and diameter edits. Preserve equipment stock and existing junction reminting.
+- Physical Cutoff NONE/OPEN/CLOSED has explicit checkpoint codes; only PIPE may carry it. Persist active and pending configurations; checkpoint 17 / unit 10, fresh worlds only, no migration or new custom payload. Blockstate carries installation and committed lever display; load only binds/reads static state.
+- Diameter-scaled cast housing and yellow lever; open parallel, closed crosswise, horizontal stem up / vertical stem north. Reuse flange/reducer/shoulder/seam geometry and ordinary pipe collision. Cache keys include lever state. Decorative handle may project beyond the owning pipe cell at large sizes.
+- One focused runtime test class: axes, island split/reopen/bypass, inventory/identity preservation, composed pending edits, save/load and malformed state rejection. Targeted Gradle test and jar only; no GameTests/GUI checks. Software render sheets at min/default/max bores in all axes and lever states.
+- Record review, reference approval, code-guide contracts and indexes; archive logs under tools/pipeline-shutoff-valve/. Deliver feature branch without automatic merge/version bump.

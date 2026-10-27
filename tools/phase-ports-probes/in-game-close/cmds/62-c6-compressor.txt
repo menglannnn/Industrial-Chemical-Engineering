@@ -1,0 +1,5 @@
+/setblock 0 -57 41 minecraft:air
+/setblock 4 -57 41 minecraft:air
+/setblock 1 -57 40 createcheme:fluid_pipe
+/setblock 3 -57 40 createcheme:fluid_pipe
+/setblock 2 -57 40 createcheme:fluid_compressor[facing=east]

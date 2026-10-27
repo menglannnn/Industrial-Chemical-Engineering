@@ -1,0 +1,4 @@
+gamemode creative
+tp @s 500 -55 -12
+createcheme equipment unit 500 -60 0 air_cooler 3 6 4 north 6 4
+gamemode spectator

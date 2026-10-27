@@ -1,0 +1,5 @@
+gamemode creative
+tp @s 625 -40 250
+createcheme equipment unit 600 -60 270 cyclone 2.0 2 8 north
+createcheme equipment unit 625 -60 270 cyclone 1.2 4 8 north
+createcheme equipment unit 650 -60 270 cyclone 2.0 4 8 north

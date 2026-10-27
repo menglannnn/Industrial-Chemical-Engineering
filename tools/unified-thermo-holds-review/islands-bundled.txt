@@ -1,0 +1,154 @@
+SEED 372 held=3536 island=45 committed=3436 :: HELD: Substep refinement exhausted: Singular Newton Jacobian: Sparse LU rejected a singular matrix; active-set
+  n0 JUNC z=0.0 318kPa 343.0K m=0.740 LV liq=0.00080 vap=0.015
+  n1 JUNC z=0.0 321kPa 333.9K m=0.277 LV liq=0.00017 vap=0.036
+  n2 VOID z=0.0 101kPa 298.1K m=1.15 V liq=0.0 vap=1.0
+  n3 JUNC z=0.0 321kPa 347.9K m=1.00 L liq=0.0012 vap=0.0
+  n4 GENE z=-2.0 321kPa 338.8K m=3.20 V liq=0.0 vap=1.0
+  n5 VOID z=3.0 101kPa 298.1K m=1.15 V liq=0.0 vap=1.0
+  n6 GENE z=0.0 337kPa 347.9K m=837 L liq=1.0 vap=0.0
+  e0 n0->n1 Passive D=10mm BULK/BULK
+  e1 n0->n5 Passive D=10mm BULK/BULK
+  e2 n0->n3 Passive D=10mm BULK/BULK
+  e3 n1->n2 Passive D=10mm BULK/BULK
+  e4 n1->n4 Passive D=50mm BULK/BULK
+  e5 n1->n3 Passive D=10mm BULK/BULK
+  e6 n3->n6 Passive D=10mm BULK/BULK
+  last modes=[PASSIVE, PASSIVE, PASSIVE, PASSIVE, PASSIVE, PASSIVE, PASSIVE] flows=[-0.014237308431888774, 0.1074655464605699, -0.0932282380286811, 0.05868402563605418, -0.043050956141389846, -0.029870377926553105, -0.12309861595523422]
+SEED 241 held=4824 island=26 committed=4724 :: HELD: wall deadline
+  n0 GENE z=0.0 296kPa 304.5K m=858 L liq=1.0 vap=0.0
+  n1 JUNC z=-1.0 199kPa 304.5K m=1.00 L liq=0.0012 vap=0.0
+  n2 RESE z=0.0 126kPa 304.6K m=848 LV liq=0.99 vap=0.012
+  n3 RESE z=0.0 101kPa 301.8K m=43.8 LWV liq=0.047 vap=0.010
+  n4 JUNC z=0.0 207kPa 304.5K m=1.00 L liq=0.0012 vap=0.0
+  n5 VOID z=-2.0 101kPa 298.1K m=1.15 V liq=0.0 vap=1.0
+  n6 GENE z=0.0 102kPa 286.4K m=999 W liq=0.0 vap=0.0
+  e0 n0->n1 Passive D=50mm BULK/BULK
+  e1 n0->n4 Passive D=20mm BULK/BULK
+  e2 n1->n5 Passive D=50mm BULK/BULK
+  e3 n1->n4 Passive D=10mm BULK/BULK
+  e4 n2->n3 Passive D=20mm BULK/BULK
+  e5 n2->n4 Passive D=20mm BULK/BULK
+  e6 n3->n6 Passive D=10mm BULK/BULK
+  last modes=[PASSIVE, PASSIVE, PASSIVE, PASSIVE, PASSIVE, PASSIVE, PASSIVE] flows=[57.822721386133765, 4.637673023592339, 58.027416216661734, -0.20469483052797305, 1.5412575358368754, -4.432978193064367, -0.018356431063303813]
+SEED 47 held=1826 island=42 committed=1726 :: HELD: wall deadline
+  n0 JUNC z=0.0 254kPa 360.4K m=1.00 LV liq=0.0012 vap=0.000013
+  n1 RESE z=3.0 184kPa 344.4K m=18.5 LV liq=0.019 vap=0.98
+  n2 GENE z=-3.0 281kPa 360.4K m=831 L liq=1.0 vap=0.0
+  n3 GENE z=0.0 175kPa 290.2K m=1.17 V liq=0.0 vap=1.0
+  n4 JUNC z=2.0 192kPa 346.9K m=1.07 LV liq=0.0013 vap=0.000037
+  n5 JUNC z=2.0 195kPa 360.2K m=1.00 LV liq=0.0012 vap=0.00047
+  n6 JUNC z=1.0 199kPa 351.3K m=1.04 LV liq=0.0012 vap=0.00025
+  n7 VOID z=0.0 101kPa 298.1K m=1.15 V liq=0.0 vap=1.0
+  n8 JUNC z=1.0 214kPa 360.3K m=1.00 LV liq=0.0012 vap=0.00027
+  n9 JUNC z=0.0 199kPa 346.7K m=0.858 LV liq=0.00097 vap=0.016
+  e0 n0->n8 Passive D=20mm BULK/BULK
+  e1 n0->n3 Passive D=50mm BULK/BULK
+  e2 n0->n2 Passive D=50mm BULK/BULK
+  e3 n1->n4 Passive D=50mm LIQUID/BULK
+  e4 n1->n5 Passive D=20mm BULK/BULK
+  e5 n3->n6 Passive D=50mm BULK/BULK
+  e6 n3->n9 Passive D=50mm BULK/BULK
+  e7 n4->n6 Passive D=50mm BULK/BULK
+  e8 n4->n5 Passive D=20mm BULK/BULK
+  e9 n5->n8 Passive D=20mm BULK/BULK
+  e10 n6->n9 Passive D=50mm BULK/BULK
+  e11 n6->n8 Passive D=20mm BULK/BULK
+  e12 n7->n9 Passive D=50mm BULK/BULK
+  last modes=[PASSIVE, CLOSED, PASSIVE, PASSIVE, PASSIVE, CLOSED, CLOSED, PASSIVE, PASSIVE, PASSIVE, PASSIVE, PASSIVE, PASSIVE] flows=[2.9081366786844756, 0.0, -2.9081366786844756, 2.050405826336727, -0.37473824012296875, 0.0, 0.0, 2.7503824853404355, -0.6999766590037086, -1.0747148991266773, 4.583804264898234, -1.8334217795577978, -4.583804264898234]
+SEED 430 held=4379 island=20 committed=4279 :: HELD: wall deadline
+  n0 GENE z=-2.0 236kPa 341.0K m=979 W liq=0.0 vap=0.0
+  n1 JUNC z=-1.0 199kPa 341.0K m=0.988 LWV liq=3.9e-22 vap=5.5e-24
+  n2 GENE z=-1.0 142kPa 325.6K m=740 LV liq=0.87 vap=0.13
+  n3 JUNC z=0.0 179kPa 341.0K m=1.00 LW liq=1.4e-9 vap=0.0
+  n4 RESE z=-1.0 188kPa 340.8K m=963 LWV liq=0.041 vap=0.011
+  n5 JUNC z=-1.0 189kPa 341.0K m=0.999 LWV liq=2.6e-15 vap=1.5e-16
+  e0 n0->n1 Passive D=20mm BULK/BULK
+  e1 n1->n3 Passive D=20mm BULK/BULK
+  e2 n1->n5 Passive D=20mm BULK/BULK
+  e3 n1->n2 Passive D=20mm BULK/BULK
+  e4 n3->n4 Passive D=50mm BULK/VAPOR
+  e5 n3->n5 Passive D=20mm BULK/BULK
+  e6 n4->n5 Passive D=20mm BULK/BULK
+  last modes=[PASSIVE, PASSIVE, PASSIVE, CLOSED, PASSIVE, PASSIVE, PASSIVE] flows=[3.4359132340504317, 2.048352604904898, 1.3875606291455338, 0.0, 2.674392454303553, -0.6260398493986555, -0.7615207797468784]
+SEED 504 held=1569 island=20 committed=1469 :: HELD: Interval substep limit; no partial interval may commit: advanced=3.646261825426692 of 5.0 s, accepted=99
+  n0 RESE z=1.0 101kPa 296.9K m=661 LV liq=0.77 vap=0.085
+  n1 GENE z=0.0 319kPa 296.9K m=861 L liq=1.0 vap=0.0
+  e0 n0->n1 Passive D=50mm BULK/BULK
+  last modes=[PASSIVE] flows=[-55.34683934641724]
+SEED 579 held=1907 island=37 committed=1904 :: HELD: Substep refinement exhausted: No finite Jacobian trial at variable 0; active-set pass=0
+  n0 JUNC z=0.0 100kPa 346.5K m=1.00 W liq=0.0 vap=0.0
+  n1 RESE z=0.0 101kPa 346.5K m=6.26 W liq=0.0 vap=0.0
+  n2 JUNC z=-4.0 200kPa 394.8K m=1.00 LV liq=0.0012 vap=0.0047
+  n3 GENE z=0.0 168kPa 346.5K m=976 W liq=0.0 vap=0.0
+  n4 GENE z=-5.0 300kPa 397.1K m=490 LV liq=0.60 vap=0.40
+  n5 RESE z=-1.0 101kPa 389.3K m=0.134 LV liq=2.0e-9 vap=0.053
+  n6 RESE z=-3.0 113kPa 389.7K m=47.7 LV liq=0.054 vap=0.95
+  n7 RESE z=-4.0 101kPa 388.6K m=36.3 LV liq=0.041 vap=0.92
+  n8 JUNC z=-3.0 113kPa 389.7K m=1.00 LV liq=0.0011 vap=0.021
+  n9 JUNC z=-4.0 201kPa 394.9K m=1.00 LV liq=0.0012 vap=0.0046
+  e0 n0->n5 Passive D=50mm BULK/VAPOR
+  e1 n0->n1 Passive D=50mm BULK/BULK
+  e2 n0->n3 Passive D=10mm BULK/BULK
+  e3 n2->n4 Passive D=20mm BULK/BULK
+  e4 n2->n8 Passive D=20mm BULK/BULK
+  e5 n2->n9 Passive D=20mm BULK/BULK
+  e6 n2->n7 Passive D=20mm BULK/BULK
+  e7 n4->n9 Passive D=20mm BULK/BULK
+  e8 n5->n6 Passive D=20mm LIQUID/VAPOR
+  e9 n6->n8 Passive D=100mm BULK/BULK
+  e10 n8->n9 Passive D=20mm BULK/BULK
+SEED 600 held=3256 island=53 committed=3254 :: HELD: Substep refinement exhausted: Phase/device active-set cycle
+  n0 JUNC z=-2.0 133kPa 311.3K m=1.00 V liq=0.0 vap=0.70
+  n1 JUNC z=-2.0 103kPa 311.2K m=1.00 V liq=0.0 vap=0.90
+  n2 GENE z=-2.0 420kPa 311.9K m=4.54 V liq=0.0 vap=1.0
+  n3 JUNC z=-2.0 102kPa 311.2K m=1.00 V liq=0.0 vap=0.90
+  n4 VOID z=0.0 101kPa 298.1K m=1.15 V liq=0.0 vap=1.0
+  n5 RESE z=-2.0 101kPa 311.2K m=0.672 V liq=0.0 vap=0.61
+  n6 JUNC z=-1.0 348kPa 311.8K m=1.00 V liq=0.0 vap=0.27
+  n7 JUNC z=-1.0 377kPa 311.8K m=1.00 V liq=0.0 vap=0.25
+  n8 JUNC z=-2.0 106kPa 311.2K m=1.00 V liq=0.0 vap=0.87
+  n9 JUNC z=-3.0 104kPa 311.2K m=1.00 V liq=0.0 vap=0.89
+  n10 JUNC z=-3.0 412kPa 311.9K m=1.00 V liq=0.0 vap=0.22
+  n11 JUNC z=-2.0 410kPa 311.9K m=1.00 V liq=0.0 vap=0.23
+  n12 JUNC z=-2.0 107kPa 311.2K m=1.00 V liq=0.0 vap=0.86
+  e0 n0->n10 Passive D=10mm BULK/BULK
+  e1 n0->n7 Passive D=10mm BULK/BULK
+  e2 n0->n8 Passive D=10mm BULK/BULK
+  e3 n0->n2 Passive D=10mm BULK/BULK
+  e4 n0->n6 Passive D=10mm BULK/BULK
+  e5 n1->n5 Passive D=50mm BULK/BULK
+  e6 n1->n11 Passive D=20mm BULK/BULK
+  e7 n1->n3 Passive D=50mm BULK/BULK
+  e8 n2->n10 Passive D=10mm BULK/BULK
+  e9 n2->n12 Passive D=20mm BULK/BULK
+  e10 n3->n9 Passive D=20mm BULK/BULK
+  e11 n3->n8 Passive D=50mm BULK/BULK
+  e12 n3->n11 Passive D=20mm BULK/BULK
+  e13 n4->n6 Passive D=10mm BULK/BULK
+  e14 n4->n7 Passive D=10mm BULK/BULK
+  e15 n6->n7 Passive D=10mm BULK/BULK
+  e16 n8->n9 Passive D=20mm BULK/BULK
+  e17 n8->n12 Passive D=20mm BULK/BULK
+  e18 n9->n10 Passive D=10mm BULK/BULK
+  e19 n11->n12 Passive D=20mm BULK/BULK
+SEED 779 held=1267 island=26 committed=1167 :: HELD: Interval substep limit; no partial interval may commit: advanced=2.515793950089655 of 5.0 s, accepted=10
+  n0 GENE z=1.0 344kPa 304.9K m=858 L liq=1.0 vap=0.0
+  n1 RESE z=1.0 101kPa 304.9K m=706 LV liq=0.82 vap=0.18
+  e0 n0->n1 Passive D=50mm BULK/BULK
+  last modes=[PASSIVE] flows=[62.22571124431985]
+SEED 803 held=2052 island=32 committed=2020 :: HELD: Interval substep limit; no partial interval may commit: advanced=0.7307327560966411 of 1.6 s, accepted=5
+  n0 JUNC z=2.0 101kPa 334.7K m=0.667 WV liq=0.0 vap=0.083
+  n1 JUNC z=1.0 101kPa 315.1K m=0.881 WV liq=0.0 vap=0.41
+  n2 VOID z=0.0 101kPa 298.1K m=1.15 V liq=0.0 vap=1.0
+  n3 RESE z=2.0 101kPa 346.6K m=107 W liq=0.0 vap=0.0
+  n4 RESE z=1.0 101kPa 298.1K m=1.15 V liq=0.0 vap=1.0
+  n5 JUNC z=2.0 101kPa 324.0K m=0.712 WV liq=0.0 vap=0.21
+  n6 GENE z=2.0 345kPa 346.5K m=976 W liq=0.0 vap=0.0
+  e0 n0->n5 Passive D=50mm BULK/BULK
+  e1 n0->n3 Passive D=50mm BULK/BULK
+  e2 n0->n5 Passive D=50mm BULK/BULK
+  e3 n1->n2 Passive D=50mm BULK/BULK
+  e4 n1->n5 Passive D=50mm BULK/BULK
+  e5 n1->n4 Passive D=50mm BULK/BULK
+  e6 n3->n6 Passive D=50mm BULK/BULK
+  last modes=[PASSIVE, PASSIVE, PASSIVE, PASSIVE, PASSIVE, CLOSED, PASSIVE] flows=[0.01090146762686954, -0.03097757635819662, 0.020076108731327078, 0.030977576358196614, -0.030977576358196614, 0.0, -68.956253319957]

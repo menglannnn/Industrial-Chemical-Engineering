@@ -1,0 +1,41 @@
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+index 562c012b..c0173931 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+@@ -1092,7 +1092,7 @@ public final class PassiveStepSolver {
+                 for(int i=0;i<nodes;i++){var node=graph.reservoirs().get(i);trial.add(node.junction()?new PassiveNetwork.Reservoir(node.id(),node.elevation(),states.get(i),PassiveNetwork.NodeKind.JUNCTION):node);}
+                 var held=PassiveNetwork.sizeJunctionHoldups(new PassiveNetwork(trial,graph.pipes(),graph.scheduledTransfers()),model);
+                 var rate=new PassiveStepSolver(model).portRate(held,none,Acceptance.FULL);
+-                if(rate==null)return null;
++                if(rate==null){t20log("ratefail round="+round);return null;}
+                 double[] q=rate.massFlows();
+                 // Per junction: amounts per kilogram and specific enthalpy of what it holds, iterated over the junctions.
+                 double[][] y=new double[nodes][];double[] h=new double[nodes],inflow=new double[nodes],tLow=new double[nodes],tHigh=new double[nodes];
+@@ -1130,7 +1130,7 @@ public final class PassiveStepSolver {
+                     else {
+                         double lower=Math.max(tLow[j]-20,model.domain().envelope().minimumTemperature()),upper=Math.min(tHigh[j]+20,model.domain().envelope().maximumTemperature());
+                         for(int c=0;c<count;c++)if(y[j][c]>0){var range=model.domain().range(c);lower=Math.max(lower,range[0]);upper=Math.min(upper,range[1]);}
+-                        if(!(lower<upper))return null;
++                        if(!(lower<upper)){t20log("bracket round="+round);return null;}
+                         for(int k=0;k<60&&upper-lower>1e-9;k++) {
+                             double t=.5*(lower+upper);var point=model.flashTP(t,pressure,y[j].clone(),none);
+                             if(point.enthalpy()/point.mass()<h[j])lower=t;else upper=t;
+@@ -1143,11 +1143,16 @@ public final class PassiveStepSolver {
+                     next.set(j,state);
+                 }
+                 states=next;
+-                if(!moved)return states;
++                if(!moved){t20log("converged round="+round);return states;}
+             }
+-        } catch(SparseNewton.Nonconvergence|IllegalArgumentException|ApproximationRejected outside){return null;} // a ThermoDomainViolation included
++        } catch(SparseNewton.Nonconvergence|IllegalArgumentException|ApproximationRejected outside){t20log("exception "+outside.getClass().getSimpleName()+" "+String.valueOf(outside.getMessage()).replaceAll("[0-9.E+-]+","#"));return null;} // a ThermoDomainViolation included
++        t20log("rounds");
+         return null;
+     }
++    private static synchronized void t20log(String line) {
++        String file=System.getProperty("t20fpLog");if(file==null)return;
++        try{java.nio.file.Files.writeString(java.nio.file.Path.of(file),"defaults="+System.getProperty("holdFuzz.defaults")+" "+line+"\n",java.nio.file.StandardOpenOption.CREATE,java.nio.file.StandardOpenOption.APPEND);}catch(java.io.IOException ignored){}
++    }
+     /** The mass of a conserved amount vector, water last. */
+     private double molarMass(double[] amounts) {
+         double mass=0;for(int c=0;c<amounts.length;c++)mass+=amounts[c]*model.molecularWeight(c);

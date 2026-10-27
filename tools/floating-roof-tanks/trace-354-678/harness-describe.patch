@@ -1,0 +1,10 @@
+--- a/HoldFuzzTest.java
++++ b/HoldFuzzTest.java
+@@ -220,6 +220,7 @@
+         }
+         void runTo(long tick){while(ledger.onlineTick()<tick)tick();}
+         String describe(long island) {
++            try{coordinator.observe(island);}catch(IllegalArgumentException e){var all=new StringBuilder("island "+island+" gone; current islands:\n");for(var o:coordinator.observe())all.append(describe(o.id()));return all.toString();}
+             var s=coordinator.observe(island);var b=new StringBuilder("island "+island+" committed="+s.clock().committedTick()+" status="+s.status()+"\n");
+             var g=s.graph();
+             for(int i=0;i<g.reservoirs().size();i++){var n=g.reservoirs().get(i);var st=n.state();

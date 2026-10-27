@@ -1,0 +1,26 @@
+{
+  "baseline": "cb89f23ac31f67933caeaf0fb5e11aa92f8612d4",
+  "worktree": "D:\\Minecraft\\Modding\\1.21\\CreateChemE\\.claude\\worktrees\\remaining-holds-physics-review-kimi",
+  "scope": "cold-random seed 431, island 42, gated copied-source diagnostics; prefix only",
+  "baselineSolverSha256": "a5fc1bf56b6e38a14e410fa75f218c582224c81b6f3091e2c372f3503a1660a8",
+  "candidateSolverSha256": "d28a3b6d96565d61964213318d3d9d0ef12d7debd53b1a780c4cdf30c0f4350e",
+  "candidatePatchSha256": "b177ec822877ac3b48f0214fb131a1d3a94aace13df223e2ada8937517dcbbac",
+  "instrumentedSha256": {
+    "baseline": {
+      "src/main/java/com/wormzjl/icheme/science/fluid/network/PassiveStepSolver.java": "c45b6037ecb79beab525b465a67834640e666618f22687a7a618f2f1e321869f",
+      "src/main/java/com/wormzjl/icheme/science/fluid/network/PassiveIntervalSolver.java": "9102864947df72d110b16ef60bfe63ceb4db1b0ed5a0e9e181e3038e09217b4a"
+    },
+    "candidate": {
+      "src/main/java/com/wormzjl/icheme/science/fluid/network/PassiveStepSolver.java": "161371bd6ef02d958ba7da4f7e1c4c9bf3641c1bfe7cec4416b53d9dfa97bbc3",
+      "src/main/java/com/wormzjl/icheme/science/fluid/network/PassiveIntervalSolver.java": "9102864947df72d110b16ef60bfe63ceb4db1b0ed5a0e9e181e3038e09217b4a"
+    }
+  },
+  "instrumentationSha256": "4f9d0d37793ad218f9d40a8662bbba1a8c06de9ca070c2148975a60e5df21b33",
+  "harnessSha256": {
+    "HoldFuzzTest.java": "c09283280825774b1f48c8037a3a6c2643e05196a4e7c7c66170c39d78d32d3b",
+    "M3Run.java": "d352091dea6fbf7f1836d05cc1b8acdf744149a683e7c208a27d5acf44060c8a"
+  },
+  "classpathSha256": "7b2f67e44050eb2bb3b1764d796f036436f964bc29ae293b9fe0f485bffc4304",
+  "counters": false,
+  "workers": 1
+}

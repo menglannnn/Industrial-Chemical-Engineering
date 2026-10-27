@@ -1,0 +1,13 @@
+{
+  "source": "4ad6dc97",
+  "target": "D:\\Minecraft\\Modding\\1.21\\CreateChemE\\.claude\\worktrees\\rename-ichem-mod-30e50c",
+  "branch": "claude/floating-roof-tanks-81d68b",
+  "task": "runClient",
+  "pid": 43976,
+  "session": 41357,
+  "responsive": true,
+  "window": "Minecraft NeoForge* 1.21.1",
+  "resources_loaded": true,
+  "world_opened_by_agent": false,
+  "format_reset_observed": false
+}

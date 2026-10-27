@@ -1,0 +1,3 @@
+setblock 1 -57 -3 icheme:fluid_pipe[facing=north,north=true,south=true]
+setblock 1 -57 -4 icheme:fluid_pipe[facing=north,north=true,south=true]
+setblock 1 -57 -5 icheme:fluid_void[facing=south,south=true]

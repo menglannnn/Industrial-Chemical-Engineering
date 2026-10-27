@@ -1,0 +1,1 @@
+[{"from":"            double diameter=(next==first+1?populations.get(first).size():solids.size(material.id())).diameterMetres();","to":"            double diameter=0;for(int k=first;k<next;k++)diameter=Math.max(diameter,populations.get(k).size().diameterMetres());"}]

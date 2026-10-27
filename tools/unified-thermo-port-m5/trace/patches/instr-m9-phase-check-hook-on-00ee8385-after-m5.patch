@@ -1,0 +1,42 @@
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/FluidThermodynamics.java b/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/FluidThermodynamics.java
+index ed4c15f..d9addab 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/FluidThermodynamics.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/FluidThermodynamics.java
+@@ -947,7 +947,10 @@ public final class FluidThermodynamics {
+      *
+      * @return {@code state} itself when it keeps its phases and gains none; otherwise the node's new seed
+      */
++    /** M9 trace hook (temporary, tools/unified-thermo-port-test-world, never tracked): told of each phase check. */
++    public static volatile java.util.function.Consumer<Object[]> M9_CHECK;
+     public State phaseCheck(State state,boolean junction,State from,int[] record,int at,Prepared prepared,UnaryOperator<State> vesselSplit,Runnable checkpoint) {
++        State m9Equilibrium=null,m9Start=null,m9Own=null,m9Seed=null;int m9Proposed=0;
+         // Owner decision D38 C: the phases vanishing since the solve's start fold as traces, and what that fold removed is not
+         // offered back by this check's TP answer.
+         int shrinking=from==null?0:vanishing(from,state);
+@@ -961,14 +964,14 @@ public final class FluidThermodynamics {
+             for(int i=0;i<n;i++)totals[i]=kept.liquidView()[i]+kept.vaporView()[i];
+             totals[n]=kept.waterLiquid()+kept.waterVapor();
+             var equilibrium=folded(equilibriumTP(kept.temperature(),kept.pressure(),totals,checkpoint,prepared).withSolidState(kept.solids(),kept.solidMoments()),junction);
+-            int proposed=lacking(kept,equilibrium)&~excluded;
++            int proposed=lacking(kept,equilibrium)&~excluded;m9Equilibrium=equilibrium;m9Proposed=proposed;
+             if(proposed!=0) {
+-                var start=tpSeed(kept,equilibrium,prepared);
++                var start=tpSeed(kept,equilibrium,prepared);m9Start=start;
+                 // A junction's energy is its enthalpy (its mixing rows, D46): the solve's, before the fold restated it.
+                 State own=junction?equilibriumPH(kept.temperature(),kept.pressure(),state.enthalpy()-state.solidMoments().enthalpy(state.temperature(),state.pressure()),totals,checkpoint)
+                         :vesselSplit==null?null:vesselSplit.apply(start);
+-                if(own!=null)SolverDiagnostics.count(SolverDiagnostics.phaseSeeds);
+-                var seed=folded(own==null?start:own.withSolidState(kept.solids(),kept.solidMoments()),junction);
++                if(own!=null)SolverDiagnostics.count(SolverDiagnostics.phaseSeeds);m9Own=own;
++                var seed=folded(own==null?start:own.withSolidState(kept.solids(),kept.solidMoments()),junction);m9Seed=seed;
+                 // The D26 amendment: the own split's verdict on a proposed phase is where its closure took it, a vessel's
+                 // closure or a junction's PH answer (D38 C), and whether it leaves the phase vanishing against the solve's
+                 // start (D38 C, the fold's test); the TP-based fallback seed is no closure and refuses nothing.
+@@ -979,6 +982,7 @@ public final class FluidThermodynamics {
+             }
+         }
+         if(record!=null)record[at]|=phaseBits(state)&~phaseBits(checked)|refused;
++        if(M9_CHECK!=null)M9_CHECK.accept(new Object[]{state,from,kept,m9Equilibrium,m9Start,m9Own,m9Seed,m9Proposed,refused,excluded,checked,junction,shrinking,at});
+         return checked;
+     }
+     /**

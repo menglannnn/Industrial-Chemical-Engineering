@@ -1,0 +1,18 @@
+// M5 trace: the contrast on main's code. Run in a temporary detached worktree at ffeafe8a; attaches the bundled hold-fuzz
+// harness the port's campaign ran (../../unified-thermo-port-forms/hold-fuzz-bundled/src, read in place; main's
+// phase-ports harness no longer compiles against ffeafe8a) and this folder's src-main/, and
+// forwards -P replay.* as system properties:
+//   ./gradlew --no-configuration-cache --offline --init-script <this> test --tests '*M5MainContrastTest' -Preplay.seed=322 -Preplay.keep=...
+gradle.projectsEvaluated {
+    def here = gradle.startParameter.initScripts.find { it.name == 'm5-main-contrast.init.gradle' }.parentFile
+    def root = gradle.rootProject
+    root.sourceSets.test.java.srcDir(new File(here, '../../unified-thermo-port-forms/hold-fuzz-bundled/src').canonicalFile)
+    root.sourceSets.test.java.srcDir(new File(here, 'src-main'))
+    def forwarded = gradle.startParameter.projectProperties.findAll { k, v -> k.startsWith('replay.') }
+    root.tasks.withType(Test).configureEach {
+        maxHeapSize = '8g'
+        forwarded.each { k, v -> systemProperty k, v }
+        testLogging { showStandardStreams = true }
+        outputs.upToDateWhen { false }
+    }
+}

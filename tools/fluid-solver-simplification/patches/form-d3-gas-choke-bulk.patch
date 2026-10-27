@@ -1,0 +1,64 @@
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/HydrocarbonModel.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/HydrocarbonModel.java
+@@ -183,6 +183,13 @@
+                 root==PengRobinsonKernel.Root.VAPOR&&PhaseIdentification.vapourLike(values.phaseIdentificationParameter(),values.compressibility()));
+     }
+ 
++    /** The equation of state's own record of one phase at ({@code t}, {@code p}): its heat capacity and volume derivatives
++     * beside what {@link #phase} keeps (form D of the t38 plan reads the vapour's cp/cv and a liquid's cp from it); the
++     * kernel's refusals pass through as {@link IllegalArgumentException}s. */
++    TranslatedPengRobinson.Values values(double t,double p,double[] amounts,PengRobinsonKernel.Root root) {
++        return translated.evaluateValues(t,p,amounts,root,translated.prepare(t));
++    }
++
+     /**
+      * Whether an evaluated root is liquid-like: {@link PhaseIdentification}'s parameter of the root above one and above the
+      * root's compressibility factor ({@link PhaseIdentification#liquidLike(double, double)}; the one implementation of
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/FluidThermodynamics.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/FluidThermodynamics.java
+@@ -4,6 +4,7 @@
+ import com.wormzjl.createcheme.science.fluid.diagnostics.SolverDiagnostics;
+ import com.wormzjl.createcheme.science.fluid.solver.PhaseLayout;
+ import com.wormzjl.createcheme.science.fluid.transport.MixtureViscosity;
++import com.wormzjl.createcheme.science.math.DeterministicMath;
+ import com.wormzjl.createcheme.science.material.MaterialCatalog;
+ import com.wormzjl.createcheme.science.material.SolidMaterialCatalog;
+ import com.wormzjl.createcheme.science.thermo.NumericalBox;
+@@ -383,7 +384,9 @@
+     /** The per-node phase support the step solver freezes its Newton unknowns with. */
+     public TraceTruncationPolicy traceTruncation(){return tracePolicy;}
+     /** A hydraulic rate bound only; temperature and phase allocation still come from the EOS/energy equations. */
+-    public double velocityLimit(State state){return Math.min(maximumVelocity,isothermalAcousticBound(state));}
++    /** Form D3: a state holding only gas chokes at the gas choke ({@link #vaporVelocityLimit}); a state holding a liquid keeps the
++     * configured maximum against the mixture's isothermal acoustic bound. */
++    public double velocityLimit(State state){return state.liquidVolume()+state.waterVolume()>0?Math.min(maximumVelocity,isothermalAcousticBound(state)):vaporVelocityLimit(state);}
+     /**
+      * Frozen-phase isothermal acoustic bound used by the configured hydraulic velocity clamp: the node's compliance is
+      * {@code sum_phases V_phase kappa_phase}, the hydrocarbon liquid's and the free water's own isothermal
+@@ -453,11 +456,22 @@
+         if(state.waterVapor()>0)h+=state.waterVapor()*(prepared==null?vaporWaterEnthalpy(state.temperature()):match(prepared,state.temperature()).vaporEnthalpy());
+         return h/vaporMass(state);
+     }
+-    /** The vapour stream's velocity limit: {@code min(maximum, V_v/sqrt(M_v V_v/stiffness))}. */
++    /** The vapour stream's velocity limit (form D2, the gas choke alone): the isentropic choke velocity at the vapour's density,
++     * {@code c_T sqrt(gamma) K(gamma)}, K = (2/(gamma+1))^((gamma+1)/(2(gamma-1))), c_T the isothermal sound speed the acoustic
++     * bound states and gamma = cp/cv of the vapour from the equation of state (the steam alone at 4/3); the configured maximum
++     * is not read. */
+     public double vaporVelocityLimit(State state) {
+-        double stiffness=state.waterPartialPressure();
+-        if(state.vaporProperties()!=null){var gas=state.vaporProperties();stiffness+=-gas.molarVolume()/gas.volumePressureDerivative();}
+-        return Math.min(maximumVelocity,acoustic(state.vaporVolume(),vaporMass(state),state.vaporVolume()/stiffness));
++        double stiffness=state.waterPartialPressure(),gamma=4.0/3;
++        if(state.vaporProperties()!=null) {
++            var gas=state.vaporProperties();stiffness+=-gas.molarVolume()/gas.volumePressureDerivative();
++            try {
++                var v=hydrocarbon.values(state.temperature(),state.hydrocarbonPartialPressure(),state.vaporView(),PengRobinsonKernel.Root.VAPOR);
++                double cp=v.heatCapacity(),dvdt=v.volumeTemperatureDerivative(),dvdp=v.volumePressureDerivative();
++                double cv=cp+state.temperature()*dvdt*dvdt/dvdp;
++                if(cv>0&&cp>cv)gamma=cp/cv;
++            }catch(IllegalArgumentException refused){/* gamma stays 4/3 */}
++        }
++        return acoustic(state.vaporVolume(),vaporMass(state),state.vaporVolume()/stiffness)*Math.sqrt(gamma)*DeterministicMath.pow(2/(gamma+1),(gamma+1)/(2*(gamma-1)));
+     }
+     /**
+      * {@code V / sqrt(M C)}. The product of a phase's mass and compliance goes subnormal for a trace phase (a vanishing

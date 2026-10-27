@@ -1,0 +1,65 @@
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+@@ -459,6 +459,10 @@ public final class PassiveStepSolver {
+         // The velocity cap's active set (decision A270): each connection's cap state, decided on the first pass's start point
+         // and revised by this loop at converged points, like a device's mode ({@link Equations#capTransition}).
+         int[] caps=new int[graph.pipes().size()];Arrays.fill(caps,CAP_START);
++        // Per connection, the cap direction a converged point of this solve held it in (its drive past the cap's drop), or
++        // CAP_OPEN: a failed iterate does not release such a cap (Equations#correctCaps). Cleared where the loop re-decides
++        // the connection's cap (a device mode change, a closure at a junction end).
++        int[] heldCaps=new int[caps.length];Arrays.fill(heldCaps,CAP_OPEN);
+         // A line the previous point left on its cap starts there; every other is decided on this solve's start point.
+         if(carryModes&&previousCaps.length==caps.length)for(int i=0;i<caps.length;i++)if(previousCaps[i]>=0)caps[i]=previousCaps[i];
+         int maximumPasses=Math.min(512,16+2*graph.reservoirs().size()+2*graph.pipes().size());
+@@ -541,7 +545,7 @@ public final class PassiveStepSolver {
+                 // more than its cap, and a stated flow its ends cannot push is no state, so a Newton walking either went
+                 // through states that do not exist. The pass is solved again from its start. Taken before the phase
+                 // corrections below, which read the same iterate.
+-                if(equations.correctCaps(failure.lastVariables(),caps,tolerance)){if(T19Trace.ON)T19Trace.line("WHY pass="+pass+" failcaps caps="+Arrays.toString(caps));continue;}
++                if(equations.correctCaps(failure.lastVariables(),caps,heldCaps,tolerance)){if(T19Trace.ON)T19Trace.line("WHY pass="+pass+" failcaps caps="+Arrays.toString(caps));continue;}
+                 // Decision D54: a vessel the failed iterate drained to nothing runs dry within the step. Its end state has no
+                 // contents, so the pass laid out with them has no root (every step size fails the same way); it is solved
+                 // again with the vessel as a junction holding its stock, which ends the step empty (emptyingGraph).
+@@ -579,6 +583,8 @@ public final class PassiveStepSolver {
+             // dry (what reaches it is more than its outlets take at the ambient): it holds contents at the step's end and is
+             // solved again as the vessel it is, unless an earlier converged pass of this solve has confirmed it emptying.
+             if(emptying!=null){var kept=keptEmptying(states,emptying,emptied);if(kept!=null){if(T19Trace.ON)T19Trace.line("WHY pass="+pass+" keptEmptying "+Arrays.toString(kept)+" at: "+equations.t19Edges(x));emptying=kept;continue;}}
++            // A converged point is a state of the step: every line it holds on its cap is recorded as held (heldCaps).
++            for(int i=0;i<caps.length;i++)heldCaps[i]=caps[i]>=0&&!boundaryClosed[i]&&equations.capTransition(i,x,tolerance)==caps[i]?caps[i]:CAP_OPEN;
+             boolean changed=false;int illegalDirection=-1,capChange=-1,capNext=CAP_OPEN,deviceChange=-1;FlowControl.Mode deviceNext=null;
+             for(int i=0;i<flows.length;i++) {
+                 flows[i]=x[equations.edgeOffset+i];heads[i]=equations.controlOffsets[i]<0?0:x[equations.controlOffsets[i]]*1e5;
+@@ -607,7 +613,7 @@ public final class PassiveStepSolver {
+             if(capChange>=0){caps[capChange]=capNext;changed=true;}
+             else if(deviceChange>=0) {
+                 // A device that changes mode has its cap decided afresh on the next pass's start point.
+-                var mode=modes.get(deviceChange);modes.set(deviceChange,deviceNext);caps[deviceChange]=CAP_START;changed=true;
++                var mode=modes.get(deviceChange);modes.set(deviceChange,deviceNext);caps[deviceChange]=CAP_START;heldCaps[deviceChange]=CAP_OPEN;changed=true;
+                 if(deviceNext==FlowControl.Mode.CLOSED&&mode==FlowControl.Mode.PUMP_HEAD_LIMIT)atShutoff[deviceChange]=true;
+             }
+             // A passive connection showing a direction its own boundary forbids, next to a device
+@@ -633,7 +639,7 @@ public final class PassiveStepSolver {
+                 // 336: a line filling a tank kept the cap it took while a void fed its junction, and the next pass drew the
+                 // junction to 11 kPa to bring that cap down to the trickle left).
+                 for(int end:new int[]{pipe.first(),pipe.second()})if(graph.reservoirs().get(end).junction())
+-                    for(int other=0;other<caps.length;other++){var link=graph.pipes().get(other);if(link.first()==end||link.second()==end)caps[other]=CAP_START;}
++                    for(int other=0;other<caps.length;other++){var link=graph.pipes().get(other);if(link.first()==end||link.second()==end){caps[other]=CAP_START;heldCaps[other]=CAP_OPEN;}}
+             }
+             // Decision A272: a cap change re-solves the same pass from its own start (its seeds: what fills each connection,
+             // which phases exist, the junctions' start states; and its start flows and phase-port segments): it changes which
+@@ -3805,13 +3811,13 @@ public final class PassiveStepSolver {
+          * at a flow still below the cap is a Newton not yet converged, not a line at its cap. A point outside the property
+          * domain changes nothing.
+          */
+-        boolean correctCaps(double[] x,int[] caps,double tolerance) {
++        boolean correctCaps(double[] x,int[] caps,int[] held,double tolerance) {
+             int[] released=caps.clone(),entered=caps.clone();boolean release=false,enter=false;
+             try {
+                 double[] scratch=new double[size];
+                 for(int edge=0;edge<caps.length;edge++) {
+                     if(!clamps(edge))continue;
+-                    if(capDirections[edge]>=0){if(capTransition(edge,x,tolerance)==CAP_OPEN){released[edge]=CAP_OPEN;release=true;}continue;}
++                    if(capDirections[edge]>=0){if((held[edge]!=capDirections[edge]||T26_OFF.contains("held"))&&capTransition(edge,x,tolerance)==CAP_OPEN){released[edge]=CAP_OPEN;release=true;}continue;}
+                     decode(x);edgeRows(edge,x,cachedStates,cachedTransport,scratch);
+                     var pipe=graph.pipes().get(edge);double q=x[edgeOffset+edge];int end=q>=0?0:1;var node=cachedTransport[end==0?pipe.first():pipe.second()];
+                     double limit=pipe.filter()==null?capLimit(edge,end,node):filterCapFlow(edge,end,node,drawn(edge,end,node,q));

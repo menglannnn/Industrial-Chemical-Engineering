@@ -1,0 +1,445 @@
+@@ src/main/java/com/wormzjl/createcheme/science/fluid/solver/SparseNewton.java 1
+        private final ThermoHold domainViolation;
+>>
+        private final ThermoHold phaseHold;
+@@ src/main/java/com/wormzjl/createcheme/science/fluid/solver/SparseNewton.java 1
+        /** {@code domainViolation}: a typed thermodynamic hold stopped this solve ({@link ThermoHold}: a state outside the
+         * property domain or a phase set the network cannot carry) - the failing iteration's line search was refused by it -
+         * and a rejection count or a held island should name it rather than the Newton symptom. */
+        public Nonconvergence(String message,double[] lastVariables,ThermoHold domainViolation) {
+            super(message);this.lastVariables=lastVariables==null?null:lastVariables.clone();this.domainViolation=domainViolation;
+>>
+        /** {@code phaseHold}: a phase hold stopped this solve ({@link ThermoHold}: a phase set the network cannot carry, or
+         * one the engine could not converge inside the declared critical band) - the failing iteration's line search was
+         * refused by it - and a rejection count or a held island should name it rather than the Newton symptom. */
+        public Nonconvergence(String message,double[] lastVariables,ThermoHold phaseHold) {
+            super(message);this.lastVariables=lastVariables==null?null:lastVariables.clone();this.phaseHold=phaseHold;
+@@ src/main/java/com/wormzjl/createcheme/science/fluid/solver/SparseNewton.java 1
+        /** The typed hold that stopped this solve, or {@code null} when the failure was numerical. */
+        public ThermoHold domainViolation(){return domainViolation;}
+>>
+        /** The phase hold that stopped this solve, or {@code null} when the failure was numerical. */
+        public ThermoHold phaseHold(){return phaseHold;}
+@@ src/main/java/com/wormzjl/createcheme/science/fluid/solver/SparseNewton.java 1
+            var named=domainViolation==null?null:domainViolation.at(node);
+            return named==domainViolation?this:new Nonconvergence(getMessage(),lastVariables,named);
+>>
+            var named=phaseHold==null?null:phaseHold.at(node);
+            return named==phaseHold?this:new Nonconvergence(getMessage(),lastVariables,named);
+@@ src/main/java/com/wormzjl/createcheme/science/fluid/solver/SparseNewton.java 1
+    /** The typed hold a refusal stands for: the hold itself, or the one a failed solve carries; else null. */
+    public static ThermoHold domainViolation(Throwable refusal) {
+        if(refusal instanceof ThermoHold hold)return hold;
+        if(refusal instanceof Nonconvergence failure)return failure.domainViolation();
+>>
+    /** The phase hold a refusal stands for: the hold itself, or the one a failed solve carries; else null. */
+    public static ThermoHold phaseHold(Throwable refusal) {
+        if(refusal instanceof ThermoHold hold)return hold;
+        if(refusal instanceof Nonconvergence failure)return failure.phaseHold();
+@@ src/main/java/com/wormzjl/createcheme/science/fluid/solver/SparseNewton.java 1
+        // The property-domain refusal the current iteration's line search met, if any: when that iteration is the one
+        // that fails, the failure is the domain's and says so.
+        ThermoHold domain=null;
+>>
+        // The phase hold the current iteration's line search met, if any: when that iteration is the one that fails, the
+        // failure is the hold's and says so.
+        ThermoHold hold=null;
+@@ src/main/java/com/wormzjl/createcheme/science/fluid/solver/SparseNewton.java 1
+            domain=null;
+            SolverDiagnostics.count(SolverDiagnostics.newtonIterations);
+>>
+            hold=null;
+            SolverDiagnostics.count(SolverDiagnostics.newtonIterations);
+@@ src/main/java/com/wormzjl/createcheme/science/fluid/solver/SparseNewton.java 1
+                    if(outsideDomain instanceof ThermoHold hold)domain=hold;
+>>
+                    if(outsideDomain instanceof ThermoHold met)hold=met;
+@@ src/main/java/com/wormzjl/createcheme/science/fluid/solver/SparseNewton.java 1
+throw new Nonconvergence("Newton line search stalled at residual "+norm,x,domain);
+>>
+throw new Nonconvergence("Newton line search stalled at residual "+norm,x,hold);
+@@ src/main/java/com/wormzjl/createcheme/science/fluid/solver/SparseNewton.java 1
+throw new Nonconvergence("Newton iteration limit at residual "+norm,x,domain);
+>>
+throw new Nonconvergence("Newton iteration limit at residual "+norm,x,hold);
+@@ src/main/java/com/wormzjl/createcheme/science/fluid/thermo/ThermoHold.java 1
+    public static final String REASON_PREFIX="thermo-domain: ";
+>>
+    public static final String REASON_PREFIX="phase-hold: ";
+@@ src/main/java/com/wormzjl/createcheme/runtime/ProcessSolveServices.java 1
+result.proposedAnchor(),result.domain(),result.notices());
+>>
+result.proposedAnchor(),result.phaseHold(),result.notices());
+@@ src/main/java/com/wormzjl/createcheme/runtime/ProcessSolveServices.java 1
+                // A failure a typed thermodynamic hold decided (the property domain, or a phase set the network cannot carry)
+                // carries the hold itself, so the coordinator can hold the island with the dedicated status and tell a
+                // reproduced hold from a numerical failure (IslandCoordinator.hold).
+                var domain=Optional.ofNullable(com.wormzjl.createcheme.science.fluid.solver.SparseNewton.domainViolation(failed));
+>>
+                // A failure a phase hold decided (a phase set the network cannot carry, or the critical band) carries the
+                // hold itself, so the coordinator can hold the island with the dedicated status and tell a reproduced hold
+                // from a numerical failure (IslandCoordinator.hold).
+                var hold=Optional.ofNullable(com.wormzjl.createcheme.science.fluid.solver.SparseNewton.phaseHold(failed));
+@@ src/main/java/com/wormzjl/createcheme/runtime/ProcessSolveServices.java 1
+domain.map(v->THERMO_DOMAIN+v.getMessage())
+>>
+hold.map(v->PHASE_HOLD+v.getMessage())
+@@ src/main/java/com/wormzjl/createcheme/runtime/ProcessSolveServices.java 1
+fallback.anchor(),domain);
+>>
+fallback.anchor(),hold);
+@@ src/main/java/com/wormzjl/createcheme/runtime/ProcessSolveServices.java 1
+    /** The detail prefix of an island interval the property domain refused; the result carries the violation. */
+    public static final String THERMO_DOMAIN="HELD (thermo domain): ";
+>>
+    /** The detail prefix of an island interval a phase hold refused; the result carries the hold. */
+    public static final String PHASE_HOLD="HELD (phases): ";
+@@ src/main/java/com/wormzjl/createcheme/runtime/ProcessSolveServices.java 1
+Optional<com.wormzjl.createcheme.science.fluid.thermo.ThermoHold> domain,
+>>
+Optional<com.wormzjl.createcheme.science.fluid.thermo.ThermoHold> phaseHold,
+@@ src/main/java/com/wormzjl/createcheme/runtime/ProcessSolveServices.java 1
+Optional<com.wormzjl.createcheme.science.fluid.thermo.ThermoHold> domain) {
+>>
+Optional<com.wormzjl.createcheme.science.fluid.thermo.ThermoHold> phaseHold) {
+@@ src/main/java/com/wormzjl/createcheme/runtime/ProcessSolveServices.java 1
+this(candidate,detail,workerNanos,workerCpuNanos,allowance,anchor,domain,List.of());
+>>
+this(candidate,detail,workerNanos,workerCpuNanos,allowance,anchor,phaseHold,List.of());
+@@ src/main/java/com/wormzjl/createcheme/runtime/ProcessSolveServices.java 1
+public FluidIslandSolveResult {Objects.requireNonNull(domain);
+>>
+public FluidIslandSolveResult {Objects.requireNonNull(phaseHold);
+@@ src/main/java/com/wormzjl/createcheme/runtime/ProcessSolveServices.java 1
+if(domain.isPresent()&&candidate.isPresent())throw new IllegalArgumentException("An accepted interval has no domain failure");
+>>
+if(phaseHold.isPresent()&&candidate.isPresent())throw new IllegalArgumentException("An accepted interval has no phase hold");
+@@ src/main/java/com/wormzjl/createcheme/runtime/fluid/IslandCoordinator.java 1
+        // The thermo hold (a phase set the network cannot carry; leaving a data range is never one, owner rule of
+>>
+        // The phase hold (a phase set the network cannot carry; leaving a data range is never one, owner rule of
+@@ src/main/java/com/wormzjl/createcheme/runtime/fluid/IslandCoordinator.java 1
+        // change. With the last warned violation's key and online tick, for the rate limit on the log. Ephemeral.
+>>
+        // change. With the last warned hold's key and online tick, for the rate limit on the log. Ephemeral.
+@@ src/main/java/com/wormzjl/createcheme/runtime/fluid/IslandCoordinator.java 1
+        private com.wormzjl.createcheme.science.fluid.thermo.ThermoHold domainFailure;
+        private boolean domainParked;
+>>
+        private com.wormzjl.createcheme.science.fluid.thermo.ThermoHold phaseHold;
+        private boolean phaseParked;
+@@ src/main/java/com/wormzjl/createcheme/runtime/fluid/IslandCoordinator.java 1
+        private String warnedDomainKey;
+        private long warnedDomainAt=Long.MIN_VALUE;
+>>
+        private String warnedHoldKey;
+        private long warnedHoldAt=Long.MIN_VALUE;
+@@ src/main/java/com/wormzjl/createcheme/runtime/fluid/IslandCoordinator.java 1
+     * Told once per island per thermo-domain hold (the first held attempt of an episode, and again only for a different
+     * violation or after {@link #DOMAIN_WARNING_TICKS} online ticks): the world logs it. {@code where} is the node's
+     * label, {@code parked} whether the island now waits for an input change.
+     */
+    @FunctionalInterface public interface DomainHolds {
+        void held(long island,com.wormzjl.createcheme.science.fluid.thermo.ThermoHold violation,String where,boolean parked);
+        DomainHolds NONE=(island,violation,where,parked)->{};
+    }
+    /** Repeats of the same island and violation are logged at most once per this many online ticks (five minutes). */
+    static final long DOMAIN_WARNING_TICKS=6000;
+    private DomainHolds domainHolds=DomainHolds.NONE;
+>>
+     * Told once per island per phase hold (the first held attempt of an episode, and again only for a different hold or
+     * after {@link #PHASE_HOLD_WARNING_TICKS} online ticks): the world logs it. {@code where} is the node's label,
+     * {@code parked} whether the island now waits for an input change.
+     */
+    @FunctionalInterface public interface PhaseHolds {
+        void held(long island,com.wormzjl.createcheme.science.fluid.thermo.ThermoHold hold,String where,boolean parked);
+        PhaseHolds NONE=(island,hold,where,parked)->{};
+    }
+    /** Repeats of the same island and hold are logged at most once per this many online ticks (five minutes). */
+    static final long PHASE_HOLD_WARNING_TICKS=6000;
+    private PhaseHolds phaseHolds=PhaseHolds.NONE;
+@@ src/main/java/com/wormzjl/createcheme/runtime/fluid/IslandCoordinator.java 1
+    /** Whether a thermo-domain hold reproduced on its retry and the island now waits for an input change. For tests. */
+    boolean waitsForInputs(long id){owned();return require(id).domainParked;}
+>>
+    /** Whether a phase hold reproduced on its retry and the island now waits for an input change. For tests. */
+    boolean waitsForInputs(long id){owned();return require(id).phaseParked;}
+@@ src/main/java/com/wormzjl/createcheme/runtime/fluid/IslandCoordinator.java 1
+    /** Installs the listener told of thermo-domain holds; see {@link DomainHolds}. */
+    public void onDomainHold(DomainHolds listener){owned();domainHolds=Objects.requireNonNull(listener);}
+>>
+    /** Installs the listener told of phase holds; see {@link PhaseHolds}. */
+    public void onPhaseHold(PhaseHolds listener){owned();phaseHolds=Objects.requireNonNull(listener);}
+@@ src/main/java/com/wormzjl/createcheme/runtime/fluid/IslandCoordinator.java 1
+:outcome.domain().isPresent()?domainStatus(outcome.domain().orElseThrow(),false)
+>>
+:outcome.phaseHold().isPresent()?phaseHoldStatus(outcome.phaseHold().orElseThrow(),false)
+@@ src/main/java/com/wormzjl/createcheme/runtime/fluid/IslandCoordinator.java 2
+island.domainFailure=null;island.domainParked=false;
+>>
+island.phaseHold=null;island.phaseParked=false;
+@@ src/main/java/com/wormzjl/createcheme/runtime/fluid/IslandCoordinator.java 1
+        var domain=outcome==null?null:outcome.domain().orElse(null);
+        if(domain!=null) {
+            // A thermo hold (a typed phase hold, owner decision D21 option C; leaving a data range is never one since the
+>>
+        var hold=outcome==null?null:outcome.phaseHold().orElse(null);
+        if(hold!=null) {
+            // A phase hold (a capability limit, owner decision D21 option C; leaving a data range is never one since the
+@@ src/main/java/com/wormzjl/createcheme/runtime/fluid/IslandCoordinator.java 1
+            boolean reproduced=domain.sameAs(island.domainFailure);
+            island.domainFailure=domain;
+            warnDomain(island,domain,reproduced);
+            if(reproduced) {
+                island.domainParked=true;island.status=domainStatus(domain,true);
+                island.clock.holdUntilInputsChange();FluidRuntimeDiagnostics.count(FluidRuntimeDiagnostics.domainHolds);
+>>
+            boolean reproduced=hold.sameAs(island.phaseHold);
+            island.phaseHold=hold;
+            warnPhaseHold(island,hold,reproduced);
+            if(reproduced) {
+                island.phaseParked=true;island.status=phaseHoldStatus(hold,true);
+                island.clock.holdUntilInputsChange();FluidRuntimeDiagnostics.count(FluidRuntimeDiagnostics.phaseHolds);
+@@ src/main/java/com/wormzjl/createcheme/runtime/fluid/IslandCoordinator.java 1
+     * thermo-domain hold included, which starts a new episode. */
+>>
+     * phase hold included, which starts a new episode. */
+@@ src/main/java/com/wormzjl/createcheme/runtime/fluid/IslandCoordinator.java 1
+    /** The dedicated status line of a thermo hold: a phase set the network cannot carry, see
+     * {@link com.wormzjl.createcheme.science.fluid.thermo.ThermoHold}. */
+    private String domainStatus(com.wormzjl.createcheme.science.fluid.thermo.ThermoHold violation,boolean parked) {
+        return ProcessSolveServices.THERMO_DOMAIN+violation.status(where(violation))
+>>
+    /** The dedicated status line of a phase hold: a phase set the network cannot carry, see
+     * {@link com.wormzjl.createcheme.science.fluid.thermo.ThermoHold}. */
+    private String phaseHoldStatus(com.wormzjl.createcheme.science.fluid.thermo.ThermoHold hold,boolean parked) {
+        return ProcessSolveServices.PHASE_HOLD+hold.status(where(hold))
+@@ src/main/java/com/wormzjl/createcheme/runtime/fluid/IslandCoordinator.java 1
+    private String where(com.wormzjl.createcheme.science.fluid.thermo.ThermoHold violation) {
+        return violation.node()==com.wormzjl.createcheme.science.fluid.thermo.ThermoHold.NO_NODE?"":nodeNames.apply(violation.node());
+    }
+    /** One log line per island per hold: a new violation, or the same one again after the rate limit's online ticks. */
+    private void warnDomain(Island island,com.wormzjl.createcheme.science.fluid.thermo.ThermoHold violation,boolean parked) {
+        String key=violation.reasonKey()+"@"+violation.node();long now=island.clock.onlineTick();
+        if(key.equals(island.warnedDomainKey)&&now-island.warnedDomainAt<DOMAIN_WARNING_TICKS)return;
+        island.warnedDomainKey=key;island.warnedDomainAt=now;
+        domainHolds.held(island.id,violation,where(violation),parked);
+>>
+    private String where(com.wormzjl.createcheme.science.fluid.thermo.ThermoHold hold) {
+        return hold.node()==com.wormzjl.createcheme.science.fluid.thermo.ThermoHold.NO_NODE?"":nodeNames.apply(hold.node());
+    }
+    /** One log line per island per hold: a new hold, or the same one again after the rate limit's online ticks. */
+    private void warnPhaseHold(Island island,com.wormzjl.createcheme.science.fluid.thermo.ThermoHold hold,boolean parked) {
+        String key=hold.reasonKey()+"@"+hold.node();long now=island.clock.onlineTick();
+        if(key.equals(island.warnedHoldKey)&&now-island.warnedHoldAt<PHASE_HOLD_WARNING_TICKS)return;
+        island.warnedHoldKey=key;island.warnedHoldAt=now;
+        phaseHolds.held(island.id,hold,where(hold),parked);
+@@ src/main/java/com/wormzjl/createcheme/runtime/fluid/FluidWorldAuthority.java 1
+runtime.coordinator().onDomainHold(this::domainHeld);
+>>
+runtime.coordinator().onPhaseHold(this::phaseHeld);
+@@ src/main/java/com/wormzjl/createcheme/runtime/fluid/FluidWorldAuthority.java 1
+     * One WARN per island per thermo-domain hold, a phase set the network cannot carry (D21 option C; the coordinator
+>>
+     * One WARN per island per phase hold, a phase set the network cannot carry (D21 option C; the coordinator
+@@ src/main/java/com/wormzjl/createcheme/runtime/fluid/FluidWorldAuthority.java 1
+    private void domainHeld(long island,
+>>
+    private void phaseHeld(long island,
+@@ src/main/java/com/wormzjl/createcheme/runtime/fluid/FluidWorldAuthority.java 1
+status=THERMO_DOMAIN code={}
+>>
+status=PHASE_HOLD code={}
+@@ src/main/java/com/wormzjl/createcheme/runtime/fluid/FluidWorldAuthority.java 1
+        // A thermo-domain hold has its own, rate-limited line with the full detail (domainHeld); every other hold keeps this one.
+>>
+        // A phase hold has its own, rate-limited line with the full detail (phaseHeld); every other hold keeps this one.
+@@ src/main/java/com/wormzjl/createcheme/runtime/fluid/FluidWorldAuthority.java 1
+ProcessSolveServices.THERMO_DOMAIN))
+>>
+ProcessSolveServices.PHASE_HOLD))
+@@ src/main/java/com/wormzjl/createcheme/runtime/fluid/FluidRuntimeDiagnostics.java 1
+    /** Thermo-domain holds whose fresh-solver retry reproduced the same violation: the island waits for an input change. */
+    public static final LongAdder domainHolds=new LongAdder();
+>>
+    /** Phase holds whose fresh-solver retry reproduced the same hold: the island waits for an input change. */
+    public static final LongAdder phaseHolds=new LongAdder();
+@@ src/main/java/com/wormzjl/createcheme/runtime/fluid/FluidRuntimeDiagnostics.java 1
+map.put("domainHolds",domainHolds);
+>>
+map.put("phaseHolds",phaseHolds);
+@@ src/main/java/com/wormzjl/createcheme/runtime/fluid/IslandCertificate.java 1
+            // An interval whose step control met the property domain's boundary (or a phase set the network cannot carry,
+            // a typed hold under the same key prefix) is not replayed: the replay would carry the island along a
+            // trajectory the solve itself could only just keep inside the data.
+>>
+            // An interval whose step control met a phase hold (a phase set the network cannot carry, or the critical band,
+            // counted under the hold's key prefix) is not replayed: the replay would carry the island along a trajectory
+            // the solve itself could only just keep inside what the network carries.
+@@ src/main/java/com/wormzjl/createcheme/runtime/fluid/IslandCertificate.java 1
+"a solid transport transition or a thermo-domain rejection"
+>>
+"a solid transport transition or a phase-hold rejection"
+@@ src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveIntervalSolver.java 1
+     * bound. An exhausted interval states its rejection map (a domain approach ends on twenty rejections, review 8.8 (a)).</li>
+>>
+     * bound. An exhausted interval states its rejection map (an approach to a phase hold ends on twenty rejections, review
+     * 8.8 (a)).</li>
+@@ src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveIntervalSolver.java 1
+        // Rejections a typed thermodynamic hold decided (a domain violation or a phase hold): the last one, how many, and
+        // whether the latest rejection was one.
+        com.wormzjl.createcheme.science.fluid.thermo.ThermoHold lastDomain=null;int domainRejections=0;boolean lastWasDomain=false;
+>>
+        // Rejections a phase hold decided: the last one, how many, and whether the latest rejection was one.
+        com.wormzjl.createcheme.science.fluid.thermo.ThermoHold lastHold=null;int holdRejections=0;boolean lastWasHold=false;
+@@ src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveIntervalSolver.java 1
+                // A trial a typed thermodynamic hold refused - directly, or a Newton pass whose failing line search it
+                // stopped - is counted under its own key (one per component, property and side, or per phase set; never
+                // folded into "Other"), so a checkpoint, a view and the certificate's transition check all see it.
+                var domain=SparseNewton.domainViolation(rejected);
+                if(domain!=null){rejectionReasons.merge(domain.reasonKey(),1,Integer::sum);lastDomain=domain;domainRejections++;}
+>>
+                // A trial a phase hold refused - directly, or a Newton pass whose failing line search it stopped - is
+                // counted under its own key (one per phase set; never folded into "Other"), so a checkpoint, a view and the
+                // certificate's transition check all see it.
+                var hold=SparseNewton.phaseHold(rejected);
+                if(hold!=null){rejectionReasons.merge(hold.reasonKey(),1,Integer::sum);lastHold=hold;holdRejections++;}
+@@ src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveIntervalSolver.java 1
+                lastWasDomain=domain!=null;
+>>
+                lastWasHold=hold!=null;
+@@ src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveIntervalSolver.java 2
+domainCause(lastWasDomain,lastDomain,domainRejections,rejectedCount)
+>>
+phaseHoldCause(lastWasHold,lastHold,holdRejections,rejectedCount)
+@@ src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveIntervalSolver.java 1
+     * The typed hold an interval that could not commit failed on, or null: its last rejection was a typed hold, or typed
+     * holds were the dominant reason (more than half of the interval's rejections). An interval that only met one on
+     * the way, and failed for another reason, is a numerical failure.
+     */
+    static com.wormzjl.createcheme.science.fluid.thermo.ThermoHold domainCause(boolean lastWasDomain,
+            com.wormzjl.createcheme.science.fluid.thermo.ThermoHold lastDomain,int domainRejections,int rejected) {
+        return lastWasDomain||2*domainRejections>rejected?lastDomain:null;
+>>
+     * The phase hold an interval that could not commit failed on, or null: its last rejection was a phase hold, or phase
+     * holds were the dominant reason (more than half of the interval's rejections). An interval that only met one on
+     * the way, and failed for another reason, is a numerical failure.
+     */
+    static com.wormzjl.createcheme.science.fluid.thermo.ThermoHold phaseHoldCause(boolean lastWasHold,
+            com.wormzjl.createcheme.science.fluid.thermo.ThermoHold lastHold,int holdRejections,int rejected) {
+        return lastWasHold||2*holdRejections>rejected?lastHold:null;
+@@ src/main/java/com/wormzjl/createcheme/science/fluid/network/InventoryEquilibrium.java 1
+            // A committed inventory the property domain refuses, or whose phases the network holds on, names its node,
+            // directly or through the failed closure such a hold stopped; see ThermoHold.
+>>
+            // A committed inventory whose phases the network holds on names its node, directly or through the failed
+            // closure such a hold stopped; see ThermoHold.
+@@ src/main/java/com/wormzjl/createcheme/science/fluid/network/InventoryEquilibrium.java 1
+failure.domainViolation()
+>>
+failure.phaseHold()
+@@ src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java 1
+failure.domainViolation()
+>>
+failure.phaseHold()
+@@ src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java 1
+     * dead-ended suction pulled below 100 Pa), and the island waited on a thermo-domain hold a zero flow never reaches.</li>
+>>
+     * dead-ended suction pulled below 100 Pa), where the island then held on the data range (before the owner rule of
+     * 2026-10-16) though a zero flow never reaches it.</li>
+@@ src/main/java/com/wormzjl/createcheme/science/fluid/network/ConservativeTransport.java 1
+            // A hold the closure meets names the vessel, directly or through the failed solve it stopped (water driven into a
+            // vessel cooled below 273.16 K: the closure's line search is refused by the water domain).
+>>
+            // A phase hold the closure meets names the vessel, directly or through the failed solve it stopped (a phase set
+            // the network cannot carry refused the closure's line search).
+@@ src/test/java/com/wormzjl/createcheme/runtime/fluid/CrystalIslandRuntimeTest.java 1
+ProcessSolveServices.THERMO_DOMAIN
+>>
+ProcessSolveServices.PHASE_HOLD
+@@ src/test/java/com/wormzjl/createcheme/runtime/fluid/IslandCertificateTest.java 1
+    @Test void aThermoDomainRejectionKeepsTheIntervalFromCertifying() {
+>>
+    @Test void aPhaseHoldRejectionKeepsTheIntervalFromCertifying() {
+@@ src/test/java/com/wormzjl/createcheme/runtime/fluid/IslandCertificateTest.java 1
+"thermo-domain: Nitrogen temperature < 63.151 K"
+>>
+"phase-hold: phases THREE_PHASES"
+@@ src/test/java/com/wormzjl/createcheme/runtime/fluid/IslandCoordinatorTest.java 1
+    private void domainHold(IslandCoordinator.Attempt attempt,
+>>
+    private void phaseHold(IslandCoordinator.Attempt attempt,
+@@ src/test/java/com/wormzjl/createcheme/runtime/fluid/IslandCoordinatorTest.java 1
+ProcessSolveServices.THERMO_DOMAIN+v.getMessage()
+>>
+ProcessSolveServices.PHASE_HOLD+v.getMessage()
+@@ src/test/java/com/wormzjl/createcheme/runtime/fluid/IslandCoordinatorTest.java 1
+owner rule of 2026-10-16): a thermo-domain failure is
+>>
+owner rule of 2026-10-16): a phase hold is
+@@ src/test/java/com/wormzjl/createcheme/runtime/fluid/IslandCoordinatorTest.java 1
+coordinator.onDomainHold(
+>>
+coordinator.onPhaseHold(
+@@ src/test/java/com/wormzjl/createcheme/runtime/fluid/IslandCoordinatorTest.java 5
+domainHold(
+>>
+phaseHold(
+@@ src/test/java/com/wormzjl/createcheme/runtime/fluid/IslandCoordinatorTest.java 2
+"HELD (thermo domain): a third fluid phase
+>>
+"HELD (phases): a third fluid phase
+@@ src/test/java/com/wormzjl/createcheme/runtime/fluid/IslandCoordinatorTest.java 1
+"the first domain failure is retried"
+>>
+"the first phase hold is retried"
+@@ src/test/java/com/wormzjl/createcheme/runtime/fluid/IslandCoordinatorTest.java 1
+"1 thermo-domain: phases THREE_PHASES tank at 1, 64, 0 false"
+>>
+"1 phase-hold: phases THREE_PHASES tank at 1, 64, 0 false"
+@@ src/test/java/com/wormzjl/createcheme/runtime/fluid/IslandCoordinatorTest.java 1
+get("domainHolds")
+>>
+get("phaseHolds")
+@@ src/test/java/com/wormzjl/createcheme/runtime/fluid/IslandCoordinatorTest.java 1
+// The same violation after the wake is a new episode
+>>
+// The same hold after the wake is a new episode
+@@ src/test/java/com/wormzjl/createcheme/runtime/FluidDataRangeIslandTest.java 1
+coordinator.onDomainHold(
+>>
+coordinator.onPhaseHold(
+@@ src/test/java/com/wormzjl/createcheme/runtime/FluidDataRangeIslandTest.java 1
+result.domain().isEmpty()
+>>
+result.phaseHold().isEmpty()
+@@ src/test/java/com/wormzjl/createcheme/science/fluid/network/CrystalDepositionIslandTest.java 1
+ * rigid, it would pass the 10 MPa ceiling, the typed domain hold naming its node;</li>
+>>
+ * rigid, it passes the package's 10 MPa envelope, carried with a notice, not a hold (owner rule of 2026-10-16);</li>
+@@ src/test/java/com/wormzjl/createcheme/science/fluid/network/CrystalDepositionIslandTest.java 1
+naming its node, a thermo hold like a domain one.</li>
+>>
+naming its node, a phase hold like any other.</li>
+@@ src/test/java/com/wormzjl/createcheme/science/fluid/network/CrystalDepositionIslandTest.java 1
+     * Both are thermo holds ({@link com.wormzjl.createcheme.science.fluid.thermo.ThermoHold}), which an island parks on
+     * like a domain hold.
+>>
+     * Both are phase holds ({@link com.wormzjl.createcheme.science.fluid.thermo.ThermoHold}), which an island parks on
+     * when its retry meets the same one.
+@@ src/test/java/com/wormzjl/createcheme/science/fluid/network/CrystalDepositionIslandTest.java 1
+startsWith("thermo-domain: phases CRYSTAL_PHASES")
+>>
+startsWith("phase-hold: phases CRYSTAL_PHASES")
+@@ src/test/java/com/wormzjl/createcheme/science/fluid/network/CrystalDepositionIslandTest.java 1
+assertSame(hold,SparseNewton.domainViolation(refused),"a thermo hold, parked like a domain hold");
+>>
+assertSame(hold,SparseNewton.phaseHold(refused),"a phase hold, which an island parks on");
+@@ src/test/java/com/wormzjl/createcheme/science/fluid/network/PumpRiseScalingTest.java 1
+@Test void anIntervalFailsOnTheDomainWhenItsLastOrMostRejectionsWereDomainOnes() {
+>>
+@Test void anIntervalFailsOnAPhaseHoldWhenItsLastOrMostRejectionsWerePhaseHolds() {
+@@ src/test/java/com/wormzjl/createcheme/science/fluid/network/PumpRiseScalingTest.java 4
+PassiveIntervalSolver.domainCause(
+>>
+PassiveIntervalSolver.phaseHoldCause(

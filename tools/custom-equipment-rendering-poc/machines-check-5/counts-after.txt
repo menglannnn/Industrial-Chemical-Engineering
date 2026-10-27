@@ -1,0 +1,20 @@
+| unit | box | shell | quads | layout ms |
+| PUMP 0.05 x 1 | 1x3x3 | 7 | 1976 | 42 |
+| PUMP 0.20 x 1 | 3x3x5 | 20 | 2674 | 17 |
+| PUMP 0.40 x 1 | 3x3x5 | 28 | 3402 | 12 |
+| PUMP 0.45 x 1 | 3x3x7 | 57 | 3159 | 13 |
+| PUMP 0.75 x 1 | 3x4x8 | 77 | 3937 | 8 |
+| COMPRESSOR 0.15 x 2 | 7x4x6 | 66 | 4270 | 10 |
+| COMPRESSOR 0.45 x 4 | 9x6x7 | 159 | 8636 | 24 |
+| COMPRESSOR 0.80 x 6 | 11x9x13 | 448 | 14793 | 31 |
+| COMPRESSOR 1.20 x 10 | 13x10x20 | 1008 | 25501 | 49 |
+| VERTICAL_HEATER 2.50 x 4 | 7x18x7 | 206 | 6016 | 23 |
+| VERTICAL_HEATER 4.00 x 8 | 8x24x8 | 384 | 8857 | 28 |
+| VERTICAL_HEATER 10.00 x 20 | 15x48x15 | 1979 | 34373 | 91 |
+| VERTICAL_HEATER 12.00 x 20 | 17x48x17 | 2496 | 39307 | 47 |
+| CABIN_HEATER 4.00 x 6 | 9x20x9 | 464 | 7827 | 9 |
+| CABIN_HEATER 6.00 x 12 | 11x23x15 | 1030 | 13506 | 14 |
+| CABIN_HEATER 12.00 x 24 | 17x34x27 | 3270 | 30924 | 38 |
+| CABIN_HEATER 4.00 x 25 | 15x20x16 | 1329 | 16419 | 35 |
+| CABIN_HEATER 12.00 x 40 | 31x34x24 | 5238 | 45303 | 42 |
+| CABIN_HEATER 12.00 x 48 | 31x34x28 | 6056 | 51715 | 49 |

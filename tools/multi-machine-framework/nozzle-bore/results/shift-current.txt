@@ -1,0 +1,10 @@
+  10  d  1.0 REFLUX         centre 0.30 -> shifted 0.30 (shift across +0.00, up +0.00)
+   2  d  1.0 REFLUX         centre 0.30 -> shifted 0.45 (shift across -0.00, up +0.15)
+  25  d  1.5 REFLUX         centre 0.75 -> shifted 0.75 (shift across +0.00, up +0.00)
+   1  d  1.5 RETURN         centre 0.75 -> shifted 0.75 (shift across +0.00, up +0.00)
+  25  d  2.0 REFLUX         centre 0.75 -> shifted 0.75 (shift across +0.00, up +0.00)
+   1  d  2.0 RETURN         centre 0.75 -> shifted 0.75 (shift across +0.00, up +0.00)
+   5  d  3.0 REFLUX         centre 0.60 -> shifted 0.60 (shift across +0.00, up +0.00)
+  17  d  3.0 REFLUX         centre 0.60 -> shifted 0.65 (shift across +0.05, up -0.05)
+   3  d  3.0 REFLUX         centre 0.60 -> shifted 0.65 (shift across -0.05, up -0.05)
+TOTAL 89 necks: mean largest clear 0.647 m centred, 0.662 m shifted

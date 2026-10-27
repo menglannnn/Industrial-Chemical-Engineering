@@ -1,0 +1,6 @@
+[
+ {
+  "from": "        int added=phaseBits(equilibrium)&~phaseBits(kept)&~excluded;\n        return added==0?kept:nucleated(kept,equilibrium,added,prepared);",
+  "to": "        int added=phaseBits(equilibrium)&~phaseBits(kept)&~excluded;\n        if(junction&&added!=0&&Integer.getInteger(\"m2probe.pc\",0)<40){System.setProperty(\"m2probe.pc\",\"\"+(Integer.getInteger(\"m2probe.pc\",0)+1));var m2n=nucleated(kept,equilibrium,added,prepared);System.err.println(\"M2PROBE CHECK T=\"+kept.temperature()+\" P=\"+kept.pressure()+\" kept=\"+phaseBits(kept)+\" tp=\"+phaseBits(equilibrium)+\" added=\"+added+\" tpVv=\"+equilibrium.vaporVolume()+\" tpVw=\"+equilibrium.waterVolume()+\" tpPc=\"+equilibrium.hydrocarbonPartialPressure()+\" tpWv=\"+equilibrium.waterVapor()+\" nucVv=\"+m2n.vaporVolume()+\" nucVw=\"+m2n.waterVolume()+\" nucPc=\"+m2n.hydrocarbonPartialPressure()+\" nucWv=\"+m2n.waterVapor()+\" nucCarried=\"+carriedGas(m2n,true)+\" nucFoldedBits=\"+phaseBits(folded(m2n,true)));}\n        return added==0?kept:nucleated(kept,equilibrium,added,prepared);"
+ }
+]

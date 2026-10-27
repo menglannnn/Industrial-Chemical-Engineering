@@ -1,0 +1,1 @@
+[{"from":"        if(crystals.isEmpty())return null;","to":"        if(true)return null;"}]

@@ -1,0 +1,31 @@
+{
+  "source": "4ad6dc97",
+  "tasks": {
+    "test": {
+      "totals": {
+        "tests": 1375,
+        "failures": 4,
+        "errors": 0,
+        "skipped": 0
+      },
+      "failures": [
+        "com.wormzjl.icheme.runtime.fluid.FluidCheckpointCodecTest.portsACompressorAndARefusedMoverRoundTripExactly()",
+        "com.wormzjl.icheme.runtime.fluid.FluidPacketCodecTest.theProtocolIsFluidSixWithDistinctStaticAndLivePayloads()",
+        "com.wormzjl.icheme.science.equipment.ShapeRasterizerTest.aDrumsFluidNodeIsAShellCell()",
+        "com.wormzjl.icheme.science.fluid.DeterministicMathSourceTest.fluidSourcesCallNoNonCorrectlyRoundedMathFunction()"
+      ]
+    },
+    "slowGates": {
+      "totals": {
+        "tests": 185,
+        "failures": 1,
+        "errors": 0,
+        "skipped": 0
+      },
+      "failures": [
+        "com.wormzjl.icheme.science.equipment.ProcessUnitTest.everyNozzleNeckAtItsLargestStandsClear()"
+      ]
+    }
+  },
+  "unexpectedFailures": []
+}

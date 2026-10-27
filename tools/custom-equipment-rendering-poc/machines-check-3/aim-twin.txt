@@ -1,0 +1,2 @@
+gamemode creative
+tp @s 663.5 -57 -9.5 0 10

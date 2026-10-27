@@ -1,0 +1,26 @@
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/FluidThermodynamics.java	2026-10-19 00:06:15.179890400 +0800
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/FluidThermodynamics.java	2026-10-19 00:06:15.271030700 +0800
+@@ -915,7 +915,9 @@
+                     // The D26 amendment: the own split's verdict on a proposed phase is where its closure took it, a vessel's
+                     // closure or a junction's PH answer (D38 C), and whether it leaves the phase vanishing against the solve's
+                     // start (D38 C, the fold's test); a junction's TP-based fallback seed is no closure and refuses nothing.
+-                    if(own!=null)refused=proposed&(~lacking(kept,seed)|vanishing(start,own)|(from==null?0:vanishing(from,own)));
++                    // TEMPORARY t40 probe: a proposed phase its own split holds below the share both by moles and by volume is
++                    // nothing, whatever its direction (the two direction tests it contains go).
++                    if(own!=null)refused=proposed&(~lacking(kept,seed)|nothing(own));
+                     int added=lacking(kept,seed)&~excluded;
+                     if(added!=0&&(added&refused)==0)checked=seed;
+                 }
+@@ -966,6 +968,12 @@
+     }
+     /** A state's fluid volume by phase, in {@link #phaseBits} order; a gas phase's volume shared between the hydrocarbon
+      * vapour and the steam by moles. */
++    /** TEMPORARY t40 probe: the phases (phaseBits) {@code state} holds below VANISHING_SHARE of its fluid both by moles and by volume. */
++    static int nothing(State state) {
++        double[] e=phaseAmounts(state),ev=phaseVolumes(state);double te=sum(e),tv=sum(ev);int bits=0;
++        for(int k=0;k<4;k++)if(e[k]>0&&e[k]<VANISHING_SHARE*te&&ev[k]<VANISHING_SHARE*tv)bits|=1<<k;
++        return bits;
++    }
+     private static double[] phaseVolumes(State state) {
+         double hv=sum(state.vaporView()),wv=state.waterVapor(),gas=hv+wv,vv=state.vaporVolume();
+         return new double[]{state.liquidVolume(),gas>0?vv*hv/gas:0,state.waterVolume(),gas>0?vv*wv/gas:0};

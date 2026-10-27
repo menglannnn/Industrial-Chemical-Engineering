@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="820" height="320" viewBox="0 80 820 320" font-family="Segoe UI, Arial, sans-serif">
+<title>Column with side structure: plan, D 3 m reference</title>
+<style>
+.ts{font-size:12px;fill:#444441}
+.steel{fill:#D3D1C7;stroke:#5F5E5A;stroke-width:1}
+.clad{fill:#ECEAE3;stroke:#888780;stroke-width:1}
+.hid{fill:none;stroke:#5F5E5A;stroke-width:1;stroke-dasharray:4 3}
+.opt{stroke-dasharray:4 3}
+.frame{fill:none;stroke:#5F5E5A;stroke-width:2}
+.rail{fill:none;stroke:#9C9A92;stroke-width:1}
+.vap{fill:none;stroke:#D85A30;stroke-opacity:.9}
+.liq{fill:none;stroke:#185FA5;stroke-width:3;stroke-linejoin:round}
+.lead{fill:none;stroke:#888780;stroke-width:.8;stroke-dasharray:3 2}
+</style>
+<rect width="820" height="400" fill="#fff"/>
+<rect x="190" y="160" width="140" height="140" fill="none" stroke="#B4B2A9" stroke-dasharray="6 4"/>
+<rect x="330" y="190" width="180" height="80" fill="#F6F5F1" stroke="none"/>
+<rect x="330" y="245" width="180" height="25" fill="#E9E7E0" stroke="none"/>
+<path class="rail" d="M330 245H510"/>
+<path class="frame" d="M330 190H510V270H330ZM420 190V270"/>
+<g class="steel"><rect x="327" y="187" width="6" height="6"/><rect x="417" y="187" width="6" height="6"/><rect x="507" y="187" width="6" height="6"/><rect x="327" y="267" width="6" height="6"/><rect x="417" y="267" width="6" height="6"/><rect x="507" y="267" width="6" height="6"/></g>
+<circle cx="497" cy="258" r="7" fill="none" stroke="#5F5E5A"/>
+<path class="hid" d="M375 200H475A20 20 0 0 1 475 240H375A20 20 0 0 1 375 200Z"/>
+<path class="steel" d="M370 207.5A12 12.5 0 0 0 370 232.5Z"/>
+<rect class="steel" x="370" y="207.5" width="114" height="25"/>
+<rect class="steel" x="484" y="205.5" width="3" height="29"/>
+<rect class="steel" x="487" y="207.5" width="12" height="25"/>
+<rect class="steel" x="499" y="205.5" width="2.5" height="29"/>
+<rect class="steel" x="254" y="262" width="12" height="18"/>
+<rect class="steel" x="292" y="225" width="18" height="10"/>
+<rect class="steel" x="210" y="222" width="18" height="16"/>
+<path class="liq" d="M258 280V288H186"/>
+<path class="vap" d="M166 230H210" stroke-width="16"/>
+<path d="M314.7 200.9A62 62 0 1 1 289.1 175.3L275.5 200.9A33 33 0 1 0 289.1 214.5Z" fill="#DCDAD2" fill-opacity=".55" stroke="#9C9A92"/>
+<circle class="clad" cx="260" cy="230" r="32"/>
+<rect class="steel" x="252" y="191" width="16" height="5"/>
+<circle cx="229.6" cy="199.6" r="7" fill="none" stroke="#5F5E5A"/>
+<circle cx="290.4" cy="199.6" r="7" fill="none" stroke="#5F5E5A"/>
+<circle cx="226.2" cy="210.5" r="2.5" fill="#5F5E5A"/><path d="M226.2 210.5L197.6 194" stroke="#5F5E5A" stroke-width="2"/>
+<g class="steel">
+<path d="M146 157A20 10 0 0 1 186 157Z"/>
+<rect x="146" y="157" width="40" height="136"/>
+<polygon points="146,293 186,293 178.5,305 153.5,305"/>
+<rect x="152" y="305" width="28" height="3"/>
+<rect x="153.5" y="308" width="25" height="10"/>
+<rect x="152" y="318" width="28" height="2.5"/>
+</g>
+<path class="vap" d="M260 230H346" stroke-width="20"/>
+<path class="vap" d="M346 230H432V222" stroke-width="15"/>
+<circle class="steel opt" cx="346" cy="230" r="12"/>
+<circle class="steel" cx="260" cy="230" r="10"/>
+<rect x="250" y="330" width="20" height="20" fill="#CECBF6" stroke="#534AB7"/>
+<path class="lead" d="M526 146L470 190M526 178L352 222M526 208L470 212M526 238L492 238M526 264L504 258M526 296L510 270M526 326L420 268M100 134L150 160M260 99V166M278 314L266 280"/>
+<g class="ts">
+<text x="530" y="150">Side structure 9 m × 4 m, right of the column</text>
+<text x="530" y="182">Overhead line and ejector (end-on)</text>
+<text x="530" y="212">Condenser on the 8 m floor</text>
+<text x="530" y="242">Reflux drum on the 4 m floor (hidden)</text>
+<text x="530" y="268">Walkway and caged ladder</text>
+<text x="530" y="300">Air-cooled variant: own stand 1 m beyond</text>
+<text x="530" y="330">PA coolers and pumps at grade (hidden)</text>
+<text x="20" y="130">Kettle reboiler (optional)</text>
+<text x="260" y="95" text-anchor="middle">Platforms, ladders and manways at the back</text>
+<text x="280" y="318">Front nozzles: reflux, feed, bottoms</text>
+<text x="276" y="345">Constructor (the front)</text>
+<text x="20" y="374">Plan from above, D 3 m column with the side structure; 1 m = 20 px; hidden parts dashed.</text>
+<text x="20" y="390">Dashed square: the column's own 7 m box. The constructor's side is at the bottom.</text>
+</g>
+</svg>

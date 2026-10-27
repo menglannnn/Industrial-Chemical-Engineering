@@ -1,0 +1,7 @@
+com.wormzjl.icheme.runtime.BoundedCpuSolveServiceTest
+com.wormzjl.icheme.runtime.FluidDataRangeIslandTest
+com.wormzjl.icheme.runtime.FluidIslandCommandTest
+com.wormzjl.icheme.runtime.FluidPumpedFillLineTest
+com.wormzjl.icheme.runtime.PresentationMailboxTest
+com.wormzjl.icheme.runtime.ProcessSolveServicesRequestTest
+com.wormzjl.icheme.runtime.V3ColumnCommandTest

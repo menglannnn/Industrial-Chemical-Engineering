@@ -1,0 +1,2 @@
+gamemode spectator
+tp @s 734.72 -29.71 30.23 -25.0 15.0

@@ -1,0 +1,15 @@
+gradle.projectsEvaluated {
+    def root=gradle.rootProject
+    root.sourceSets.test.java.srcDir(new File(root.projectDir,'tmp/qualification/bundled/src'))
+    root.sourceSets.test.java.srcDir(new File(root.projectDir,'tmp/qualification/trace-src'))
+    root.tasks.withType(Test).configureEach {
+        maxHeapSize='8g'
+        systemProperty 'minimize.seed','236'
+        systemProperty 'minimize.slices','120'
+        systemProperty 'minimize.threads','4'
+        systemProperty 'holdFuzz.wallNanos','200000000000'
+        systemProperty 'holdFuzz.softNanos','150000000000'
+        testLogging {showStandardStreams=true}
+        outputs.upToDateWhen {false}
+    }
+}

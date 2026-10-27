@@ -1,0 +1,7 @@
+        if(R3){try{differentiate(equations,x,f,settings.differenceStep(),checkpoint,workspace);double[] r3r=new double[n];for(int q=0;q<n;q++)r3r[q]=-f[q];double[] r3d=workspace.factorization.solve(r3r,SparseLuSolver.Verification.UNTIL_VERIFIED);
+            StringBuilder r3b=new StringBuilder("R3 LINEAR topd:");Integer[] r3c=new Integer[n];for(int q=0;q<n;q++)r3c[q]=q;final double[] r3dd=r3d;Arrays.sort(r3c,(u,v)->Double.compare(Math.abs(r3dd[v]),Math.abs(r3dd[u])));
+            for(int q=0;q<n;q++)if(q<33||Math.abs(r3d[q])>1e-6*Math.abs(r3d[r3c[0]]))r3b.append(String.format(" c%d x=%.6g d=%.3g",q,x[q],r3d[q]));
+            for(double t:new double[]{1,.1,.01,1e-3,1e-4}){double[] c=x.clone();for(int q=0;q<n;q++)c[q]+=t*r3d[q];equations.project(x,c);double[] g;try{g=evaluate(equations,c,n);}catch(RuntimeException e){r3b.append("\n   t="+t+" "+e);continue;}
+                final double tt=t;final double[] gg=g,ff=f;Integer[] r3o=new Integer[n];for(int q=0;q<n;q++)r3o[q]=q;Arrays.sort(r3o,(u,v)->Double.compare(Math.abs(gg[v]-(1-tt)*ff[v]),Math.abs(gg[u]-(1-tt)*ff[u])));
+                r3b.append(String.format("\n   t=%g norm=%.4g dev:",t,norm(g)));for(int q=0;q<6;q++)r3b.append(String.format(" r%d f=%.4g g=%.4g lin=%.4g",r3o[q],f[r3o[q]],g[r3o[q]],(1-t)*f[r3o[q]]));}
+            System.out.println(r3b);}catch(RuntimeException r3e){System.out.println("R3 LINEAR n/a "+r3e);}workspace.invalidate();}

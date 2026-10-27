@@ -1,0 +1,60 @@
+diff --git a/src/main/java/com/wormzjl/icheme/science/fluid/network/PassiveStepSolver.java b/src/main/java/com/wormzjl/icheme/science/fluid/network/PassiveStepSolver.java
+index c6dcfea9..a7a270db 100644
+--- a/src/main/java/com/wormzjl/icheme/science/fluid/network/PassiveStepSolver.java
++++ b/src/main/java/com/wormzjl/icheme/science/fluid/network/PassiveStepSolver.java
+@@ -2322,6 +2322,9 @@ public final class PassiveStepSolver {
+         /** The junctions' buffers, the solve's input graph ({@link #seeded}); null for the mint, which has none yet. */
+         final PassiveNetwork buffers;
+         final int[] unknown;final double[] anchor;int count,anchored,iterations,sweeps;boolean converged;double finalResidual;
++        static final boolean C430JTRACE=Boolean.getBoolean("cold430.jacobian.trace");
++        static final java.util.concurrent.atomic.AtomicInteger C430JSOLVE=new java.util.concurrent.atomic.AtomicInteger();
++        int c430jSolve=-1;
+         final double[][] rho,mu,cap,column,endP,filterR;final boolean[][] allowed;final boolean[] gas,mover;final double[] reference,prescribed;
+         /** Per connection, its pump's suction floor once worked out ({@link #suctionFloor}); NaN before. */
+         final double[] floors;
+@@ -2521,6 +2524,7 @@ public final class PassiveStepSolver {
+                 if(unknown[a]>=0)residual[unknown[a]]-=q;
+                 if(unknown[b]>=0)residual[unknown[b]]+=q;
+                 if(jacobian==null)continue;
++                if(C430JTRACE&&c430jSolve==1&&nodes==6&&edges==7)System.out.println("C430J EDGE iteration="+(iterations-1)+" e="+e+" "+a+"->"+b+" pa="+pa+" pb="+pb+" q="+q+" allowed="+Arrays.toString(allowed[e])+" cap="+Arrays.toString(cap[e])+" tableA="+(tableP[a]!=null)+" tableB="+(tableP[b]!=null));
+                 for(int end=0;end<2;end++) {
+                     int node=end==0?a:b,col=unknown[node];if(col<0)continue;
+                     // The slope over 1e-9 of the end pressure: over 1e-7 (0.32 Pa at 3.16 MPa) a line between neighbouring junctions carrying
+@@ -2529,6 +2533,7 @@ public final class PassiveStepSolver {
+                     // inversion resolves 1e-12 of a drive, so 1e-9 of the pressure is still a thousand times its noise.
+                     double at=end==0?pa:pb,delta=1e-9*Math.max(1,Math.abs(at));
+                     double dq=((end==0?flow(e,pa+delta,pb):flow(e,pa,pb+delta))-q)/delta;
++                    if(C430JTRACE&&c430jSolve==1&&nodes==6&&edges==7)System.out.println("C430J SLOPE iteration="+(iterations-1)+" e="+e+" end="+end+" node="+node+" column="+col+" delta="+delta+" dq="+dq);
+                     if(unknown[a]>=0)jacobian[unknown[a]][col-unknown[a]+band]-=dq;
+                     if(unknown[b]>=0)jacobian[unknown[b]][col-unknown[b]+band]+=dq;
+                 }
+@@ -2605,6 +2610,7 @@ public final class PassiveStepSolver {
+             return p;
+         }
+         private double[] solveOnce(Runnable checkpoint) {
++            if(C430JTRACE){c430jSolve=C430JSOLVE.getAndIncrement();if(nodes==6&&edges==7)System.out.println("C430J BEGIN solve="+c430jSolve+" count="+count+" unknown="+Arrays.toString(unknown));}
+             double[] p=new double[nodes];
+             for(int i=0;i<nodes;i++)p[i]=!Double.isNaN(anchor[i])?anchor[i]:graph.reservoirs().get(i).state().pressure();
+             if(count==0||Double.isNaN(low)){converged=true;return p;}
+@@ -2618,11 +2624,13 @@ public final class PassiveStepSolver {
+                 iterations++;
+                 double[][] jacobian=new double[count][2*band+1];residual(p,new double[count],jacobian);
+                 double floor=0;for(int i=0;i<count;i++)floor=Math.max(floor,Math.abs(jacobian[i][band]));floor=Math.max(floor*1e-12,Double.MIN_NORMAL);
++                if(C430JTRACE&&c430jSolve==1&&nodes==6&&edges==7){double[] raw=new double[count];for(int i=0;i<count;i++)raw[i]=jacobian[i][band];System.out.println("C430J JAC iteration="+iteration+" p="+Arrays.toString(p)+" residual="+Arrays.toString(residual)+" rawDiag="+Arrays.toString(raw)+" floor="+floor);}
+                 for(int i=0;i<count;i++)if(Math.abs(jacobian[i][band])<floor)jacobian[i][band]=-floor;
+                 double[] step=solveBanded(jacobian,band,residual);boolean accepted=false;double largest=0,took=0;
+                 if(step!=null) {
+                     for(double s:step)largest=Math.max(largest,Math.abs(s));
+                     double limit=Math.min(1,.5*(high-low)/Math.max(largest,Double.MIN_NORMAL));
++                    if(C430JTRACE&&c430jSolve==1&&nodes==6&&edges==7)System.out.println("C430J STEP iteration="+iteration+" largest="+largest+" limit="+limit+" step="+Arrays.toString(step));
+                     double[] trial=p.clone(),trialResidual=new double[count];
+                     for(double fraction=limit;fraction>1e-3*limit;fraction*=.5) {
+                         for(int i=0;i<nodes;i++)if(unknown[i]>=0)trial[i]=Math.clamp(p[i]-fraction*step[unknown[i]],low,high);
+@@ -2630,6 +2638,7 @@ public final class PassiveStepSolver {
+                         if(trialMerit<(1-1e-4*fraction)*merit){System.arraycopy(trial,0,p,0,nodes);System.arraycopy(trialResidual,0,residual,0,count);merit=trialMerit;accepted=true;took=fraction;break;}
+                     }
+                 }
++                if(C430JTRACE&&c430jSolve==1&&nodes==6&&edges==7)System.out.println("C430J ACCEPT iteration="+iteration+" accepted="+accepted+" took="+took+" merit="+merit+" residual="+Arrays.toString(residual));
+                 // Where the Newton step does not descend (a cap or a one-way kink), one Gauss-Seidel sweep, kept only where it
+                 // improves on the Newton's point: a sweep across a choked junction's flat range can walk away from a root the
+                 // Newton has all but reached, and then neither method improves on the other.

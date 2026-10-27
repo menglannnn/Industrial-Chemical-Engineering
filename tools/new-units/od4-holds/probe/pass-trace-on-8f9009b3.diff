@@ -1,0 +1,61 @@
+--- /tmp/PassiveStepSolver.orig.java	2026-10-20 10:51:30.303172900 +0800
++++ src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java	2026-10-20 11:02:56.068898800 +0800
+@@ -299,6 +299,9 @@
+         @Override public double[] devicePressureChanges(){return devicePressureChanges.clone();}
+         @Override public double[] externalMoles(){return externalMoles.clone();}
+     }
++    static byte[] od4cat(byte[] a,int[] c){byte[] r=Arrays.copyOf(a,a.length+c.length);for(int i=0;i<c.length;i++)r[a.length+i]=(byte)c[i];return r;}
++    static final boolean OD4T=Boolean.getBoolean("od4.trace");
++    static boolean od4(PassiveNetwork g){for(var p:g.pipes())if(p.control() instanceof FlowControl.PressureValve||p.control() instanceof FlowControl.Pump)return true;return false;}
+     public Result solve(PassiveNetwork graph,double dt,Runnable checkpoint){return solve(graph,dt,checkpoint,false);}
+     public Result solveRate(PassiveNetwork graph,Runnable checkpoint){return solve(graph,1,checkpoint,true);}
+     /**
+@@ -447,7 +450,8 @@
+             // means the pass sequence cannot make progress. The frozen junction donors and the phase-port segments belong to
+             // it for the same reason the modes do: they decide which equations this pass states (see {@link PassKey}).
+             var structure=new WorkspaceKey(0,nodeIds,kinds,pipeIdentities,phases,componentMask,supportCodes(supports),modeCodes,boundaryClosed.clone(),equations.junctionDonorFirst);
+-            if(!seen.add(new PassKey(structure,equations.segmentCodes(),foldedPhases.clone(),proposal==null?-1:proposal.node(),proposal==null?0:proposal.phases())))throw new SparseNewton.Nonconvergence("Phase/device active-set cycle");
++            if(OD4T&&od4(graph))System.out.println("OD4 PASS "+pass+" cols="+Arrays.toString(equations.columnEnds)+" dt="+dt+" rate="+rateOnly+" modes="+modes+" closed="+Arrays.toString(boundaryClosed)+" phases="+Arrays.toString(phases)+" seedP="+seeds.stream().map(s->String.format("%.1f",s.pressure())).toList());
++            if(!seen.add(new PassKey(structure,od4cat(equations.segmentCodes(),equations.columnEnds),foldedPhases.clone(),proposal==null?-1:proposal.node(),proposal==null?0:proposal.phases())))throw new SparseNewton.Nonconvergence("Phase/device active-set cycle");
+             var key=new WorkspaceKey(Double.doubleToLongBits(dt),nodeIds,kinds,pipeIdentities,phases,componentMask,structure.supports,modeCodes,structure.boundaryClosed,structure.junctionDonors);
+             var workspace=workspaces.get(key);
+             SolverDiagnostics.count(workspace==null?SolverDiagnostics.workspaceBuilds:SolverDiagnostics.workspaceReuses);
+@@ -501,6 +505,7 @@
+                 // Decision D11: a phase a vessel's ports draw at their full capacity leaves the vessel within the step; a
+                 // pass whose seed still holds it may have no root (see drainedSeeds).
+                 if(changedSeeds==null)changedSeeds=equations.drainedSeeds(checkpoint);
++                if(OD4T&&od4(graph))System.out.println("OD4 FAIL "+pass+" "+failure.getMessage()+" changedSeeds="+(changedSeeds!=null));
+                 if(changedSeeds==null)throw new SparseNewton.Nonconvergence(failure.getMessage()+"; active-set pass="+pass,failure.lastVariables(),failure.phaseHold());
+                 seeds=changedSeeds;continue;
+             }
+@@ -533,6 +538,8 @@
+                 next=nextMode(equations,i,mode,flows[i],heads[i],states,up,suction,tolerance,atShutoff[i]);
+                 if(next!=mode&&deviceChange<0){deviceChange=i;deviceNext=next;}
+             }
++            if(OD4T&&od4(graph))if(OD4T&&od4(graph)&&rateOnly)for(int q=0;q<states.size();q++){var s=states.get(q);if(graph.reservoirs().get(q).junction())System.out.println("OD4 RATESTATE "+q+" P="+s.pressure()+" T="+s.temperature()+" wl="+s.waterLiquid()+" wv="+s.waterVapor()+" h/m="+(s.enthalpy()/s.mass()));}
++            System.out.println("OD4 CONV "+pass+" flows="+Arrays.toString(flows)+" heads="+Arrays.toString(heads)+" P="+states.stream().map(s->String.format("%.1f",s.pressure())).toList()+" change="+deviceChange+"->"+deviceNext+" illegal="+illegalDirection);
+             // Decision A272: one active-set change per pass, a device's mode first, then a boundary closure. A boundary
+             // closure is never taken back within a solve, and a forbidden direction can be the symptom of a wrong device
+             // mode, so the reversible correction comes first.
+@@ -1080,9 +1087,10 @@
+                     result.set(j,held.empty()?arrived:arrived.withSolids(held));changed=true;continue;
+                 }
+                 if(!arrives||!(heldMass>0))continue;
+-                for(int c=0;c<n.length;c++)n[c]*=seed.mass()/mass;
+-                FluidThermodynamics.State mixture;
+-                try{mixture=model.folded(model.flashTP(weighted/mass,seed.pressure(),n,checkpoint),true);}
++                double od4h=(heldMass*node.state().enthalpy()/node.state().mass()+heat)*seed.mass()/mass;
++                for(int c=0;c<n.length;c++)n[c]*=seed.mass()/mass;
++                FluidThermodynamics.State mixture;
++                try{var od4ph=Boolean.getBoolean("od4.ph")?model.equilibriumPH(weighted/mass,seed.pressure(),od4h,n,checkpoint):null;mixture=model.folded(od4ph!=null?od4ph:model.flashTP(weighted/mass,seed.pressure(),n,checkpoint),true);if(OD4T)System.out.println("OD4 ARRIVE node "+j+" T="+mixture.temperature()+" P="+mixture.pressure()+" wl="+mixture.waterLiquid()+" wv="+mixture.waterVapor()+" ph="+(od4ph!=null)+" seedcode="+phaseCode(seed)+" mixcode="+phaseCode(mixture));}
+                 catch(com.wormzjl.createcheme.science.fluid.thermo.ThermoHold outside){continue;}
+                 if((phaseCode(mixture)&~phaseCode(seed)&15)==0)continue;
+                 if(result==null)result=new ArrayList<>(seeds);
+@@ -3496,6 +3504,7 @@
+         public double[] residual(double[] x) {
+             decode(x);double[] f=new double[size];
+             assemble(x,cachedStates,cachedTransport,cachedPrepared,f);
++            if(OD4T)for(int r=0;r<f.length;r++)if(!Double.isFinite(f[r])){StringBuilder sb=new StringBuilder("OD4 NONFINITE row="+r+" value="+f[r]+" edgeOffset="+edgeOffset+" controls="+Arrays.toString(controlOffsets)+" offsets="+Arrays.toString(offsets)+" modes="+modes+" edgeX="+Arrays.toString(Arrays.copyOfRange(x,edgeOffset,edgeOffset+graph.pipes().size())));for(int n=0;n<cachedStates.length;n++){var s=cachedStates[n];sb.append("\n   node "+n+" "+graph.reservoirs().get(n).kind()+" P="+s.pressure()+" T="+s.temperature()+" m="+s.mass()+" V="+s.volume()+" liq="+s.liquidVolume()+" w="+s.waterVolume()+" vap="+s.vaporVolume()+" tr.rho="+cachedTransport[n].density+" mu="+cachedTransport[n].viscosity+" vlim="+cachedTransport[n].velocityLimit);}for(var p:graph.pipes())sb.append("\n   pipe "+p.first()+"->"+p.second()+" "+p.control()+" area="+p.minimumArea()+" vol="+p.volume()+" ports="+p.firstPort()+"/"+p.secondPort());System.out.println(sb);break;}
+             return f;
+         }
+         /**

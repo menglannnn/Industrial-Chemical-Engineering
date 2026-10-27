@@ -1,0 +1,8 @@
+# Read-only latest-hold extract for cases still held at end; no new solve.
+SEED 579 extracted=latest-held-at-end
+  HELD tick=8207 island=37 committed=1904 status=HELD: Substep refinement exhausted: Newton line search stalled at residual 78.12776132549678; active-set pass=0; reasons={No finite Jacobian trial at variable #; active-set pass=#=10, Singular Newton Jacobian: Sparse LU rejected a singular matrix; active-set pass=#=1, Newton line search stalled at residual #; active-set pass=#=9}
+SEED 430 extracted=latest-held-at-end
+  HELD tick=11585 island=20 committed=4321 status=HELD: Substep refinement exhausted: No finite Jacobian trial at variable 5; active-set pass=0; reasons={No finite Jacobian trial at variable #; active-set pass=#=20}
+SEED 157 extracted=latest-held-at-end
+  HELD tick=7797 island=39 committed=988 status=HELD: wall deadline
+SUMMARY extracted_cases=3 distribution=bundled-random

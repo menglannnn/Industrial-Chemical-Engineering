@@ -1,0 +1,8 @@
+  12  d  1.0 REFLUX           never leaves [access]
+  25  d  1.5 REFLUX           never leaves [access]
+   1  d  1.5 RETURN           never leaves [access]
+  25  d  2.0 REFLUX           never leaves []
+   1  d  2.0 RETURN           never leaves []
+  25  d  3.0 REFLUX           never leaves [access]
+  28  d 15.0 VAPOUR_OUTLET    never leaves []
+TOTAL 117

@@ -1,0 +1,33 @@
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveIntervalSolver.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveIntervalSolver.java
+index e8af95d0..5b51ca76 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveIntervalSolver.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveIntervalSolver.java
+@@ -295,6 +295,7 @@ public final class PassiveIntervalSolver {
+      * total, so the flush changes no other number of the node.
+      */
+     static final double TRACE_FLUSH_FRACTION=1e-24;
++    static final double TRUNC_PHASE=Double.parseDouble(System.getProperty("truncphase","0"));static final boolean TRUNC_PRINT=Boolean.getBoolean("truncprint");
+     /** The graph after a flush and what the flush removed, as boundary transfers at the flushed nodes themselves. */
+     private record Flush(PassiveNetwork graph,List<ConservativeTransport.BoundaryTransfer> boundaries) {}
+     /**
+@@ -313,7 +314,19 @@ public final class PassiveIntervalSolver {
+             var node=graph.reservoirs().get(i);if(node.fixed())continue;
+             var held=node.inventory().moles();double total=0;for(double amount:held)total+=amount;
+             double[] kept=null;
+-            for(int c=0;c<held.length;c++)if(held[c]>0&&held[c]<TRACE_FLUSH_FRACTION*total){if(kept==null)kept=held.clone();kept[c]=0;}
++            for(int c=0;c<held.length;c++)if(held[c]>0&&held[c]<TRACE_FLUSH_FRACTION*total){if(kept==null)kept=held.clone();kept[c]=0;if(TRUNC_PRINT)System.out.println("TRUNC_COMPONENT node="+node.id()+" junction="+node.junction()+" share="+held[c]/total+" kg="+held[c]*model.molecularWeights()[c]);}
++            // SCRATCH (group C, never commit): a phase below TRUNC_PHASE of the node's total amount is removed with the
++            // component flush's booking: each component loses the phase's share of what the node holds of it.
++            if(TRUNC_PHASE>0){var s=node.state();var l=s.liquidView();var v=s.vaporView();int w=held.length-1;
++                double[] stateTotal=new double[held.length];for(int c=0;c<w;c++)stateTotal[c]=l[c]+v[c];stateTotal[w]=s.waterLiquid()+s.waterVapor();
++                double liquid=0,vapour=s.waterVapor();for(int c=0;c<w;c++){liquid+=l[c];vapour+=v[c];}double free=s.waterLiquid(),all=liquid+vapour+free;
++                for(int phase=0;phase<3;phase++){double amount=phase==0?liquid:phase==1?vapour:free;if(!(amount>0&&amount<TRUNC_PHASE*all))continue;
++                    if(kept==null)kept=held.clone();
++                    for(int c=0;c<held.length;c++){double inPhase=phase==0?(c<w?l[c]:0):phase==1?(c<w?v[c]:s.waterVapor()):(c==w?s.waterLiquid():0);
++                        if(inPhase>0&&stateTotal[c]>0)kept[c]=Math.max(0,kept[c]-held[c]*inPhase/stateTotal[c]);}
++                    if(TRUNC_PRINT){double[] mw=model.molecularWeights();double kg=0;for(int c=0;c<held.length;c++){double inPhase=phase==0?(c<w?l[c]:0):phase==1?(c<w?v[c]:s.waterVapor()):(c==w?s.waterLiquid():0);if(stateTotal[c]>0)kg+=held[c]*inPhase/stateTotal[c]*mw[c];}
++                        System.out.println("TRUNC_PHASE node="+node.id()+" junction="+node.junction()+" phase="+phase+" share="+amount/all+" kg="+kg);}
++                }}
+             if(kept==null)continue;
+             checkpoint.run();
+             if(weights==null)weights=model.molecularWeights();

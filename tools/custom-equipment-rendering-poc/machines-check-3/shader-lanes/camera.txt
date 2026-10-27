@@ -1,0 +1,4 @@
+gamemode spectator
+time set 6000
+weather clear
+tp @s 619.5 -54 -11 10 6

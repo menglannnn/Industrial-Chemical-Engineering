@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="680" height="280" viewBox="0 0 680 280">
+<style>.t{font:14px sans-serif;fill:#2C2C2A}.ts{font:12px sans-serif;fill:#5F5E5A}.th{font:500 14px sans-serif;fill:#2C2C2A}.box{fill:#F8F7F3;stroke:#B4B2A9}.c-gray{fill:#F1EFE8;stroke:#5F5E5A}.c-teal{fill:#E1F5EE;stroke:#0F6E56}</style>
+<rect width="680" height="280" fill="#fff"/>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>
+<text class="th" x="115" y="52" text-anchor="middle" dominant-baseline="central">Look along</text>
+<text class="ts" x="115" y="72" text-anchor="middle" dominant-baseline="central">Look north</text>
+<g stroke-width="0.5"><rect class="box" x="61" y="96" width="36" height="36"/><rect class="box" x="97" y="96" width="36" height="36"/><rect class="box" x="133" y="96" width="36" height="36"/><rect class="box" x="61" y="132" width="36" height="36"/><rect class="box" x="133" y="132" width="36" height="36"/><rect class="box" x="61" y="168" width="36" height="36"/><rect class="box" x="133" y="168" width="36" height="36"/></g>
+<rect class="c-gray" x="97" y="132" width="36" height="36" stroke-width="0.5"/><rect class="c-gray" x="97" y="168" width="36" height="36" stroke-width="0.5"/><rect class="c-teal" x="97" y="96" width="36" height="36" stroke-width="1"/>
+<line x1="115" y1="132" x2="115" y2="204" stroke="#888780" stroke-width="4"/><line x1="115" y1="96" x2="115" y2="132" stroke="#1D9E75" stroke-width="4"/>
+<line x1="104" y1="126" x2="104" y2="102" stroke="#D85A30" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text class="ts" x="115" y="226" text-anchor="middle" dominant-baseline="central">Straight</text>
+<text class="th" x="268" y="52" text-anchor="middle" dominant-baseline="central">Look across an end</text>
+<text class="ts" x="268" y="72" text-anchor="middle" dominant-baseline="central">Look east</text>
+<g stroke-width="0.5"><rect class="box" x="214" y="96" width="36" height="36"/><rect class="box" x="286" y="96" width="36" height="36"/><rect class="box" x="214" y="132" width="36" height="36"/><rect class="box" x="286" y="132" width="36" height="36"/><rect class="box" x="214" y="168" width="36" height="36"/><rect class="box" x="286" y="168" width="36" height="36"/></g>
+<rect class="c-gray" x="250" y="132" width="36" height="36" stroke-width="0.5"/><rect class="c-gray" x="250" y="168" width="36" height="36" stroke-width="0.5"/><rect class="c-teal" x="250" y="96" width="36" height="36" stroke-width="1"/>
+<line x1="268" y1="132" x2="268" y2="204" stroke="#888780" stroke-width="4"/><path d="M268 132 L268 114 L286 114" fill="none" stroke="#1D9E75" stroke-width="4" stroke-linejoin="round"/>
+<line x1="255" y1="103" x2="282" y2="103" stroke="#D85A30" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text class="ts" x="268" y="226" text-anchor="middle" dominant-baseline="central">Corner to the look</text>
+<text class="th" x="421" y="52" text-anchor="middle" dominant-baseline="central">Look across a gap</text>
+<text class="ts" x="421" y="72" text-anchor="middle" dominant-baseline="central">Look east</text>
+<g stroke-width="0.5"><rect class="box" x="367" y="96" width="36" height="36"/><rect class="box" x="439" y="96" width="36" height="36"/><rect class="box" x="367" y="132" width="36" height="36"/><rect class="box" x="439" y="132" width="36" height="36"/><rect class="box" x="367" y="168" width="36" height="36"/><rect class="box" x="439" y="168" width="36" height="36"/></g>
+<rect class="c-gray" x="403" y="96" width="36" height="36" stroke-width="0.5"/><rect class="c-gray" x="403" y="168" width="36" height="36" stroke-width="0.5"/><rect class="c-teal" x="403" y="132" width="36" height="36" stroke-width="1"/>
+<line x1="421" y1="96" x2="421" y2="132" stroke="#888780" stroke-width="4"/><line x1="421" y1="168" x2="421" y2="204" stroke="#888780" stroke-width="4"/>
+<line x1="421" y1="132" x2="421" y2="168" stroke="#1D9E75" stroke-width="4"/><line x1="421" y1="150" x2="439" y2="150" stroke="#1D9E75" stroke-width="4"/>
+<line x1="425" y1="139" x2="437" y2="139" stroke="#D85A30" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text class="ts" x="421" y="226" text-anchor="middle" dominant-baseline="central">Tee to the look</text>
+<text class="th" x="574" y="52" text-anchor="middle" dominant-baseline="central">Two runs end here</text>
+<text class="ts" x="574" y="72" text-anchor="middle" dominant-baseline="central">Look any way</text>
+<g stroke-width="0.5"><rect class="box" x="520" y="96" width="36" height="36"/><rect class="box" x="520" y="132" width="36" height="36"/><rect class="box" x="592" y="132" width="36" height="36"/><rect class="box" x="520" y="168" width="36" height="36"/><rect class="box" x="592" y="168" width="36" height="36"/></g>
+<rect class="c-gray" x="556" y="132" width="36" height="36" stroke-width="0.5"/><rect class="c-gray" x="556" y="168" width="36" height="36" stroke-width="0.5"/><rect class="c-gray" x="592" y="96" width="36" height="36" stroke-width="0.5"/><rect class="c-teal" x="556" y="96" width="36" height="36" stroke-width="1"/>
+<line x1="574" y1="132" x2="574" y2="204" stroke="#888780" stroke-width="4"/><line x1="592" y1="114" x2="628" y2="114" stroke="#888780" stroke-width="4"/>
+<path d="M574 132 L574 114 L592 114" fill="none" stroke="#1D9E75" stroke-width="4" stroke-linejoin="round"/>
+<line x1="563" y1="126" x2="563" y2="102" stroke="#D85A30" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text class="ts" x="574" y="226" text-anchor="middle" dominant-baseline="central">Corner joins both</text>
+<rect class="c-gray" x="96" y="251" width="14" height="14" stroke-width="0.5"/><text class="ts" x="116" y="258" dominant-baseline="central">Already placed</text>
+<rect class="c-teal" x="236" y="251" width="14" height="14" stroke-width="1"/><text class="ts" x="256" y="258" dominant-baseline="central">Being placed</text>
+<line x1="370" y1="258" x2="394" y2="258" stroke="#D85A30" stroke-width="1.5" marker-end="url(#arrow)"/><text class="ts" x="402" y="258" dominant-baseline="central">Player's look</text>
+<text class="ts" x="520" y="258" dominant-baseline="central">Up is north</text>
+</svg>

@@ -1,0 +1,13 @@
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/network/SolidEventIntegrator.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/SolidEventIntegrator.java
+index 05ac58a..e3710d4 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/SolidEventIntegrator.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/SolidEventIntegrator.java
+@@ -67,7 +67,7 @@ final class SolidEventIntegrator {
+     private static boolean[] still(double[] flows) {
+         double largest=1;for(double q:flows)largest=Math.max(largest,Math.abs(q));
+         boolean[] still=new boolean[flows.length];
+-        for(int i=0;i<flows.length;i++)still[i]=Math.abs(flows[i])<=PassiveStepSolver.NEWTON_TOLERANCE*largest;
++        // RULE OFF: no still pipe
+         return still;
+     }
+     /** The first transition among the connections not {@code still} (null for none), at the flows given. */

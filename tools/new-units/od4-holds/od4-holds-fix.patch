@@ -1,0 +1,112 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 881210ef..5ad989ac 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -45,6 +45,7 @@ All notable changes to CreateChemE are recorded in this file. The format follows
+ 
+ ### Fixed
+ 
++- Two holds rule OD4 exposed (owner choice 2026-10-20 "Option 1: keep OD4", same batch folder, `OD4_HOLDS_REVIEW.md`, `MOVED_REFERENCES.md`; uncommitted at writing): the active-set cycle key carries each pass's static columns, so a closed valve pass under a junction's gas column is no longer refused as a repeat of the one under its water column (bundled seed 145, E7; main's gate `aJunctionCarriedAcrossAReplacementHasItsBufferSizedOnWhatItHolds` passes again); a junction's arriving-phase seed is the fluid-only PH split of stock and deliveries, not a TP flash at the mixed temperature, so liquid water reaching a cavitating pump suction stays liquid beside its flash steam (bundled seed 889, E9).
+ - Walkway closed ends (owner report 2026-10-17, same batch folder, `MACHINES_HEATERS_THIRD_REVIEW.md`): a walkway's closed end now stops the player. Its end fence was 0.1 m thick and fell between the collision's 1/8-block sample points, so it had no hitbox; closed ends now use the side rails' 0.2 m band, and a gate checks that every closed end of every heater deck fills collision voxels. The constructor screen's hints for compressor bore and throws and for VC heater diameter and height now give the second pass's ranges, and the cabin's hint names its radiant header boxes as seen from the constructor (in at the left, out at the right; the nozzles did not move).
+ - Constructor ghost under shader packs (owner report 2026-10-17, same batch folder, `GHOST_PIPE_SPACING_REVIEW.md`): the translucent preview vanished under Iris (Complementary Reimagined); it was drawn with the chunk type `RenderType.translucent()` from a level-stage event, which Iris's terrain programs do not take. It is now translucent entity geometry on the block atlas (`RenderType.entityTranslucentCull`), as Catnip draws its outlines, and shows in vanilla, under Sodium and under Iris.
+ - Pipe spacing (owner rule 2026-10-17, "piping connection should have 1 block spacing between them to prevent misconnection", same batch folder, `GHOST_PIPE_SPACING_REVIEW.md`): pipes in blocks that share a face join, and 110 nozzle pairs had touching pipe blocks (every vertical heater, cabins with short convection sections, small exchangers and kettles, the smallest ejectors, column draws and pumparounds on neighbouring trays). `EquipmentShape.Nozzle.crowds` (pipe blocks touching by a face, an edge or a corner) is now one rule: a drum's side connections that crowd clash, a column's side nozzles take the nearest row that crowds none, and the units' layouts keep one free block: heater convection sections at least tall enough for their inlet two rows over their outlet and the vertical heater's radiant inlet two rows under it, exchanger and kettle shell nozzles two rows behind the channel's (saddles off the pipe blocks under the shell, `saddleAt`), the small ejector's motive stub two rows over its suction. Gate: every unit size, the test columns and drums.
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+index 562a094e..276fa7f4 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+@@ -444,10 +444,11 @@ public final class PassiveStepSolver {
+             var supports=supports(graph,seeds,reachable,promoted);
+             var equations=new Equations(graph,dt,modes,boundaryClosed,seeds,reachable,supports,pipeIdentities);
+             // The active-set state is what varies between passes, so the structure key is also the cycle key: repeating one
+-            // means the pass sequence cannot make progress. The frozen junction donors and the phase-port segments belong to
+-            // it for the same reason the modes do: they decide which equations this pass states (see {@link PassKey}).
++            // means the pass sequence cannot make progress. The frozen junction donors, the phase-port segments and the static
++            // columns belong to it for the same reason the modes do: they decide which equations this pass states (see
++            // {@link PassKey}).
+             var structure=new WorkspaceKey(0,nodeIds,kinds,pipeIdentities,phases,componentMask,supportCodes(supports),modeCodes,boundaryClosed.clone(),equations.junctionDonorFirst);
+-            if(!seen.add(new PassKey(structure,equations.segmentCodes(),foldedPhases.clone(),proposal==null?-1:proposal.node(),proposal==null?0:proposal.phases())))throw new SparseNewton.Nonconvergence("Phase/device active-set cycle");
++            if(!seen.add(new PassKey(structure,equations.segmentCodes(),equations.columnCodes(),foldedPhases.clone(),proposal==null?-1:proposal.node(),proposal==null?0:proposal.phases())))throw new SparseNewton.Nonconvergence("Phase/device active-set cycle");
+             var key=new WorkspaceKey(Double.doubleToLongBits(dt),nodeIds,kinds,pipeIdentities,phases,componentMask,structure.supports,modeCodes,structure.boundaryClosed,structure.junctionDonors);
+             var workspace=workspaces.get(key);
+             SolverDiagnostics.count(workspace==null?SolverDiagnostics.workspaceBuilds:SolverDiagnostics.workspaceReuses);
+@@ -819,10 +820,19 @@ public final class PassiveStepSolver {
+      * keeps the proposal (D39 B), not a cycle with the pass that failed before the fold; the record of refusals still
+      * grows at every refutation, so the sequence stays finite (CO2 gas mixed into LNG near its critical region: the check
+      * and the Newton disagreed, the fold and the proposal alternated, and the guard fired before the refutation could).
++     *
++     * <p>The static column of each connection ({@link Equations#columnEnds}) belongs to the key as well (batch
++     * 2026-10-15-custom-equipment-rendering, OD4 holds): like a segment it changes a row's value and no structural entry,
++     * and each pass states it from its own seed, so two passes with the same modes can state different equations. A
++     * junction holding gas under a liquid-full tank stands at the tank's bottom pressure under its gas column and one
++     * metre of water higher under the water column: a 150 kPa pressure valve on it was closed at 152.5 kPa (water column),
++     * regulated to 150 kPa with -0.0027 kg/s (gas column), and the closed pass under the gas column, which converges at
++     * 143.0 kPa, was refused as a repeat of the first (bundled fuzz seed 145, hold E7). The columns are a finite record, so
++     * the sequence stays finite; a pair of passes that alternates its columns repeats a key one pass later.
+      */
+-    private record PassKey(WorkspaceKey structure,byte[] segments,int[] folded,int proposalNode,int proposalPhases) {
+-        @Override public boolean equals(Object other){return other instanceof PassKey key&&structure.equals(key.structure)&&Arrays.equals(segments,key.segments)&&Arrays.equals(folded,key.folded)&&proposalNode==key.proposalNode&&proposalPhases==key.proposalPhases;}
+-        @Override public int hashCode(){return 31*(31*(31*(31*structure.hashCode()+Arrays.hashCode(segments))+Arrays.hashCode(folded))+proposalNode)+proposalPhases;}
++    private record PassKey(WorkspaceKey structure,byte[] segments,byte[] columns,int[] folded,int proposalNode,int proposalPhases) {
++        @Override public boolean equals(Object other){return other instanceof PassKey key&&structure.equals(key.structure)&&Arrays.equals(segments,key.segments)&&Arrays.equals(columns,key.columns)&&Arrays.equals(folded,key.folded)&&proposalNode==key.proposalNode&&proposalPhases==key.proposalPhases;}
++        @Override public int hashCode(){return 31*(31*(31*(31*(31*structure.hashCode()+Arrays.hashCode(segments))+Arrays.hashCode(columns))+Arrays.hashCode(folded))+proposalNode)+proposalPhases;}
+     }
+     /**
+      * A proposal (owner decision D39 B): the phases ({@link FluidThermodynamics#phaseBits} bits) the check of a converged
+@@ -1032,8 +1042,15 @@ public final class PassiveStepSolver {
+      * rows must hold: the residual sits in those rows, the trial temperatures leave the data and the step halves to its
+      * floor (an 11 g air buffer receiving about 7 kg/s of water). Each junction's mixture over the step is its stock plus
+      * what its connections deliver at the pass's start flows ({@link #startPoint}) over {@code dt}, each the stream its
+-     * donor end draws ({@link #endMoles}), at the mass-weighted temperature and the seed's pressure, flashed and folded as
+-     * the pass folds a junction (D34, D41). Where that mixture holds a phase the seed lacks, the seed becomes the mixture
++     * donor end draws ({@link #endMoles}), at the seed's pressure and the enthalpy of stock and deliveries, split as the
++     * junction's own split is (D26, {@link FluidThermodynamics#equilibriumPH}, from the mass-weighted temperature, fluid
++     * only: a starting basis books no crystal, the seed keeps the junction's own solids; the TP flash there where the
++     * engine answers nothing, as for an empty bag) and folded as the pass folds a junction (D34, D41). With the crystals
++     * competing, the cold quick check's seeds 77 and 151 held E5 and six more ran out of wall time. The enthalpy carries
++     * the latent heat a temperature mix leaves out: liquid water at 326.648 K reaching a pump suction held at its vapour
++     * pressure (14.63 kPa, its saturation at 326.606 K) is liquid beside 6.6e-6 of its mass as steam, where the TP flash
++     * at the mixed temperature made all of it steam, and the suction limit's row then had no vapour pressure to stand at
++     * (bundled fuzz seed 889, hold E9). Where that mixture holds a phase the seed lacks, the seed becomes the mixture
+      * at the seed's mass; a junction donor delivers its own updated seed, so a phase reaches a run of junctions in one
+      * stage. A seed that already holds every phase of its mixture is kept to the bit; a rate-only solve holds a
+      * junction's composition at its stock and this does nothing there.
+@@ -1080,9 +1097,10 @@ public final class PassiveStepSolver {
+                     result.set(j,held.empty()?arrived:arrived.withSolids(held));changed=true;continue;
+                 }
+                 if(!arrives||!(heldMass>0))continue;
+-                for(int c=0;c<n.length;c++)n[c]*=seed.mass()/mass;
++                double scale=seed.mass()/mass,enthalpy=(heldMass*endSpecificEnthalpy(node.state(),PassiveNetwork.PhasePort.BULK)+heat)*scale;
++                for(int c=0;c<n.length;c++)n[c]*=scale;
+                 FluidThermodynamics.State mixture;
+-                try{mixture=model.folded(model.flashTP(weighted/mass,seed.pressure(),n,checkpoint),true);}
++                try{var split=model.equilibriumPH(weighted/mass,seed.pressure(),enthalpy,n,false,checkpoint);mixture=model.folded(split!=null?split:model.flashTP(weighted/mass,seed.pressure(),n,checkpoint),true);}
+                 catch(com.wormzjl.createcheme.science.fluid.thermo.ThermoHold outside){continue;}
+                 if((phaseCode(mixture)&~phaseCode(seed)&15)==0)continue;
+                 if(result==null)result=new ArrayList<>(seeds);
+@@ -3170,6 +3188,8 @@ public final class PassiveStepSolver {
+             }
+             return result;
+         }
++        /** This pass's static column ends ({@link #columnEnds}) as codes for the cycle key ({@link PassKey}). */
++        byte[] columnCodes(){byte[] codes=new byte[columnEnds.length];for(int edge=0;edge<codes.length;edge++)codes[edge]=(byte)columnEnds[edge];return codes;}
+         /** This pass's segments as codes for the cycle key ({@link PassKey}); empty for a graph without an open phase port. */
+         byte[] segmentCodes() {
+             int count=0;for(var ends:segments)for(var segment:ends)if(segment!=null)count++;
+diff --git a/src/test/java/com/wormzjl/createcheme/runtime/fluid/JunctionSeedingGateTest.java b/src/test/java/com/wormzjl/createcheme/runtime/fluid/JunctionSeedingGateTest.java
+index d5056041..27cab3b7 100644
+--- a/src/test/java/com/wormzjl/createcheme/runtime/fluid/JunctionSeedingGateTest.java
++++ b/src/test/java/com/wormzjl/createcheme/runtime/fluid/JunctionSeedingGateTest.java
+@@ -181,6 +181,13 @@ class JunctionSeedingGateTest {
+      * 0.011 kg while 21.5 kg/s of water passed (a 0.5 ms mixing lag where the mint's rule gives 0.44 s), each interval cost
+      * 2 to 3.5 times the work and at 3767 the step failed 19 times on the junction inventory (E9). Sized on its carried
+      * water by the mint's rule, the buffer holds 9.5 kg and the island keeps up.
++     *
++     * <p>Since rule OD4 (batch 2026-10-15-custom-equipment-rendering: an actuator's half links take the bore of the pipe
++     * they join) the valve is 50 mm, not its own 10 mm, so the second tank fills too and then drains through the valve: at
++     * the end 46.0 kg/s pass, 33.5 kg/s by the drain and 12.56 kg/s by the valve, wide open (154.6 kPa upstream, above
++     * its 150 kPa set point), and the drain's junction holds 9.54 kg. When the second tank turns liquid-full at 3767, the
++     * valve's junction still holds the placeholder gas, and its static column decides whether it stands above or below
++     * the set point; the cycle key carries the columns (PassiveStepSolver.PassKey), else the island held E7 at 3867.
+      */
+     @Test void aJunctionCarriedAcrossAReplacementHasItsBufferSizedOnWhatItHolds() {
+         var w=new EventPathWorld();var passive=new FlowControl.Passive();

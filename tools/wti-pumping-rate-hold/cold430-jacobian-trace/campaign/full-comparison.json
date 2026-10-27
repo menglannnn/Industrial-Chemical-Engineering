@@ -1,0 +1,209 @@
+{
+  "historicalSource": "Preserved c49f6654 reports; watchlist only, before the final mover-limit scope correction",
+  "form1Source": "Preserved rejected targeted-bisection form; not a baseline",
+  "distributions": {
+    "cold-random": {
+      "candidateSummary": "SUMMARY seeds=1000 clean=975 threads=8 slices=120 wallMs=272549 seedMsSum=1854032 cold=icheme:pilot_cryogenic",
+      "historicalToCandidate": {
+        "cases": 1000,
+        "newlyHeld": [
+          244,
+          743
+        ],
+        "recovered": [
+          430,
+          475
+        ],
+        "changedFirstHoldClasses": {
+          "220": [
+            "B  trace underflow (T1)",
+            "E5 step line search stalls"
+          ],
+          "244": [
+            null,
+            "F  budget (wall deadline / soft budget)"
+          ],
+          "430": [
+            "E6 step Newton iteration limit",
+            null
+          ],
+          "475": [
+            "F  budget (wall deadline / soft budget)",
+            null
+          ],
+          "743": [
+            null,
+            "E6 step Newton iteration limit"
+          ],
+          "855": [
+            "E6 step Newton iteration limit",
+            "F  budget (wall deadline / soft budget)"
+          ]
+        },
+        "moreHeldPublications": {
+          "101": [
+            33,
+            34
+          ],
+          "220": [
+            4,
+            11
+          ],
+          "244": [
+            0,
+            11
+          ],
+          "431": [
+            11,
+            20
+          ],
+          "683": [
+            10,
+            13
+          ],
+          "743": [
+            0,
+            5
+          ]
+        },
+        "fewerHeldPublications": {
+          "430": [
+            9,
+            0
+          ],
+          "475": [
+            3,
+            0
+          ],
+          "994": [
+            50,
+            26
+          ]
+        }
+      },
+      "form1ToCandidate": {
+        "cases": 1000,
+        "newlyHeld": [
+          244,
+          743
+        ],
+        "recovered": [
+          475
+        ],
+        "changedFirstHoldClasses": {
+          "220": [
+            "B  trace underflow (T1)",
+            "E5 step line search stalls"
+          ],
+          "244": [
+            null,
+            "F  budget (wall deadline / soft budget)"
+          ],
+          "475": [
+            "F  budget (wall deadline / soft budget)",
+            null
+          ],
+          "743": [
+            null,
+            "E6 step Newton iteration limit"
+          ]
+        },
+        "moreHeldPublications": {
+          "244": [
+            0,
+            11
+          ],
+          "431": [
+            11,
+            20
+          ],
+          "683": [
+            9,
+            13
+          ],
+          "743": [
+            0,
+            5
+          ],
+          "957": [
+            6,
+            15
+          ]
+        },
+        "fewerHeldPublications": {
+          "475": [
+            2,
+            0
+          ],
+          "907": [
+            13,
+            10
+          ],
+          "994": [
+            27,
+            26
+          ]
+        }
+      }
+    },
+    "bundled-random": {
+      "candidateSummary": "SUMMARY seeds=1000 clean=993 threads=8 slices=120 wallMs=48879 seedMsSum=307520",
+      "historicalToCandidate": {
+        "cases": 1000,
+        "newlyHeld": [],
+        "recovered": [],
+        "changedFirstHoldClasses": {},
+        "moreHeldPublications": {
+          "431": [
+            8,
+            9
+          ]
+        },
+        "fewerHeldPublications": {}
+      },
+      "form1ToCandidate": {
+        "cases": 1000,
+        "newlyHeld": [
+          6
+        ],
+        "recovered": [],
+        "changedFirstHoldClasses": {
+          "6": [
+            null,
+            "F  budget (wall deadline / soft budget)"
+          ]
+        },
+        "moreHeldPublications": {
+          "6": [
+            0,
+            1
+          ],
+          "431": [
+            8,
+            9
+          ]
+        },
+        "fewerHeldPublications": {}
+      }
+    },
+    "bundled-defaults": {
+      "candidateSummary": "SUMMARY seeds=1000 clean=1000 threads=8 slices=120 wallMs=3839 seedMsSum=29416",
+      "historicalToCandidate": {
+        "cases": 1000,
+        "newlyHeld": [],
+        "recovered": [],
+        "changedFirstHoldClasses": {},
+        "moreHeldPublications": {},
+        "fewerHeldPublications": {}
+      },
+      "form1ToCandidate": {
+        "cases": 1000,
+        "newlyHeld": [],
+        "recovered": [],
+        "changedFirstHoldClasses": {},
+        "moreHeldPublications": {},
+        "fewerHeldPublications": {}
+      }
+    }
+  }
+}

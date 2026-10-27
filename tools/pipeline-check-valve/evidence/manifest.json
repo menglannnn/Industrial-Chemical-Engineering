@@ -1,0 +1,16 @@
+{
+  "source": "4e5c504d",
+  "arrowCorrection": "9ffb294f",
+  "delivery": "b70e92aa84ab180b854bcb173c84d1b578132f9f",
+  "branch": "codex/pipeline-check-valve",
+  "focused": {
+    "tests": 13,
+    "failures": 0,
+    "errors": 0
+  },
+  "geometryVerification": "Refreshed actual production meshes, 6 directions x 3 sizes, item/reducer and corrected 1 m detail; compileJava/jar pass after drawing-only correction",
+  "format": 18,
+  "unit": 11,
+  "modVersion": "0.11.2",
+  "merged": false
+}

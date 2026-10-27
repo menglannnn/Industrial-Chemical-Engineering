@@ -1,0 +1,21 @@
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+index eeed32fb..51acea50 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+@@ -395,15 +395,10 @@ public final class PassiveStepSolver {
+         // {@link #shutoffBand}. Not part of any workspace or cycle key: it changes no equation, it
+         // only forbids one transition from being taken back within this solve.
+         boolean[] atShutoff=new boolean[graph.pipes().size()];
+-        // A pump's start mode reads its own lines only (owner decision D40 A): its connection's velocity cap at the suction
+-        // end, its suction walk's caps and one-way rules (suctionCapped), and, below, the sealed pockets on either side of it
+-        // (relieveSealedPockets). A connection blocked elsewhere in the island changes none of them: in the owner's test
+-        // world (row 9) a side outlet closed by deposition started the pump under the tank on its head limit, where it drew
+-        // 19.76 kg/s against its 2.17 kg/s target, its liquid-only suction junction fell to the 1 Pa box floor, and every
+-        // step size stalled.
+         for(var pipe:graph.pipes())modes.add(switch(pipe.control()) {
+             case FlowControl.Passive ignored->FlowControl.Mode.PASSIVE;
+             case FlowControl.Mover pump->pump.targetVolumeFlow()==0?FlowControl.Mode.CLOSED:
++                    graph.pipes().stream().anyMatch(p->p.blockedDirections()!=0)?FlowControl.Mode.PUMP_HEAD_LIMIT:
+                     pump.targetVolumeFlow()>pipe.minimumArea()*endVelocityLimit(graph.reservoirs().get(pipe.first()).state(),pipe.firstPort())?FlowControl.Mode.PUMP_HEAD_LIMIT:
+                     suctionCapped(graph,modes.size(),pump)?FlowControl.Mode.PUMP_HEAD_LIMIT:FlowControl.Mode.PUMP_TARGET;
+             case FlowControl.PressureValve valve->graph.reservoirs().get(pipe.first()).state().pressure()>valve.targetPressure()+.01

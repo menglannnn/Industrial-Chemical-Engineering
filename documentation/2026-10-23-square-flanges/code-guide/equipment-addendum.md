@@ -1,0 +1,9 @@
+## Square flange shoulders — branch addendum
+
+**Snapshot:** 7bf50b7c (`claude/floating-roof-tanks-81d68b`), 2026-10-23; main chapter refresh remains due when this batch reaches main.
+
+The owner chose a square shoulder where the pipe meets its flange plate, removing the conical neck. `PipeSizes.hubOutside(outside)` now returns `outside`; the neck keeps that radius up to the plate. `hub` keeps the existing straight lead-in length. The pipe spool/end flange, pipeline-device flange and `ShapeRasterizer` equipment-nozzle geometry all use this shared policy, including their inner annulus and bolt clearance. Existing equal-radius `Mesh.frustum` sections have radial normals and draw as straight cylinders. The flange plate remains flat and normal to the pipe axis, with the same outside diameter and thickness. Hydraulic bore, flow calculation, topology, saved data and packet formats are unchanged.
+
+For the actual-mesh example (drawn OD 0.40625 m), the neck changes from 0.4671875 to 0.40625 m while flange OD stays 0.5928125 m. The capped 1 m OD case is unchanged. See batch `2026-10-23-square-flanges`, its before/after software renders, and offline tool `tools/square-flanges/`. The owner waived tests for this follow-up and handles the in-game judgement.
+
+`PipeSizes.FLANGE_SEAM` is a 1/128 m dark joint band inside the existing flange envelope. `LineGeometry.run` draws two FLANGE rims separated by the OPENING-material band at a spool joint. `End.joined` preserves the connected/unconnected distinction through fitting shortening; connected pipeline end flanges draw a half-width band at their meeting face, also providing a seam from the line side at equipment nozzles. Unconnected blind caps have no pair seam. No literal gap or coplanar overlay is added. The rendered spool example grows from 317 to 335 polygons.

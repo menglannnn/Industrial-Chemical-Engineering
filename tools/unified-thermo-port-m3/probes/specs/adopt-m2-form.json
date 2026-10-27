@@ -1,0 +1,6 @@
+[
+ {
+  "from": "            case VAPOR_SOLID,LIQUID_SOLID,VAPOR_LIQUID_SOLID,SOLID_PRESENT->{\n                var classification=result.classification();\n                if(classification==EquilibriumResult.Classification.VAPOR_SOLID||classification==EquilibriumResult.Classification.VAPOR_LIQUID_SOLID)\n                    for(var phase:result.phases())if(phase.kind()==PhaseKind.VAPOR||phase.kind()==PhaseKind.FLUID)System.arraycopy(phase.amountsView(),0,vapor,0,n);",
+  "to": "            case VAPOR_SOLID,SOLID_PRESENT->System.arraycopy(overall,0,vapor,0,n);\n            case LIQUID_SOLID->System.arraycopy(overall,0,liquid,0,n);\n            case VAPOR_LIQUID_SOLID->{\n                for(var phase:result.phases())if(phase.kind()==PhaseKind.VAPOR||phase.kind()==PhaseKind.FLUID)System.arraycopy(phase.amountsView(),0,vapor,0,n);"
+ }
+]

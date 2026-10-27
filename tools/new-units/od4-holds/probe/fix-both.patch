@@ -1,0 +1,80 @@
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+index 562a094e..90a247d9 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+@@ -444,10 +444,11 @@ public final class PassiveStepSolver {
+             var supports=supports(graph,seeds,reachable,promoted);
+             var equations=new Equations(graph,dt,modes,boundaryClosed,seeds,reachable,supports,pipeIdentities);
+             // The active-set state is what varies between passes, so the structure key is also the cycle key: repeating one
+-            // means the pass sequence cannot make progress. The frozen junction donors and the phase-port segments belong to
+-            // it for the same reason the modes do: they decide which equations this pass states (see {@link PassKey}).
++            // means the pass sequence cannot make progress. The frozen junction donors, the phase-port segments and the static
++            // columns belong to it for the same reason the modes do: they decide which equations this pass states (see
++            // {@link PassKey}).
+             var structure=new WorkspaceKey(0,nodeIds,kinds,pipeIdentities,phases,componentMask,supportCodes(supports),modeCodes,boundaryClosed.clone(),equations.junctionDonorFirst);
+-            if(!seen.add(new PassKey(structure,equations.segmentCodes(),foldedPhases.clone(),proposal==null?-1:proposal.node(),proposal==null?0:proposal.phases())))throw new SparseNewton.Nonconvergence("Phase/device active-set cycle");
++            if(!seen.add(new PassKey(structure,equations.segmentCodes(),equations.columnCodes(),foldedPhases.clone(),proposal==null?-1:proposal.node(),proposal==null?0:proposal.phases())))throw new SparseNewton.Nonconvergence("Phase/device active-set cycle");
+             var key=new WorkspaceKey(Double.doubleToLongBits(dt),nodeIds,kinds,pipeIdentities,phases,componentMask,structure.supports,modeCodes,structure.boundaryClosed,structure.junctionDonors);
+             var workspace=workspaces.get(key);
+             SolverDiagnostics.count(workspace==null?SolverDiagnostics.workspaceBuilds:SolverDiagnostics.workspaceReuses);
+@@ -819,10 +820,19 @@ public final class PassiveStepSolver {
+      * keeps the proposal (D39 B), not a cycle with the pass that failed before the fold; the record of refusals still
+      * grows at every refutation, so the sequence stays finite (CO2 gas mixed into LNG near its critical region: the check
+      * and the Newton disagreed, the fold and the proposal alternated, and the guard fired before the refutation could).
++     *
++     * <p>The static column of each connection ({@link Equations#columnEnds}) belongs to the key as well (batch
++     * 2026-10-15-custom-equipment-rendering, OD4 holds): like a segment it changes a row's value and no structural entry,
++     * and each pass states it from its own seed, so two passes with the same modes can state different equations. A
++     * junction holding gas under a liquid-full tank stands at the tank's bottom pressure under its gas column and one
++     * metre of water higher under the water column: a 150 kPa pressure valve on it was closed at 152.5 kPa (water column),
++     * regulated to 150 kPa with -0.0027 kg/s (gas column), and the closed pass under the gas column, which converges at
++     * 143.0 kPa, was refused as a repeat of the first (bundled fuzz seed 145, hold E7). The columns are a finite record, so
++     * the sequence stays finite; a pair of passes that alternates its columns repeats a key one pass later.
+      */
+-    private record PassKey(WorkspaceKey structure,byte[] segments,int[] folded,int proposalNode,int proposalPhases) {
+-        @Override public boolean equals(Object other){return other instanceof PassKey key&&structure.equals(key.structure)&&Arrays.equals(segments,key.segments)&&Arrays.equals(folded,key.folded)&&proposalNode==key.proposalNode&&proposalPhases==key.proposalPhases;}
+-        @Override public int hashCode(){return 31*(31*(31*(31*structure.hashCode()+Arrays.hashCode(segments))+Arrays.hashCode(folded))+proposalNode)+proposalPhases;}
++    private record PassKey(WorkspaceKey structure,byte[] segments,byte[] columns,int[] folded,int proposalNode,int proposalPhases) {
++        @Override public boolean equals(Object other){return other instanceof PassKey key&&structure.equals(key.structure)&&Arrays.equals(segments,key.segments)&&Arrays.equals(columns,key.columns)&&Arrays.equals(folded,key.folded)&&proposalNode==key.proposalNode&&proposalPhases==key.proposalPhases;}
++        @Override public int hashCode(){return 31*(31*(31*(31*(31*structure.hashCode()+Arrays.hashCode(segments))+Arrays.hashCode(columns))+Arrays.hashCode(folded))+proposalNode)+proposalPhases;}
+     }
+     /**
+      * A proposal (owner decision D39 B): the phases ({@link FluidThermodynamics#phaseBits} bits) the check of a converged
+@@ -1032,8 +1042,13 @@ public final class PassiveStepSolver {
+      * rows must hold: the residual sits in those rows, the trial temperatures leave the data and the step halves to its
+      * floor (an 11 g air buffer receiving about 7 kg/s of water). Each junction's mixture over the step is its stock plus
+      * what its connections deliver at the pass's start flows ({@link #startPoint}) over {@code dt}, each the stream its
+-     * donor end draws ({@link #endMoles}), at the mass-weighted temperature and the seed's pressure, flashed and folded as
+-     * the pass folds a junction (D34, D41). Where that mixture holds a phase the seed lacks, the seed becomes the mixture
++     * donor end draws ({@link #endMoles}), at the seed's pressure and the enthalpy of stock and deliveries, split as the
++     * junction's own split is (D26, {@link FluidThermodynamics#equilibriumPH}, from the mass-weighted temperature; the TP
++     * flash there where the engine answers nothing, as for an empty bag) and folded as the pass folds a junction (D34,
++     * D41). The enthalpy carries the latent heat a temperature mix leaves out: liquid water at 326.648 K reaching a pump
++     * suction held at its vapour pressure (14.63 kPa, its saturation at 326.606 K) is liquid beside 6.6e-6 of its mass as
++     * steam, where the TP flash at the mixed temperature made all of it steam, and the suction limit's row then had no
++     * vapour pressure to stand at (bundled fuzz seed 889, hold E9). Where that mixture holds a phase the seed lacks, the seed becomes the mixture
+      * at the seed's mass; a junction donor delivers its own updated seed, so a phase reaches a run of junctions in one
+      * stage. A seed that already holds every phase of its mixture is kept to the bit; a rate-only solve holds a
+      * junction's composition at its stock and this does nothing there.
+@@ -1080,9 +1095,10 @@ public final class PassiveStepSolver {
+                     result.set(j,held.empty()?arrived:arrived.withSolids(held));changed=true;continue;
+                 }
+                 if(!arrives||!(heldMass>0))continue;
+-                for(int c=0;c<n.length;c++)n[c]*=seed.mass()/mass;
++                double scale=seed.mass()/mass,enthalpy=(heldMass*endSpecificEnthalpy(node.state(),PassiveNetwork.PhasePort.BULK)+heat)*scale;
++                for(int c=0;c<n.length;c++)n[c]*=scale;
+                 FluidThermodynamics.State mixture;
+-                try{mixture=model.folded(model.flashTP(weighted/mass,seed.pressure(),n,checkpoint),true);}
++                try{var split=model.equilibriumPH(weighted/mass,seed.pressure(),enthalpy,n,checkpoint);mixture=model.folded(split!=null?split:model.flashTP(weighted/mass,seed.pressure(),n,checkpoint),true);}
+                 catch(com.wormzjl.createcheme.science.fluid.thermo.ThermoHold outside){continue;}
+                 if((phaseCode(mixture)&~phaseCode(seed)&15)==0)continue;
+                 if(result==null)result=new ArrayList<>(seeds);
+@@ -3170,6 +3186,8 @@ public final class PassiveStepSolver {
+             }
+             return result;
+         }
++        /** This pass's static column ends ({@link #columnEnds}) as codes for the cycle key ({@link PassKey}). */
++        byte[] columnCodes(){byte[] codes=new byte[columnEnds.length];for(int edge=0;edge<codes.length;edge++)codes[edge]=(byte)columnEnds[edge];return codes;}
+         /** This pass's segments as codes for the cycle key ({@link PassKey}); empty for a graph without an open phase port. */
+         byte[] segmentCodes() {
+             int count=0;for(var ends:segments)for(var segment:ends)if(segment!=null)count++;

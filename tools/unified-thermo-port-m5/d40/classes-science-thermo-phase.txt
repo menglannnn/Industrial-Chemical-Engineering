@@ -1,0 +1,12 @@
+com.wormzjl.icheme.science.thermo.phase.CrystalPhaseEvaluatorTest
+com.wormzjl.icheme.science.thermo.phase.CubicPhaseEvaluatorTest
+com.wormzjl.icheme.science.thermo.phase.FluidTpEquilibriumP3Test
+com.wormzjl.icheme.science.thermo.phase.FluidTpEquilibriumPhUvTest
+com.wormzjl.icheme.science.thermo.phase.FluidTpEquilibriumTest
+com.wormzjl.icheme.science.thermo.phase.FreeWaterIceTest
+com.wormzjl.icheme.science.thermo.phase.GasSolidEquilibriumTest
+com.wormzjl.icheme.science.thermo.phase.NearPureCrystalStepTest
+com.wormzjl.icheme.science.thermo.phase.SolidCarbonDioxideQualificationTest
+com.wormzjl.icheme.science.thermo.phase.SolidPhaseEvaluatorTest
+com.wormzjl.icheme.science.thermo.phase.SpinePackageEvaluatorTest
+com.wormzjl.icheme.science.thermo.phase.ThermoIdentityTest

@@ -1,0 +1,148 @@
+    /**
+     * TP with competing crystals and free water (WP4; decision 6 A: gas hydrates are not modelled, so the free water and a
+     * competing crystal coexist, ice beside CO2 frost): the free-water rule's answer of the whole feed first
+     * ({@link #solveWet}, exact at its branch pressures), each competing crystal tested against its hydrocarbon phases
+     * ({@code D = (mu_i - mu_s)/(R T)}, as {@link #solveWithCrystals}). No crystal forms: that answer, the solids assessed.
+     * Otherwise the hydrocarbons and their crystal are solved dry ({@link #solveWithCrystals}) at the hydrocarbon partial
+     * pressure {@code pc = P - p_w}, where their vapour lies, and the water is laid around them by its rule: the steam in
+     * their vapour at the condensed water's vapour pressure and the rest condensed, or all of it steam where that leaves
+     * the gas unsaturated; {@code pc} then follows the new gas (the fixed point of {@link #solveWet}, accepted on its stop
+     * test). The liquid and the crystal are restated at the state pressure. A crystal forms only where the condensed water
+     * is ice and {@code p_w} at most a few pascal (R14-08: 1.6 Pa at CO2's triple point, 216.6 K), so solving the liquid
+     * and the crystal at {@code pc} instead of {@code P} moves their chemical potentials by {@code v p_w / (R T)}, below
+     * 1e-7. A wet pure hydrocarbon at its crystal's own coexistence (undetermined by T and P) is the typed
+     * {@link EquilibriumResult#CRYSTAL_STEP} failure.
+     */
+    private EquilibriumResult solveWetWithCrystals(double t, double p, boolean frozen, PhaseCompetition competition, Workspace w) {
+        EquilibriumResult fluid = solveWet(t, p, w.hydrocarbonTotal, w.waterTotal, frozen, competition, w);
+        w.fluidEquilibria = 1;
+        if (!fluid.converged()) return fluid;
+        double rt = R * t;
+        StringBuilder forces = new StringBuilder();
+        boolean forms = false;
+        for (int a = 0; a < w.activeCount; a++) {
+            Crystal c = w.active[a];
+            if (!(w.feed[c.component()] > 0.0)) continue;
+            double d = (wetChemicalPotential(fluid, c.component()) - c.anchored().chemicalPotential(t, p)) / rt;
+            forces.append(forces.isEmpty() ? "" : ", ").append(c.id()).append(": (mu - mu_s)/RT = ").append(d);
+            if (d > DEPOSITION_TOLERANCE) forms = true;
+        }
+        if (!forms) {
+            return assessed(fluid, forces.isEmpty() ? "solids assessed: no competing crystal's species is carried"
+                    : "solids assessed: no crystal forms (" + forces + ")", w);
+        }
+        EquilibriumResult.FreeWater wet = fluid.freeWater();
+        double saturation = wet.saturationPressure();
+        double water = w.waterTotal;
+        double pc = wet.hydrocarbonPressure();
+        for (int step = 0; ; step++) {
+            EquilibriumResult dry = dryWithCrystals(t, pc, competition, w);
+            if (!dry.converged()) return dry;
+            if (dry.classification() == Classification.PURE_COEXISTENCE_UNDERDETERMINED) {
+                return EquilibriumResult.notConverged(Specification.TP, contract.identity(), competition, EquilibriumResult.CRYSTAL_STEP
+                        + ": the pure hydrocarbon beside free water lies at its crystal's own coexistence, undetermined by T and P ("
+                        + dry.detail() + ")", dry.diagnostics());
+            }
+            if (!dry.classification().holdsCrystal()) {
+                return assessed(fluid, "solids assessed: no crystal forms at the hydrocarbon partial pressure " + pc + " Pa (" + forces + ")", w);
+            }
+            PhaseAmounts vapour = null;
+            for (PhaseAmounts phase : dry.phases()) if (phase.kind() == PhaseKind.VAPOR || phase.kind() == PhaseKind.FLUID) vapour = phase;
+            double gasVolume = vapour == null ? 0.0 : vapour.total() * vapour.state().molarVolume();
+            double steam;
+            double partial;
+            double next;
+            if (!(gasVolume > 0.0)) {
+                // No hydrocarbon gas: the water by the pure water's rule, condensed at or above its vapour pressure.
+                steam = p >= saturation ? 0.0 : water;
+                partial = steam > 0.0 ? p : 0.0;
+                next = pc;
+            } else {
+                double required = saturation * gasVolume / rt;
+                steam = required <= water ? required : water;
+                partial = steam * rt / gasVolume;
+                next = p - partial;
+            }
+            if (Math.abs(next - pc) > PARTIAL_PRESSURE_TOLERANCE * p) {
+                if (step >= PARTIAL_PRESSURE_FIXED_POINT_STEPS || !(next > PARTIAL_PRESSURE_FLOOR)) {
+                    w.failure = "the hydrocarbon partial pressure beside the crystal and the steam was not found (pc " + pc + " Pa, next "
+                            + next + " Pa at " + p + " Pa)";
+                    return failed(t, p, competition, w);
+                }
+                pc = next;
+                continue;
+            }
+            return wetAround(dry, vapour, t, p, pc, saturation, partial, steam, water - steam, frozen, competition, w);
+        }
+    }
+
+    /**
+     * The dry crystal solve of {@link #solveWetWithCrystals} at the single pressure {@code pc}: the workspace's hydrocarbons
+     * with the water held out, put back after.
+     */
+    private EquilibriumResult dryWithCrystals(double t, double pc, PhaseCompetition competition, Workspace w) {
+        double water = w.basisAmounts[waterIndex];
+        w.basisAmounts[waterIndex] = 0.0;
+        w.wet = false;
+        try {
+            return solveWithCrystals(t, pc, competition, w);
+        } finally {
+            w.wet = true;
+            w.basisAmounts[waterIndex] = water;
+        }
+    }
+
+    /**
+     * The answer of {@link #solveWetWithCrystals}: the dry answer's phases restated at the state pressure (its vapour
+     * {@code vapour}, null without one, as the gas with {@code steam} moles of steam at {@code pc} and {@code partial}),
+     * {@code condensed} moles of condensed water (ice where {@code frozen}) at the vapour pressure {@code saturation}.
+     */
+    private EquilibriumResult wetAround(EquilibriumResult dry, PhaseAmounts vapour, double t, double p, double pc, double saturation,
+                                        double partial, double steam, double condensed, boolean frozen, PhaseCompetition competition,
+                                        Workspace w) {
+        List<PhaseAmounts> phases = new ArrayList<>(dry.phases().size() + 2);
+        double vapourAmount = 0.0;
+        Arrays.fill(w.vaporAmounts, 0.0);
+        if (vapour != null) {
+            for (int i = 0; i < count; i++) w.vaporAmounts[i] = vapour.amount(basisOfComponent[i]);
+            vapourAmount = vapour.total();
+        }
+        if (vapourAmount > 0.0 || steam > 0.0) {
+            phases.add(gasPhase(t, p, steam > 0.0 && vapourAmount > 0.0 ? pc : p, vapourAmount, steam,
+                    vapourAmount > 0.0 ? vapour.state() : null, w));
+        }
+        for (PhaseAmounts phase : dry.phases()) {
+            if (phase == vapour) continue;
+            if (phase.kind() == PhaseKind.SOLID) {
+                Crystal c = crystalById(phase.crystal());
+                phases.add(new PhaseAmounts(PhaseKind.SOLID, c.id(), t, p, phase.amountsView(), c.anchored().evaluate(t, p, w.solidState).copy()));
+                continue;
+            }
+            for (int i = 0; i < count; i++) w.liquidAmounts[i] = phase.amount(basisOfComponent[i]);
+            PhaseState state = evaluator.evaluate(t, p, w.liquidAmounts, phase.state().root(), w.phases, w.liquidState);
+            w.kernelEvaluations++;
+            phases.add(new PhaseAmounts(phase.kind(), null, t, p, phase.amountsView(), state.copy()));
+        }
+        if (condensed > 0.0) phases.add(condensedPhase(t, p, saturation, condensed, frozen, w));
+        var split = freeWaterSplit(dry.classification(), saturation, steam > 0.0 && vapourAmount > 0.0 ? pc : p, partial, condensed,
+                steam, frozen);
+        String note = "free water beside the crystal answer at the hydrocarbon partial pressure " + pc + " Pa: " + condensed
+                + " mol " + (frozen ? "ice" : "liquid water") + " and " + steam + " mol steam at " + partial + " Pa";
+        return new EquilibriumResult(Specification.TP, EquilibriumResult.Status.CONVERGED, null, dry.detail() + "; " + note,
+                contract.identity(), competition, Classification.FREE_WATER, phases, List.of(), dry.coverage(), dry.diagnostics(),
+                split, dry.deposition());
+    }
+
+    /**
+     * {@code mu_i} of EOS component {@code i} in a free-water answer: in its hydrocarbon liquid where that holds it, else in
+     * its gas, whose state is on the contract basis (equal in both phases of a converged split).
+     */
+    private double wetChemicalPotential(EquilibriumResult fluid, int i) {
+        PhaseState gas = null;
+        for (PhaseAmounts phase : fluid.phases()) {
+            if (phase.kind() == PhaseKind.LIQUID && phase.amount(basisOfComponent[i]) > 0.0) return phase.state().chemicalPotential(i);
+            if (phase.kind() == PhaseKind.VAPOR) gas = phase.state();
+        }
+        return gas == null ? Double.NEGATIVE_INFINITY : gas.chemicalPotential(basisOfComponent[i]);
+    }
+

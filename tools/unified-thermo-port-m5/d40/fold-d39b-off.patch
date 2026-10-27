@@ -1,0 +1,14 @@
+diff -ru a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+@@ -601,10 +601,6 @@
+                 // is recorded (A85). Cold seed 48: a tank receiving a boiling tank's liquid sits on its bubble point; the
+                 // check proposed 3.4e-6 of its moles as vapour, and the two-phase pass drove it under 1e-8 and stalled at
+                 // every step size, as a shrinking vapour cannot close the tank's equilibrium rows.
+-                if(proposal!=null) {
+-                    int refuted=proposal.phases()&FluidThermodynamics.vanishing(proposal.seed(),iterate.get(proposal.node()));
+-                    if(refuted!=0){foldedPhases[proposal.node()]|=refuted;SolverDiagnostics.count(SolverDiagnostics.phaseRefusals);seeds=proposal.point();proposal=null;continue;}
+-                }
+                 var changedSeeds=foldedIterate(graph,iterate);
+                 // Decision D11: a phase a vessel's ports draw at their full capacity leaves the vessel within the step; a
+                 // pass whose seed still holds it may have no root (see drainedSeeds).

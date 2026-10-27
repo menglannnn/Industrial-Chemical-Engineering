@@ -1,0 +1,186 @@
+# first open, fresh block (8,-60,6), UTC wall clock, right_click at 17:06:40.530
+17:06:40.530 -> right_click {}
+17:06:40.694 -> screenshot_to_file {f00.png}
+17:06:40.776 <- screenshot_to_file: { f00.png size 20575
+17:06:40.883 -> screenshot_to_file {f01.png}
+17:06:40.895 <- screenshot_to_file: { f01.png size 20575
+17:06:41.009 -> screenshot_to_file {f02.png}
+17:06:41.013 <- screenshot_to_file: { f02.png size 20575
+17:06:41.134 -> screenshot_to_file {f03.png}
+17:06:41.138 <- screenshot_to_file: { f03.png size 20575
+17:06:41.241 -> screenshot_to_file {f04.png}
+17:06:41.249 <- screenshot_to_file: { f04.png size 20575
+17:06:41.351 -> screenshot_to_file {f05.png}
+17:06:41.361 <- screenshot_to_file: { f05.png size 20575
+17:06:41.476 -> screenshot_to_file {f06.png}
+17:06:41.479 <- screenshot_to_file: { f06.png size 20575
+17:06:41.586 -> screenshot_to_file {f07.png}
+17:06:41.600 <- screenshot_to_file: { f07.png size 20575
+17:06:41.712 -> screenshot_to_file {f08.png}
+17:06:41.718 <- screenshot_to_file: { f08.png size 20575
+17:06:41.823 -> screenshot_to_file {f09.png}
+17:06:41.828 <- screenshot_to_file: { f09.png size 20575
+17:06:41.933 -> screenshot_to_file {f10.png}
+17:06:41.938 <- screenshot_to_file: { f10.png size 20575
+17:06:42.043 -> screenshot_to_file {f11.png}
+17:06:42.049 <- screenshot_to_file: { f11.png size 20575
+17:06:42.153 -> screenshot_to_file {f12.png}
+17:06:42.158 <- screenshot_to_file: { f12.png size 20575
+17:06:42.263 -> screenshot_to_file {f13.png}
+17:06:42.268 <- screenshot_to_file: { f13.png size 20575
+17:06:42.375 -> screenshot_to_file {f14.png}
+17:06:42.378 <- screenshot_to_file: { f14.png size 20575
+17:06:42.484 -> screenshot_to_file {f15.png}
+17:06:42.487 <- screenshot_to_file: { f15.png size 20575
+17:06:42.597 -> screenshot_to_file {f16.png}
+17:06:42.606 <- screenshot_to_file: { f16.png size 20575
+17:06:42.706 -> screenshot_to_file {f17.png}
+17:06:42.715 <- screenshot_to_file: { f17.png size 20575
+17:06:42.816 -> screenshot_to_file {f18.png}
+17:06:42.901 <- screenshot_to_file: { f18.png size 20349
+17:06:43.007 -> screenshot_to_file {f19.png}
+17:06:43.012 <- screenshot_to_file: { f19.png size 20349
+17:06:43.118 -> screenshot_to_file {f20.png}
+17:06:43.123 <- screenshot_to_file: { f20.png size 20349
+17:06:43.229 -> screenshot_to_file {f21.png}
+17:06:43.232 <- screenshot_to_file: { f21.png size 20349
+17:06:43.341 -> screenshot_to_file {f22.png}
+17:06:43.350 <- screenshot_to_file: { f22.png size 20349
+17:06:43.452 -> screenshot_to_file {f23.png}
+17:06:43.460 <- screenshot_to_file: { f23.png size 20349
+17:06:43.562 -> screenshot_to_file {f24.png}
+17:06:43.570 <- screenshot_to_file: { f24.png size 20349
+17:06:43.673 -> screenshot_to_file {f25.png}
+17:06:43.681 <- screenshot_to_file: { f25.png size 20349
+17:06:43.784 -> screenshot_to_file {f26.png}
+17:06:43.792 <- screenshot_to_file: { f26.png size 20349
+17:06:43.897 -> screenshot_to_file {f27.png}
+17:06:43.902 <- screenshot_to_file: { f27.png size 20349
+17:06:44.006 -> screenshot_to_file {f28.png}
+17:06:44.012 <- screenshot_to_file: { f28.png size 20349
+17:06:44.115 -> screenshot_to_file {f29.png}
+17:06:44.122 <- screenshot_to_file: { f29.png size 20349
+17:06:44.223 -> screenshot_to_file {f30.png}
+17:06:44.226 <- screenshot_to_file: { f30.png size 20349
+17:06:44.333 -> screenshot_to_file {f31.png}
+17:06:44.337 <- screenshot_to_file: { f31.png size 20349
+17:06:44.440 -> screenshot_to_file {f32.png}
+17:06:44.446 <- screenshot_to_file: { f32.png size 20349
+17:06:44.550 -> screenshot_to_file {f33.png}
+17:06:44.556 <- screenshot_to_file: { f33.png size 20349
+17:06:44.661 -> screenshot_to_file {f34.png}
+17:06:44.667 <- screenshot_to_file: { f34.png size 20349
+17:06:44.772 -> screenshot_to_file {f35.png}
+17:06:44.776 <- screenshot_to_file: { f35.png size 20349
+17:06:44.881 -> screenshot_to_file {f36.png}
+17:06:44.888 <- screenshot_to_file: { f36.png size 20349
+17:06:44.990 -> screenshot_to_file {f37.png}
+17:06:45.071 <- screenshot_to_file: { f37.png size 29054
+17:06:45.181 -> screenshot_to_file {f38.png}
+17:06:45.184 <- screenshot_to_file: { f38.png size 29054
+17:06:45.291 -> screenshot_to_file {f39.png}
+17:06:45.301 <- screenshot_to_file: { f39.png size 29054
+17:06:45.402 -> screenshot_to_file {f40.png}
+17:06:45.410 <- screenshot_to_file: { f40.png size 29054
+17:06:45.515 -> screenshot_to_file {f41.png}
+17:06:45.529 <- screenshot_to_file: { f41.png size 29054
+17:06:45.642 -> screenshot_to_file {f42.png}
+17:06:45.645 <- screenshot_to_file: { f42.png size 29054
+17:06:45.752 -> screenshot_to_file {f43.png}
+17:06:45.757 <- screenshot_to_file: { f43.png size 29054
+17:06:45.862 -> screenshot_to_file {f44.png}
+17:06:45.867 <- screenshot_to_file: { f44.png size 29054
+17:06:45.973 -> screenshot_to_file {f45.png}
+17:06:45.976 <- screenshot_to_file: { f45.png size 29054
+17:06:46.085 -> screenshot_to_file {f46.png}
+17:06:46.094 <- screenshot_to_file: { f46.png size 29054
+17:06:46.196 -> screenshot_to_file {f47.png}
+17:06:46.204 <- screenshot_to_file: { f47.png size 29054
+17:06:46.306 -> screenshot_to_file {f48.png}
+17:06:46.317 <- screenshot_to_file: { f48.png size 29054
+17:06:46.432 -> screenshot_to_file {f49.png}
+17:06:46.443 <- screenshot_to_file: { f49.png size 29054
+17:06:46.543 -> screenshot_to_file {f50.png}
+17:06:46.553 <- screenshot_to_file: { f50.png size 29054
+17:06:46.655 -> screenshot_to_file {f51.png}
+17:06:46.664 <- screenshot_to_file: { f51.png size 29054
+17:06:46.766 -> screenshot_to_file {f52.png}
+17:06:46.776 <- screenshot_to_file: { f52.png size 29054
+17:06:46.878 -> screenshot_to_file {f53.png}
+17:06:46.885 <- screenshot_to_file: { f53.png size 29054
+17:06:46.990 -> screenshot_to_file {f54.png}
+17:06:46.994 <- screenshot_to_file: { f54.png size 29054
+17:06:47.098 -> screenshot_to_file {f55.png}
+17:06:47.177 <- screenshot_to_file: { f55.png size 29054
+17:06:47.289 -> screenshot_to_file {f56.png}
+17:06:47.298 <- screenshot_to_file: { f56.png size 29054
+17:06:47.401 -> screenshot_to_file {f57.png}
+17:06:47.408 <- screenshot_to_file: { f57.png size 29054
+17:06:47.509 -> screenshot_to_file {f58.png}
+17:06:47.517 <- screenshot_to_file: { f58.png size 29054
+17:06:47.617 -> screenshot_to_file {f59.png}
+17:06:47.621 <- screenshot_to_file: { f59.png size 29054
+# reopen after 8 s closed, right_click at 17:07:13.629
+17:07:05.615 -> close_screen {}
+  "was": "ColumnCalculatorV3Screen"
+17:07:13.629 -> right_click {}
+17:07:13.800 -> screenshot_to_file {"path":"C:/Users/wormz/AppData/Local/Temp/guicheck/replay2/q00.png"}
+17:07:13.883 <- screenshot_to_file: { q00.png size 29278
+17:07:13.987 -> screenshot_to_file {"path":"C:/Users/wormz/AppData/Local/Temp/guicheck/replay2/q01.png"}
+17:07:13.994 <- screenshot_to_file: { q01.png size 29278
+17:07:14.097 -> screenshot_to_file {"path":"C:/Users/wormz/AppData/Local/Temp/guicheck/replay2/q02.png"}
+17:07:14.105 <- screenshot_to_file: { q02.png size 29278
+17:07:14.209 -> screenshot_to_file {"path":"C:/Users/wormz/AppData/Local/Temp/guicheck/replay2/q03.png"}
+17:07:14.217 <- screenshot_to_file: { q03.png size 29278
+17:07:14.318 -> screenshot_to_file {"path":"C:/Users/wormz/AppData/Local/Temp/guicheck/replay2/q04.png"}
+17:07:14.326 <- screenshot_to_file: { q04.png size 29278
+17:07:14.429 -> screenshot_to_file {"path":"C:/Users/wormz/AppData/Local/Temp/guicheck/replay2/q05.png"}
+17:07:14.439 <- screenshot_to_file: { q05.png size 29278
+17:07:14.554 -> screenshot_to_file {"path":"C:/Users/wormz/AppData/Local/Temp/guicheck/replay2/q06.png"}
+17:07:14.557 <- screenshot_to_file: { q06.png size 29278
+17:07:14.662 -> screenshot_to_file {"path":"C:/Users/wormz/AppData/Local/Temp/guicheck/replay2/q07.png"}
+17:07:14.668 <- screenshot_to_file: { q07.png size 29278
+17:07:14.769 -> screenshot_to_file {"path":"C:/Users/wormz/AppData/Local/Temp/guicheck/replay2/q08.png"}
+17:07:14.777 <- screenshot_to_file: { q08.png size 29278
+17:07:14.878 -> screenshot_to_file {"path":"C:/Users/wormz/AppData/Local/Temp/guicheck/replay2/q09.png"}
+17:07:14.887 <- screenshot_to_file: { q09.png size 29278
+17:07:15.003 -> screenshot_to_file {"path":"C:/Users/wormz/AppData/Local/Temp/guicheck/replay2/q10.png"}
+17:07:15.008 <- screenshot_to_file: { q10.png size 29278
+17:07:15.116 -> screenshot_to_file {"path":"C:/Users/wormz/AppData/Local/Temp/guicheck/replay2/q11.png"}
+17:07:15.126 <- screenshot_to_file: { q11.png size 29278
+17:07:15.242 -> screenshot_to_file {"path":"C:/Users/wormz/AppData/Local/Temp/guicheck/replay2/q12.png"}
+17:07:15.246 <- screenshot_to_file: { q12.png size 29278
+17:07:15.353 -> screenshot_to_file {"path":"C:/Users/wormz/AppData/Local/Temp/guicheck/replay2/q13.png"}
+17:07:15.363 <- screenshot_to_file: { q13.png size 29278
+17:07:15.464 -> screenshot_to_file {"path":"C:/Users/wormz/AppData/Local/Temp/guicheck/replay2/q14.png"}
+17:07:15.474 <- screenshot_to_file: { q14.png size 29278
+17:07:15.590 -> screenshot_to_file {"path":"C:/Users/wormz/AppData/Local/Temp/guicheck/replay2/q15.png"}
+17:07:15.594 <- screenshot_to_file: { q15.png size 29278
+17:07:15.701 -> screenshot_to_file {"path":"C:/Users/wormz/AppData/Local/Temp/guicheck/replay2/q16.png"}
+17:07:15.705 <- screenshot_to_file: { q16.png size 29278
+17:07:15.810 -> screenshot_to_file {"path":"C:/Users/wormz/AppData/Local/Temp/guicheck/replay2/q17.png"}
+17:07:15.817 <- screenshot_to_file: { q17.png size 29278
+17:07:15.921 -> screenshot_to_file {"path":"C:/Users/wormz/AppData/Local/Temp/guicheck/replay2/q18.png"}
+17:07:15.995 <- screenshot_to_file: { q18.png size 29054
+17:07:16.109 -> screenshot_to_file {"path":"C:/Users/wormz/AppData/Local/Temp/guicheck/replay2/q19.png"}
+17:07:16.115 <- screenshot_to_file: { q19.png size 29054
+17:07:16.219 -> screenshot_to_file {"path":"C:/Users/wormz/AppData/Local/Temp/guicheck/replay2/q20.png"}
+17:07:16.226 <- screenshot_to_file: { q20.png size 29054
+17:07:16.329 -> screenshot_to_file {"path":"C:/Users/wormz/AppData/Local/Temp/guicheck/replay2/q21.png"}
+17:07:16.335 <- screenshot_to_file: { q21.png size 29054
+17:07:16.438 -> screenshot_to_file {"path":"C:/Users/wormz/AppData/Local/Temp/guicheck/replay2/q22.png"}
+17:07:16.446 <- screenshot_to_file: { q22.png size 29054
+17:07:16.547 -> screenshot_to_file {"path":"C:/Users/wormz/AppData/Local/Temp/guicheck/replay2/q23.png"}
+17:07:16.557 <- screenshot_to_file: { q23.png size 29054
+17:07:16.657 -> screenshot_to_file {"path":"C:/Users/wormz/AppData/Local/Temp/guicheck/replay2/q24.png"}
+17:07:16.667 <- screenshot_to_file: { q24.png size 29054
+17:07:16.769 -> screenshot_to_file {"path":"C:/Users/wormz/AppData/Local/Temp/guicheck/replay2/q25.png"}
+17:07:16.777 <- screenshot_to_file: { q25.png size 29054
+17:07:16.880 -> screenshot_to_file {"path":"C:/Users/wormz/AppData/Local/Temp/guicheck/replay2/q26.png"}
+17:07:16.887 <- screenshot_to_file: { q26.png size 29054
+17:07:16.991 -> screenshot_to_file {"path":"C:/Users/wormz/AppData/Local/Temp/guicheck/replay2/q27.png"}
+17:07:16.998 <- screenshot_to_file: { q27.png size 29054
+17:07:17.102 -> screenshot_to_file {"path":"C:/Users/wormz/AppData/Local/Temp/guicheck/replay2/q28.png"}
+17:07:17.110 <- screenshot_to_file: { q28.png size 29054
+17:07:17.212 -> screenshot_to_file {"path":"C:/Users/wormz/AppData/Local/Temp/guicheck/replay2/q29.png"}
+17:07:17.219 <- screenshot_to_file: { q29.png size 29054

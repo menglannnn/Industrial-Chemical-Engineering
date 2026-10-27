@@ -1,0 +1,32 @@
+// M5 worse-worlds trace (batch 2026-09-24-coolprop-low-temperature): attaches a hold-fuzz harness and this folder's src/
+// to the test source set for one Gradle invocation, and forwards every -P property named holdFuzz.*, minimize.*, replay.*,
+// m5.* or m7.* as a system property.
+//   bash tools/unified-thermo-port-m1/gradle-locked.sh <log> --no-configuration-cache --init-script tools/unified-thermo-port-m5/trace/m5-trace.init.gradle \
+//       test --tests '*M5MinimizerTest' -Pminimize.seed=322 -Pminimize.threads=4
+// -Pm5.harness (M7, 2026-10-17) picks the harness, read in place from ../../unified-thermo-port-forms/:
+//   bundled (default)  hold-fuzz-bundled/src      the bundled random fuzz (M5)
+//   cold               hold-fuzz-cold/src         the cold package fuzz, for commits at or after 9445106a (S6: movers without efficiency)
+//   cold-pre-s6        hold-fuzz-cold-pre-s6/src  the cold package fuzz, for commits before 9445106a (movers take an efficiency)
+// A cold harness sets holdFuzz.cold=true unless -PholdFuzz.cold is given; the M5 tools then run each world inside the
+// pilot catalog's MaterialRuntime context (M5TraceWorld.within), as HoldFuzzTest.runSeed does.
+// Not part of any gate suite: without this init script nothing here is compiled.
+gradle.projectsEvaluated {
+    def here = gradle.startParameter.initScripts.find { it.name == 'm5-trace.init.gradle' }.parentFile
+    def root = gradle.rootProject
+    def props = gradle.startParameter.projectProperties
+    def harness = props['m5.harness'] ?: 'bundled'
+    def folders = [bundled: 'hold-fuzz-bundled', cold: 'hold-fuzz-cold', 'cold-pre-s6': 'hold-fuzz-cold-pre-s6']
+    if (!folders.containsKey(harness)) throw new GradleException("m5.harness must be bundled, cold or cold-pre-s6, not " + harness)
+    root.sourceSets.test.java.srcDir(new File(here, '../../unified-thermo-port-forms/' + folders[harness] + '/src').canonicalFile)
+    root.sourceSets.test.java.srcDir(new File(here, 'src'))
+    // -Pm5.instr=true: the row trace, which needs patches/instr-m5-trace-hooks-on-<commit>.patch applied to the tracked sources.
+    if (props['m5.instr'] == 'true') root.sourceSets.test.java.srcDir(new File(here, 'src-instr'))
+    def forwarded = props.findAll { k, v -> k.startsWith('holdFuzz.') || k.startsWith('minimize.') || k.startsWith('replay.') || k.startsWith('m5.') || k.startsWith('m7.') }
+    if (harness.startsWith('cold') && !forwarded.containsKey('holdFuzz.cold')) forwarded = forwarded + ['holdFuzz.cold': 'true']
+    root.tasks.withType(Test).configureEach {
+        maxHeapSize = '8g'
+        forwarded.each { k, v -> systemProperty k, v }
+        testLogging { showStandardStreams = true }
+        outputs.upToDateWhen { false }
+    }
+}

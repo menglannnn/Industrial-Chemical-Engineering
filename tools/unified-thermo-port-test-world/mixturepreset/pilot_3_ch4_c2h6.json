@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "kind": "mixture",
+  "name": "Pilot: CH4 + 2 % C2H6",
+  "translation_key": "",
+  "package": "icheme:pilot_cryogenic",
+  "basis": "mole",
+  "components": [
+    {"id": "Methane", "amount": 98},
+    {"id": "Ethane", "amount": 2}
+  ]
+}

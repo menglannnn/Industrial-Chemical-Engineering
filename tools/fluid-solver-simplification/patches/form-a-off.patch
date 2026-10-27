@@ -1,0 +1,10 @@
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+@@ -1707,6 +1707,7 @@
+     static final double CAP_EXPONENT=8;
+     /** The transported flow of the law's flow {@code qLaw} under the cap {@code qCap}; {@code qLaw} itself without a cap. */
+     static double saturated(double qLaw,double qCap) {
++        if(CAP_EXPONENT>0)return qLaw; // t38 rule-off: the velocity cap out of every law
+         if(!(qCap>0)||!(qCap<Double.POSITIVE_INFINITY))return qLaw;
+         double r=Math.abs(qLaw)/qCap,r2=r*r,r4=r2*r2,r8=r4*r4;
+         return qLaw*DeterministicMath.pow(1+r8,-1/CAP_EXPONENT);

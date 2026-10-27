@@ -1,0 +1,10 @@
+gamemode creative
+tp @s 658 -50 -30
+createcheme equipment unit 600 -60 0 stirred_reactor 2.6 3 1 north
+createcheme equipment unit 616 -60 0 adsorber 2.8 2 2 north
+createcheme equipment unit 632 -60 0 trickle_bed_reactor 3 2 4 north
+createcheme equipment unit 648 -60 0 ebullated_bed_reactor 4.5 23 9 north
+createcheme equipment unit 667 -60 0 centrifugal_compressor 0.9 4 6 north
+createcheme equipment unit 683 -60 0 steam_turbine 1.8 6 0 north
+createcheme equipment unit 699 -60 0 condensing_turbine 1.8 6 6 north
+createcheme equipment unit 716 -60 0 cyclone 1.1 2 3 north

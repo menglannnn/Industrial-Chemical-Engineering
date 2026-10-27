@@ -1,0 +1,16 @@
+com.wormzjl.icheme.science.fluid.thermo.AmbientCrudePresetTest
+com.wormzjl.icheme.science.fluid.thermo.DataRangeContinuationTest
+com.wormzjl.icheme.science.fluid.thermo.DirectLiquidContinuityTest
+com.wormzjl.icheme.science.fluid.thermo.DirectLiquidDeterminismTest
+com.wormzjl.icheme.science.fluid.thermo.FluidNitrogenCryogenicTest
+com.wormzjl.icheme.science.fluid.thermo.FluidPropertyCoverageTest
+com.wormzjl.icheme.science.fluid.thermo.FluidThermodynamicsTest
+com.wormzjl.icheme.science.fluid.thermo.HydrocarbonModelTest
+com.wormzjl.icheme.science.fluid.thermo.LegacyNetworkPathPinTest
+com.wormzjl.icheme.science.fluid.thermo.NetworkPhaseEngineTest
+com.wormzjl.icheme.science.fluid.thermo.NitrogenInitializationTest
+com.wormzjl.icheme.science.fluid.thermo.RangeContinuationGateTest
+com.wormzjl.icheme.science.fluid.thermo.SpineNetworkPathTest
+com.wormzjl.icheme.science.fluid.thermo.TranslatedPengRobinsonPairInteractionsTest
+com.wormzjl.icheme.science.fluid.thermo.TranslatedPengRobinsonTest
+com.wormzjl.icheme.science.fluid.thermo.WaterRegion1Test

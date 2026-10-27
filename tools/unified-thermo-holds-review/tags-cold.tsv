@@ -1,0 +1,89 @@
+cold	1	E5	19	feed=LNG event=gen+167K+6000kPa] sink1atm emptyBag2 nodes3 r<1e-4	ls57,lim22,BEchg2,reopen19
+cold	12	E7	23	feed=LNG+CO2gas event=pipe sink1atm warmMeetsCold LNGsourceBackPressured nodes7 r=-	cyc21
+cold	15	B	13	feed=LNG event=pipe+tank sink1atm flashJ2 emptyBag2 nodes8 r>=1	cyc6,ls3,lim8,nonfinite2
+cold	19	E5	27	feed=LNG+CO2gas event=void sink1atm warmMeetsCold LNGsourceBackPressured nodes9 r>=1	cyc1,ls18,lim1
+cold	29	B	29	feed=LNG event=pipe noIslandPrint dev=tankx2+pump r=-	ls2,lim9,reopen1,nonfinite9
+cold	48	E6	15	feed=LNG+CO2gas event=pipe sink1atm emptyBag2 nodes6 r<1e-4	lim20,BEchg2
+cold	61	E7	24	feed=LNG+CO2gas event=pipe sink1atm emptyBag1 warmMeetsCold LNGsourceBackPressured comp nodes8 r=-	cyc18,ls1,lim1
+cold	77	E7	26	feed=LNG event=pipe noIslandPrint dev=tankx1+voidx2 r=-	cyc17,lim3
+cold	85	E7	28	feed=LNG interval flashJ2 bubbleJ1 boilingTank blockedLine nodes7 r=-	cyc20
+cold	101	E5	18	feed=LNG+CO2gas interval boilingTank warmMeetsCold blockedLine caps1 nodes8 r<1	ls17,lim3,BEchg2,solidTr1
+cold	110	B	20	feed=LNG event=pipe noIslandPrint dev=tankx2+voidx1+valve r=-	cyc4,ls8,lim1,nonfinite6
+cold	116	E6	27	feed=LNG+CO2gas event=pipe noIslandPrint dev=voidx1+pump+valve+filterx1 r<1e-4	cyc3,lim17
+cold	118	E7	24	feed=LNG event=pipe+pump noIslandPrint dev=tankx1+pump+comp+valve+filterx1 r=-	cyc20
+cold	161	B	22	feed=LNG event=pipe sink1atm flashJ2 nodes6 r>=1	cyc5,ls14,nonfinite1
+cold	178	E6	24	feed=LNG+CO2gas interval sink1atm flashJ1 bubbleJ1 boilingTank caps1 nodes6 r<1	cyc13,lim20
+cold	181	E7	18	feed=LNG+CO2gas interval sink1atm flashJ1 bubbleJ1 boilingTank emptyBag1 pumpInletWrongPhase pump nodes6 r=-	cyc20
+cold	183	E7	25	feed=LNG event=pipe noIslandPrint dev=tankx1+voidx1+filterx1 r=-	cyc16,ls3,lim1
+cold	206	B	15	feed=LNG event=void sink1atm flashJ2 liquidFullTank nodes7 r>=1	cyc1,ls11,lim2,nonfinite6
+cold	214	B	22	feed=LNG+CO2gas event=pipe+filter noIslandPrint dev=voidx1+valve+filterx2 r=-	cyc11,ls2,lim5,nonfinite2
+cold	220	B	23	feed=LNG event=pipe sink1atm flashJ1 emptyBag1 nodes5 r=-	cyc7,ls7,lim5,nonfinite1
+cold	244	B	29	feed=LNG event=gen+148K+1429kPa]+pipe noIslandPrint dev=tankx1+voidx2+valve r>=1	cyc5,ls9,lim5,nonfinite1
+cold	246	E7	27	feed=LNG event=pipe noIslandPrint dev=tankx1+pump+filterx1 r=-	cyc20
+cold	248	E6	15	feed=LNG+CO2gas event=gen+149K+2860kPa] noIslandPrint dev=tankx1 r<1e-4	cyc23,lim20,BEchg1
+cold	272	E7	15	feed=LNG event=tank sink1atm flashJ1 emptyBag1 nodes5 r=-	cyc20
+cold	274	E5	20	feed=LNG event=gen+141K+1816kPa] noIslandPrint dev=tankx2+valve r>=1	ls17,lim3
+cold	303	E7	24	feed=LNG+CO2gas event=pipe noIslandPrint dev=tankx1+voidx2+pump+filterx2 r=-	cyc20
+cold	311	E5	28	feed=LNG event=pipe+filter noIslandPrint dev=tankx1+pump+valve+filterx1 r<1	cyc1,ls18,lim1
+cold	348	E6	26	feed=CO2gas event=pipe noIslandPrint dev=tankx2+voidx2+valve+filterx1 r<1e-4	cyc17,lim20
+cold	397	E5	18	feed=LNG interval sink1atm flashJ1 boilingTank emptyBag2 pumpHeadLimit pump nodes6 r<1	ls19,lim1,reopen20
+cold	424	E5	15	feed=LNG+CO2gas event=pump+pipe sink1atm flashJ1 liquidFullTank warmMeetsCold LNGsourceBackPressured comp nodes7 r>=1	ls20
+cold	430	E5	12	feed=LNG+CO2gas event=pipe sink1atm emptyBag1 warmMeetsCold LNGsourceBackPressured nodes6 r>=1	cyc2,ls18
+cold	431	E6	27	feed=LNG event=pipe noIslandPrint dev=tankx3+valve r<1e-4	cyc3,ls64,lim11,BEchg6
+cold	437	B	25	feed=LNG event=gen+144K+1340kPa] flashJ3 pump nodes10 r<1	ls2,lim9,nonfinite9
+cold	446	E5	27	feed=LNG+CO2gas event=pipe+valve sink1atm flashJ3 boilingTank warmMeetsCold LNGsourceBackPressured caps5 nodes15 r<1e-4	cyc1,ls42,lim22
+cold	473	E8	22	feed=LNG event=void noIslandPrint dev=tankx3+voidx1+comp+filterx2 r<1e-4	ls1,lim6,gate515
+cold	475	E6	27	feed=LNG interval sink1atm flashJ1 vesselBubble1 boilingTank blockedLine nodes10 r<1e-4	lim20,solidTr8
+cold	480	E5	29	feed=LNG+CO2gas event=pipe sink1atm warmMeetsCold caps2 nodes9 r<1	cyc8,ls67,lim10
+cold	518	E7	17	feed=LNG+CO2gas interval bubbleJ1 boilingTank warmMeetsCold nodes4 r=-	cyc20
+cold	521	E8	14	feed=LNG interval sink1atm liquidFullTank blockedLine nodes4 r=-	solidOvf520
+cold	534	E6	25	feed=LNG+CO2gas event=pipe sink1atm flashJ4 boilingTank warmMeetsCold LNGsourceBackPressured nodes12 r<1	cyc2,lim18
+cold	535	E7	12	feed=CO2gas event=pipe sink1atm nodes5 r=-	cyc20
+cold	543	E7	16	feed=LNG interval sink1atm liquidFullTank boilingTank aboveEverySource LNGsourceBackPressured blockedLine nodes7 r=-	cyc17,lim3,solidTr10
+cold	547	E5	17	feed=LNG event=gen+153K+1833kPa] noIslandPrint dev=tankx1+voidx2+valve r>=1	cyc6,ls14
+cold	555	E6	29	feed=LNG event=pipe noIslandPrint dev=tankx2+voidx1+comp+filterx1 r<1e-4	cyc8,ls3,lim9
+cold	567	B	20	feed=LNG event=pipe sink1atm flashJ2 emptyBag1 nodes8 r=-	cyc4,ls6,lim2,nonfinite5
+cold	589	E2	20	feed=LNG+CO2gas event=pipe noIslandPrint dev=voidx1+valve r=-	
+cold	592	E7	19	feed=LNG interval noIslandPrint dev=tankx1+voidx1+comp r=-	cyc19,lim1
+cold	598	B	15	feed=LNG+CO2gas event=pipe sink1atm flashJ2 boilingTank emptyBag1 warmMeetsCold LNGsourceBackPressured nodes9 r=-	cyc19,nonfinite1
+cold	619	E5	13	feed=CO2gas event=pipe sink1atm emptyBag1 nodes7 r>=1	ls19,lim1
+cold	628	B	15	feed=LNG event=pipe sink1atm flashJ2 emptyBag1 nodes7 r=-	cyc10,ls6,lim1,nonfinite3
+cold	629	E5	26	feed=LNG+CO2gas event=- flashJ1 boilingTank warmMeetsCold LNGsourceBackPressured caps1 nodes10 r<1e-4	cyc11,ls60,lim2,BEchg3
+cold	645	B	26	feed=LNG+CO2gas event=pipe flashJ2 warmMeetsCold LNGsourceBackPressured nodes8 r<1	cyc5,ls13,lim1,nonfinite1
+cold	650	E6	10	feed=LNG event=- bubbleJ1 boilingTank nodes3 r<1	cyc7,lim19
+cold	651	E5	22	feed=LNG interval sink1atm flashJ5 boilingTank blockedLine caps7 nodes11 r>=1	cyc19,ls20,BEchg2
+cold	654	E6	32	feed=LNG+CO2gas event=pipe sink1atm warmMeetsCold LNGsourceBackPressured comp nodes15 r<1e-4	cyc3,lim17
+cold	673	B	19	feed=LNG event=pipe+gen+152K+2157kPa] sink1atm flashJ3 boilingTank LNGsourceBackPressured nodes11 r>=1	cyc5,ls3,lim8,nonfinite3
+cold	680	E7	15	feed=CO2gas event=pipe sink1atm nodes6 r=-	cyc20
+cold	685	E8	12	feed=LNG+CO2gas event=- boilingTank warmMeetsCold caps2 nodes4 r<1	ls503,lim13,BEchg1
+cold	694	B	7	feed=LNG event=gen+161K+4568kPa] sink1atm flashJ1 emptyBag1 valve nodes5 r=-	cyc14,ls5,nonfinite1
+cold	709	E7	10	feed=LNG+CO2gas event=pipe liquidFullTank warmMeetsCold valve nodes5 r=-	cyc20
+cold	720	B	17	feed=LNG event=pipe+tank noIslandPrint dev=tankx3+voidx1 r>=1	cyc2,ls14,lim1,nonfinite1
+cold	727	E5	29	feed=LNG event=pipe sink1atm flashJ3 comp nodes10 r>=1	cyc3,ls13,lim4
+cold	729	E5	11	feed=LNG+CO2gas interval flashJ2 liquidFullTank boilingTank warmMeetsCold caps1 nodes10 r<1	cyc21,ls47
+cold	757	E6	29	feed=LNG interval flashJ3 boilingTank caps1 pumpHeadLimit pump nodes8 r<1	ls4,lim16
+cold	768	B	27	feed=LNG event=pipe noIslandPrint dev=voidx1+pump+comp r>=1	lim19,nonfinite1
+cold	774	E7	15	feed=LNG event=void+filter sink1atm flashJ1 nodes4 r=-	cyc15,ls4,lim1
+cold	780	E6	23	feed=CO2gas event=pipe sink1atm emptyBag1 caps4 nodes9 r<1	lim20
+cold	786	E6	13	feed=LNG event=pipe sink1atm emptyBag1 nodes7 r<1	lim20
+cold	788	E5	26	feed=LNG event=pipe noIslandPrint dev=tankx1+voidx1+pump+filterx2 r>=1	ls20
+cold	792	E6	14	feed=LNG interval flashJ1 boilingTank LNGsourceBackPressured caps3 nodes7 r<1e-4	cyc18,lim18,BEchg2
+cold	803	B	25	feed=LNG+CO2gas event=pipe sink1atm flashJ2 emptyBag1 warmMeetsCold nodes7 r=-	cyc6,ls10,lim1,nonfinite3
+cold	824	E5	27	feed=LNG+CO2gas event=pipe sink1atm warmMeetsCold LNGsourceBackPressured nodes10 r<1	cyc1,ls20,lim2
+cold	833	E7	23	feed=LNG event=pipe noIslandPrint dev=tankx1+voidx1+comp+valve+filterx1 r=-	cyc9,ls3,lim8
+cold	850	E5	27	feed=LNG+CO2gas event=pipe noIslandPrint dev=tankx1+pump+comp+valve+filterx1 r<1	cyc4,ls19
+cold	855	E7	26	feed=LNG event=pipe noIslandPrint dev=tankx1+voidx1+filterx1 r=-	cyc20
+cold	857	E7	20	feed=LNG event=pipe noIslandPrint dev=tankx1 r=-	cyc20
+cold	866	E7	22	feed=LNG event=pipe boilingTank nodes10 r=-	cyc20
+cold	878	E7	25	feed=LNG+CO2gas event=pipe bubbleJ1 warmMeetsCold nodes4 r=-	cyc19,lim1
+cold	886	E6	25	feed=LNG+CO2gas interval sink1atm flashJ2 liquidFullTank warmMeetsCold nodes9 r<1e-4	cyc22,lim20,BEchg1
+cold	896	B	28	feed=LNG event=pipe noIslandPrint dev=tankx1+pump+valve r>=1	ls17,lim1,nonfinite2
+cold	897	B	10	feed=LNG event=pipe sink1atm flashJ1 emptyBag1 nodes4 r<1e-4	cyc1,ls83,lim4,nonfinite1
+cold	907	B	29	feed=LNG event=pipe noIslandPrint dev=tankx1+voidx1+valve+filterx1 r=-	cyc9,ls2,lim6,nonfinite3
+cold	919	B	15	feed=LNG event=pipe noIslandPrint dev=tankx2+voidx1+comp+filterx1 r=-	cyc12,lim1,nonfinite7
+cold	957	B	27	feed=LNG event=pipe sink1atm flashJ3 boilingTank nodes7 r=-	nonfinite20
+cold	961	E7	29	feed=LNG interval boilingTank nodes4 r=-	cyc20
+cold	976	E6	23	feed=LNG event=pipe sink1atm flashJ1 boilingTank valve nodes9 r<1e-4	lim20
+cold	978	E7	25	feed=CO2gas event=gen+287K+5071kPa] noIslandPrint dev=voidx1+filterx2 r=-	cyc20
+cold	988	B	25	feed=LNG event=pipe noIslandPrint dev=tankx1+pump+filterx2 r=-	cyc4,ls1,lim1,nonfinite14
+cold	990	E7	30	feed=LNG event=pipe noIslandPrint dev=tankx1+voidx1+pump+comp+valve+filterx1 r=-	cyc20

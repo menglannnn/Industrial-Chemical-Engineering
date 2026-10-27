@@ -1,0 +1,23 @@
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+index 94089155..fa78ec29 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+@@ -1772,6 +1772,18 @@ public final class PassiveStepSolver {
+                 if(illegalWithEitherDensity(graph,pipe,q))boundaryClosed[i]=true;
+             }
+         }
++        // SCRATCH t18 "tie" (never commit): on a structure not accepted yet, a connection with a one-way end (a generator or
++        // a void) whose static drive in its allowed direction is at or below the gauge (D42) carries nothing: closed.
++        if(NetworkReduction.t18("tie")&&!(acceptedPipes.equals(identities(graph))&&Arrays.equals(acceptedNodeIds,nodeIds(graph)))) {
++            var drives=NetworkReduction.drives(graph,model);
++            for(int i=0;i<edges;i++) {
++                var pipe=graph.pipes().get(i);
++                if(boundaryClosed[i]||!(pipe.control() instanceof FlowControl.Passive)||keep!=null&&keep[i])continue;
++                var a=graph.reservoirs().get(pipe.first()).kind();var b=graph.reservoirs().get(pipe.second()).kind();
++                boolean oneWay=a==PassiveNetwork.NodeKind.GENERATOR||a==PassiveNetwork.NodeKind.VOID||b==PassiveNetwork.NodeKind.GENERATOR||b==PassiveNetwork.NodeKind.VOID;
++                if(oneWay&&!(drives[i][0]>NetworkReduction.REST_RESOLUTION)&&!(drives[i][1]>NetworkReduction.REST_RESOLUTION))boundaryClosed[i]=true;
++            }
++        }
+     }
+     /**
+      * Whether a connection in {@code mode} relates the pressures of its two ends: every open connection except one whose

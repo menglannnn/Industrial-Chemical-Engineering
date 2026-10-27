@@ -1,0 +1,380 @@
+commit 7cb42268831b94207047bce2d17cfbf7b6fe1ee1
+Author:     wormzjl <wormzjl@gmail.com>
+AuthorDate: Sat Oct 24 16:22:34 2026 +0800
+Commit:     wormzjl <wormzjl@gmail.com>
+CommitDate: Sat Oct 24 16:22:34 2026 +0800
+
+    Place mover arrows behind equipment connection flanges
+
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index da8e7baf..f3140015 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -20,7 +20,7 @@ All notable changes to Industrial Chemical Engineering (IChemE, formerly CreateC
+ - Pipeline Check Valve accessory for straight pipes: aim-directed arrows fitted to the casting facets, queued empty-hand direction reversal, permanent one-way transport that survives solid-closure reopening, and survival installation/recovery without replacing pipe identity/settings; checkpoint 18 / storage-unit 11 requires a fresh world (commits `4e5c504d`, `9ffb294f`, batch: `2026-10-24-pipeline-check-valve`).
+ - Pipeline Shutoff Valve accessory for straight pipes: scalable flanged ball-valve housing and quarter-turn lever, empty-hand open/close controls, axis-locked mechanical joints and queued hydraulic isolation/reopening that preserves pipe identity and equipment contents; checkpoint 17 / storage-unit 10 requires a fresh world (commit `4dd96fde`, batch: `2026-10-23-pipeline-shutoff-valve`).
+ - Fluid Void displays accepted incoming fluid/solid composition; Fluid Generators gain a persistent On/Off switch, place Off and show feed phase ratios; shared fluid equipment screens switch all flow rates and suction-flow inputs between seconds and hours, and reservoirs show current/maximum volume (commits `0f208c52`, `89168361`, batch: `2026-10-23-fluid-device-controls-display`).
+-- Constructed pump and compressor suction/discharge connections gain scalable, word-free flow arrows on the adjoining pipe section only, aligned with each port's actual role, with no duplicate equipment-side marking (commits `07e45392`, `e612cff3`, batch: `2026-10-23-mover-port-markings`).
++- Constructed pump and compressor suction/discharge connections gain scalable, word-free flow arrows aligned with each port's actual role (commits `07e45392`, `e612cff3`, batch: `2026-10-23-mover-port-markings`).
+ - Constructed centrifugal pumps and reciprocating/centrifugal compressors gain persistent On/Off controls, retaining setpoints while Off closes flow, plus requested positional running audio and matching animation state; one-block devices keep their behavior, and checkpoint 15 / storage-unit 8 requires a fresh world (commits `4b4634f1`, `6e5c07e9`, batch: `2026-10-23-pump-compressor-switch-sound`).
+ - Pipeline Sight Glass accessory for existing straight pipe sections: scalable cast housing with recessed round windows facing the installing player, passing-liquid colour and multiphase turbidity, requested display updates, survival recovery and automatic removal when a pipe becomes a corner or junction (commits `465f8af8`, `e1bffe54`, `065683c6`, batch: `2026-10-23-pipeline-sight-glass`).
+ - Constructed centrifugal pumps and reciprocating/centrifugal compressors now operate through their suction/discharge nozzles with existing self-powered flow/pressure controls, phase protections, equipment GUI/datasheet access and persistent settings; fluid checkpoint 14 / storage-unit format 7 requires a fresh world (commit `4e96e8ab`, batch: `2026-10-23-functional-pumps-compressors`).
+@@ -28,6 +28,8 @@ All notable changes to Industrial Chemical Engineering (IChemE, formerly CreateC
+ 
+ ### Fixed
+ 
++- Move constructed pump/compressor flow arrows onto equipment nozzle necks behind their connection flanges; remove redundant inner pump flanges and pipe-side arrow metadata while preserving connection positions and check-valve markings (batch: `2026-10-24-mover-equipment-arrows`).
++
+ - Keep a carried mover-limit rate result's phase basis with its flow/head guesses, resolving WTI pump-rate convergence holds; report accepted pump pressure/suction limits, inlet refusals and blocked forward flow through the normal equipment error status while retaining genuine solver failures (commits `9fa53354`, `c49f6654`, `98f3dce3`, batch: `2026-10-24-wti-pumping-rate-hold`).
+ - Preserve accepted pressure-valve modes between implicit substeps, resolving spurious closure and convergence failures at equal-setpoint two-phase drum outlets while retaining the existing valve laws and conservation checks (commit `83e88bd0`, batch: `2026-10-23-valve-regime-convergence`).
+ - Incompatible fluid checkpoint, pack or storage-unit versions now reset the simulation and rebuild placed pipes and complete equipment on chunk load, discarding fluid inventories/settings/pending edits instead of crashing world startup; current-format data still validates strictly (commit `49e57860`, batch: `2026-10-23-fluid-format-reset`).
+diff --git a/src/main/java/com/wormzjl/icheme/client/model/EquipmentShellModel.java b/src/main/java/com/wormzjl/icheme/client/model/EquipmentShellModel.java
+index 8b7c91c9..72eda970 100644
+--- a/src/main/java/com/wormzjl/icheme/client/model/EquipmentShellModel.java
++++ b/src/main/java/com/wormzjl/icheme/client/model/EquipmentShellModel.java
+@@ -3,6 +3,7 @@ package com.wormzjl.icheme.client.model;
+ import com.wormzjl.icheme.IChemE;
+ import com.wormzjl.icheme.client.MachineAnimation;
+ import com.wormzjl.icheme.science.equipment.Mesh;
++import com.wormzjl.icheme.science.equipment.MoverPortMarkings;
+ import com.wormzjl.icheme.science.equipment.ShapeRasterizer;
+ import com.wormzjl.icheme.world.level.block.entity.EquipmentShellBlockEntity;
+ import net.minecraft.client.renderer.RenderType;
+@@ -90,9 +91,16 @@ public final class EquipmentShellModel implements IDynamicBakedModel {
+      * quads carry its paint channel as their tint index, so the cell's paint colours them as the chunk is meshed.
+      */
+     private Baked bake(ShapeRasterizer.CellKey key) {
+-        var still = bake(ShapeRasterizer.surface(key), sprites, true);
++        var markings = bake(MoverPortMarkings.surface(key), sprites, true);
++        var still = marked(bake(ShapeRasterizer.surface(key), sprites, true), markings);
+         if (!ShapeRasterizer.moves(key)) return new Baked(still, still);
+-        return new Baked(still, bake(ShapeRasterizer.fixedSurface(key), sprites, true));
++        return new Baked(still, marked(bake(ShapeRasterizer.fixedSurface(key), sprites, true), markings));
++    }
++
++    private static List<BakedQuad> marked(List<BakedQuad> surface,List<BakedQuad> markings) {
++        if(markings.isEmpty())return surface;
++        var out=new ArrayList<BakedQuad>(surface.size()+markings.size());out.addAll(surface);out.addAll(markings);
++        return List.copyOf(out);
+     }
+ 
+     /**
+diff --git a/src/main/java/com/wormzjl/icheme/client/model/FluidDeviceModel.java b/src/main/java/com/wormzjl/icheme/client/model/FluidDeviceModel.java
+index d2f5a33a..bc32adcd 100644
+--- a/src/main/java/com/wormzjl/icheme/client/model/FluidDeviceModel.java
++++ b/src/main/java/com/wormzjl/icheme/client/model/FluidDeviceModel.java
+@@ -2,7 +2,6 @@ package com.wormzjl.icheme.client.model;
+ 
+ import com.wormzjl.icheme.IChemE;
+ import com.wormzjl.icheme.science.equipment.LineGeometry;
+-import com.wormzjl.icheme.science.equipment.MoverPortMarkings;
+ import com.wormzjl.icheme.science.equipment.PipeSizes;
+ import com.wormzjl.icheme.science.equipment.SightGlassGeometry;
+ import com.wormzjl.icheme.science.equipment.ShutoffValveGeometry;
+@@ -60,7 +59,7 @@ public final class FluidDeviceModel implements IDynamicBakedModel {
+     private final TextureAtlasSprite[] sprites;
+     private final TextureAtlasSprite particle;
+     private final ItemTransforms transforms;
+-    private record Look(SightGlassGeometry.Key geometry,boolean sightGlass,FluidDeviceBlock.Shutoff shutoff,int moverPorts){}
++    private record Look(SightGlassGeometry.Key geometry,boolean sightGlass,FluidDeviceBlock.Shutoff shutoff){}
+     private record Baked(List<BakedQuad> solid,List<BakedQuad> glass){}
+     private final Map<Look,Baked> quads = new ConcurrentHashMap<>();
+ 
+@@ -78,9 +77,8 @@ public final class FluidDeviceModel implements IDynamicBakedModel {
+     public List<BakedQuad> getQuads(@Nullable BlockState state, @Nullable Direction side, RandomSource random, ModelData data, @Nullable RenderType renderType) {
+         if (side != null) return List.of();
+         var geometry=state!=null&&state.getBlock() instanceof FluidDeviceBlock?sightGlassKey(state,data):new SightGlassGeometry.Key(LineGeometry.Key.item(kind));
+-        var drawn=data.get(FluidDeviceBlockEntity.DRAWN);
+         var shutoff=checkAccessory?FluidDeviceBlock.Shutoff.CHECK:shutoffAccessory?FluidDeviceBlock.Shutoff.OPEN:state!=null&&FluidDeviceBlock.hasPipeValve(state)?state.getValue(FluidDeviceBlock.SHUTOFF):FluidDeviceBlock.Shutoff.NONE;
+-        var key = new Look(geometry,accessory||state!=null&&FluidDeviceBlock.hasSightGlass(state),shutoff,kind==TopologyCompiler.Kind.PIPE&&state!=null&&drawn!=null?drawn.moverPorts():0);
++        var key = new Look(geometry,accessory||state!=null&&FluidDeviceBlock.hasSightGlass(state),shutoff);
+         var cached = quads.get(key);
+         if(cached==null){if(quads.size()>=CACHE)quads.clear();cached=quads.computeIfAbsent(key,this::bake);}
+         if(renderType==RenderType.translucent())return cached.glass;
+@@ -89,17 +87,11 @@ public final class FluidDeviceModel implements IDynamicBakedModel {
+     }
+ 
+     private Baked bake(Look look) {
+-        if(look.shutoff==FluidDeviceBlock.Shutoff.CHECK)return new Baked(marked(CheckValveGeometry.polygons(look.geometry.pipe(),checkAccessory),look.moverPorts),List.of());
+-        if(look.shutoff!=FluidDeviceBlock.Shutoff.NONE)return new Baked(marked(ShutoffValveGeometry.polygons(look.geometry.pipe(),look.shutoff==FluidDeviceBlock.Shutoff.OPEN,shutoffAccessory),look.moverPorts),List.of());
+-        if(!look.sightGlass)return new Baked(marked(LineGeometry.polygons(look.geometry.pipe()),look.moverPorts),List.of());
++        if(look.shutoff==FluidDeviceBlock.Shutoff.CHECK)return new Baked(EquipmentShellModel.bake(CheckValveGeometry.polygons(look.geometry.pipe(),checkAccessory),sprites,false),List.of());
++        if(look.shutoff!=FluidDeviceBlock.Shutoff.NONE)return new Baked(EquipmentShellModel.bake(ShutoffValveGeometry.polygons(look.geometry.pipe(),look.shutoff==FluidDeviceBlock.Shutoff.OPEN,shutoffAccessory),sprites,false),List.of());
++        if(!look.sightGlass)return new Baked(EquipmentShellModel.bake(LineGeometry.polygons(look.geometry.pipe()),sprites,false),List.of());
+         var geometry=SightGlassGeometry.build(look.geometry,accessory);
+-        return new Baked(marked(geometry.metal(),look.moverPorts),EquipmentShellModel.bake(geometry.glass(),sprites,false));
+-    }
+-
+-    private List<BakedQuad> marked(List<com.wormzjl.icheme.science.equipment.Mesh.Polygon> surface,int ports) {
+-        if(ports==0)return EquipmentShellModel.bake(surface,sprites,false);
+-        var out=new java.util.ArrayList<>(surface);out.addAll(MoverPortMarkings.pipe(surface,ports));
+-        return EquipmentShellModel.bake(out,sprites,false);
++        return new Baked(EquipmentShellModel.bake(geometry.metal(),sprites,false),EquipmentShellModel.bake(geometry.glass(),sprites,false));
+     }
+ 
+     /** Installation orientation is part of both the chunk-model and liquid-surface cache key. */
+diff --git a/src/main/java/com/wormzjl/icheme/science/equipment/MoverPortMarkings.java b/src/main/java/com/wormzjl/icheme/science/equipment/MoverPortMarkings.java
+index c04520fa..c094f015 100644
+--- a/src/main/java/com/wormzjl/icheme/science/equipment/MoverPortMarkings.java
++++ b/src/main/java/com/wormzjl/icheme/science/equipment/MoverPortMarkings.java
+@@ -7,60 +7,42 @@ import java.util.List;
+ import java.util.LinkedHashMap;
+ import java.util.LinkedHashSet;
+ 
+-/** Static painted flow arrows on pipes adjoining constructed movers, independent of process state and collision. */
++/** Static flow arrows on constructed mover nozzles and valve castings, independent of process state and collision. */
+ public final class MoverPortMarkings {
+     private MoverPortMarkings() {}
+ 
+-    /** Arrows on the actual exposed pipe facets adjoining mover ports: two role bits per Minecraft face. */
+-    public static List<Mesh.Polygon> pipe(List<Mesh.Polygon> surface,int roles) {
+-        if(roles==0)return List.of();
+-        var mesh=new Mesh();double[] centre={.5,.5,.5};
+-        for(int face=0;face<6;face++) {
+-            int role=roles>>>(2*face)&3;if(role!=1&&role!=2)continue;
+-            double[] axis=LineGeometry.step(face);
+-            var patches=new LinkedHashMap<Plane,Patch>();
+-            for(var polygon:surface) {
+-                if(polygon.material()!=Mesh.Material.PIPE||polygon.size()<3)continue;
+-                double[] p=polygon.positions(),a={p[3]-p[0],p[4]-p[1],p[5]-p[2]},b={p[6]-p[0],p[7]-p[1],p[8]-p[2]};
+-                var normal=Mesh.cross(a,b);double norm=Math.sqrt(Mesh.dot(normal,normal));if(norm<1e-9)continue;
+-                for(int i=0;i<3;i++)normal[i]/=norm;
+-                if(Math.abs(Mesh.dot(normal,axis))>1e-6)continue; // Flat axial necks only, never reducers or window faces.
+-                var side=Mesh.cross(axis,normal);
+-                double low=Double.POSITIVE_INFINITY,high=Double.NEGATIVE_INFINITY,left=low,right=high,radius=0;
+-                for(int i=0;i<p.length;i+=3) {
+-                    double[] delta={p[i]-.5,p[i+1]-.5,p[i+2]-.5};
+-                    double along=Mesh.dot(delta,axis),across=Mesh.dot(delta,side);
+-                    low=Math.min(low,along);high=Math.max(high,along);left=Math.min(left,across);right=Math.max(right,across);
+-                    radius=Mesh.dot(delta,normal);
+-                }
+-                low=Math.max(.12,low);high=Math.min(.42,high);
+-                if(high<=low||radius<=0)continue;
+-                var plane=new Plane(Math.round(normal[0]*1e6),Math.round(normal[1]*1e6),Math.round(normal[2]*1e6),Math.round(radius*1e6));
+-                var patch=patches.get(plane);
+-                if(patch==null){patch=new Patch(normal,radius);patches.put(plane,patch);}
+-                patch.low=Math.min(patch.low,low);patch.high=Math.max(patch.high,high);
+-                patch.left=Math.min(patch.left,left);patch.right=Math.max(patch.right,right);
+-            }
+-            // The hub and neck, and UV tile boundaries, can split one plane. Paint one arrow over their union.
+-            var selected=new LinkedHashSet<Patch>();var reference=LineGeometry.ref(face);var tangent=Mesh.cross(axis,reference);
+-            for(int q=0;q<4;q++) {
+-                double angle=Math.PI/8+q*Math.PI/2,c=DeterministicMath.cos(angle),s=DeterministicMath.sin(angle),best=-2;
+-                Patch choice=null;
+-                for(var patch:patches.values()) {
+-                    double score=c*Mesh.dot(patch.normal,reference)+s*Mesh.dot(patch.normal,tangent);
+-                    if(score>best){best=score;choice=patch;}
+-                }
+-                if(choice!=null)selected.add(choice);
+-            }
+-            for(var patch:selected) {
+-                double low=patch.low+.003,high=patch.high-.003,length=Math.min(.28,high-low),width=.82*(patch.right-patch.left);
+-                if(length<.025||width<.005)continue;
+-                var side=Mesh.cross(axis,patch.normal);var origin=centre.clone();
+-                for(int i=0;i<3;i++)origin[i]+=.5*(patch.left+patch.right)*side[i];
+-                badge(new Label(mesh,new Mesh.Frame(origin,axis,patch.normal),patch.radius,(low+high)/2,role==1?1:-1),length,width);
+-            }
++    /** One arrow band on each process nozzle, clipped into the equipment cells that own its neck. */
++    public static List<Mesh.Polygon> surface(ShapeRasterizer.CellKey key) {
++        if(!key.shape().kind().mover())return List.of();
++        var cell=new ShapeRasterizer.Cell(key.x(),key.y(),key.z());
++        var nozzles=key.shape().nozzles();var out=new ArrayList<Mesh.Polygon>();int reaching=0;
++        for(int k=0;k<nozzles.size();k++) {
++            if(!ShapeRasterizer.nozzleCells(key.shape(),k).contains(cell))continue;
++            int code=(int)(key.nozzles()>>>(7*reaching++))&127;
++            var nozzle=nozzles.get(k);
++            if(nozzle.role()!=EquipmentShape.Role.SUCTION&&nozzle.role()!=EquipmentShape.Role.DISCHARGE)continue;
++            double od=code==0?nozzle.defaultOd():PipeSizes.outsideOf(code);
++            var mesh=new Mesh();mesh.transform(key.shape().transform());mark(mesh,nozzle,od);
++            out.addAll(mesh.cell(cell.x(),cell.y(),cell.z()));
++        }
++        return List.copyOf(out);
++    }
++
++    private static void mark(Mesh mesh,EquipmentShape.Nozzle nozzle,double od) {
++        int sides=PipeSizes.sides(od),flow=nozzle.role()==EquipmentShape.Role.SUCTION?-1:1;
++        // Stay on the equipment neck, clear of the flange plate and its bolts.
++        double end=nozzle.length()-PipeSizes.flangeThickness(od)-.055;
++        double length=Math.min(.65,Math.min(end-.02,Math.max(.28,1.6*od)));
++        if(length<=.02)return;
++        double width=.82*od*DeterministicMath.sin(Math.PI/sides);
++        double radius=od/2*DeterministicMath.cos(Math.PI/sides);
++        var frame=Mesh.Frame.of(nozzle.base(),nozzle.axis(),nozzle.sign());var tangent=frame.side();
++        for(int side=0;side<4;side++) {
++            double angle=2*Math.PI*(side*sides/4+.5)/sides;
++            double c=DeterministicMath.cos(angle),s=DeterministicMath.sin(angle);var normal=new double[3];
++            for(int i=0;i<3;i++)normal[i]=c*frame.ref()[i]+s*tangent[i];
++            badge(new Label(mesh,new Mesh.Frame(frame.origin(),frame.axis(),normal),radius,end-length/2,flow),length,width);
+         }
+-        return List.copyOf(mesh.cell(0,0,0));
+     }
+ 
+     private record Plane(long nx,long ny,long nz,long radius) {}
+diff --git a/src/main/java/com/wormzjl/icheme/science/equipment/ProcessUnit.java b/src/main/java/com/wormzjl/icheme/science/equipment/ProcessUnit.java
+index 9d033c3b..40524ac3 100644
+--- a/src/main/java/com/wormzjl/icheme/science/equipment/ProcessUnit.java
++++ b/src/main/java/com/wormzjl/icheme/science/equipment/ProcessUnit.java
+@@ -1204,8 +1204,8 @@ public final class ProcessUnit {
+         double rh = .45 * di, rv0 = .55 * di, rv1 = .88 * di, width = .4 * di + .06, joint = .82 * di, tj = .04 + .04 * di;
+         double plate = .15 + .1 * di, rm = motorDiameter(pumpPower(d)) / 2, lm = 3.2 * rm + .1, fin = .025 + .06 * rm;
+         double rb = .08 + .22 * di, lb = .3 + .6 * di, lk = .2 + .3 * di, guard = .12 + .2 * di, spacer = .15 + .25 * di, shaft = .03 + .05 * di;
+-        // The pump's own Class 300 flanges: about 15 % wider and 30 % thicker than the line's Class 150.
+-        double fs = 1.15 * PipeSizes.flange(s) / 2, ts = 1.3 * PipeSizes.flangeThickness(s), fd = 1.15 * PipeSizes.flange(d) / 2, td = 1.3 * PipeSizes.flangeThickness(d);
++        // Keep the established port clearances; the shared nozzle mesh draws the flange at the connection face.
++        double ts = 1.3 * PipeSizes.flangeThickness(s), td = 1.3 * PipeSizes.flangeThickness(d);
+         double bell = .08 + .7 * s, pot = d >= .1 ? .07 + .1 * d : 0;
+         double half = Math.max(Math.max(rv1, joint) + .14, Math.max(Math.max(rm + fin, guard) + .08, pot > 0 ? .55 * di + 2 * pot + .17 : 0));
+         double a = centre(half + .12);
+@@ -1213,15 +1213,13 @@ public final class ProcessUnit {
+         // clears the baseplate by 0.06 m, the pedestals taking what the plinth does not.
+         double y = Math.max(.5, Math.ceil(.15 + .04 + plate + .06 + rv1 - .5) + .5);
+         double plinth = Math.max(.15, Math.min(.45, y - rv1 - .3 - plate - .04)), top = plinth + .04 + plate;
+-        // Along z: the line's spool, the suction flange and bell, the casing (its middle on a cell centre, the discharge's
++        // Along z: the line's spool, the suction neck and bell, the casing (its middle on a cell centre, the discharge's
+         // line), the cover, the bracket, the bearing housing, the spacer under its guard, the motor.
+         double zc = Math.ceil(.25 + ts + bell + .3 * width - .5) + .5, z0 = zc - width / 2, z1 = zc + width / 2, zh = zc - .3 * width, zf = zh - bell - ts;
+         double zk = z1 + tj, zb0 = zk + lk, zb1 = zb0 + lb, zm0 = zb1 + .08 + spacer, zm1 = zm0 + lm, cowl = zm1 - .18 * lm, seal = zk + .45 * lk;
+         var f = Frame.of(new double[]{a, y, 0}, 2, 1);
+         int n = sides(2 * rv1), nm = sides(2 * rm), nb = sides(2 * rb);
+-        // The suction flange and bell, the volute and its hub, the cover with its joint ring of studs.
+-        mesh.cylinder(f, fs, zf, zf + ts, n, Material.FLANGE);
+-        mesh.bolts(f, s, .5 * s + .03, fs, zf, -1, Material.BOLT);
++        // The suction bell, the volute and its hub, the cover with its joint ring of studs.
+         mesh.frustum(f, .5 * s + .04, .43 * s + .04, zf + ts, zh, n, Material.MACHINE);
+         scroll(a, y, z0, z1, zh, rh, rv0, rv1);
+         mesh.prism(f, rh, zh, z1, n, Material.MACHINE);
+@@ -1268,9 +1266,6 @@ public final class ProcessUnit {
+         double hx = .6 * d + .03, hz = Math.min(.6 * d + .03, .45 * width), neck = y + rv1 + .12 + .2 * d;
+         box(new double[]{a - hx, y + rh, zc - hz}, new double[]{a + hx, y + .98 * rv0, zc + hz}, Material.MACHINE, false);
+         transition(1, a - hx, a + hx, zc - hz, zc + hz, y + .98 * rv0, a, zc, .5 * d + .025, neck, 4 * ((sides(d) + 3) / 4), Material.MACHINE, false);
+-        var up = Frame.of(new double[]{a, 0, zc}, 1, 1);
+-        mesh.cylinder(up, fd, neck, neck + td, n, Material.FLANGE);
+-        mesh.bolts(up, d, .5 * d + .03, fd, neck + td, 1, Material.BOLT);
+         // The baseplate on its grout line and chamfered plinth: its drain rim and drain.
+         double zp0 = z0 - .1, zp1 = zm1 + .05;
+         box(new double[]{a - half, plinth + .04, zp0}, new double[]{a + half, top, zp1}, Material.STEELWORK, true);
+@@ -1305,9 +1300,10 @@ public final class ProcessUnit {
+         solids.add(Solid.rod(new double[]{a, y, 0}, 2, zf, zk, Math.max(rv1, joint), 0));
+         solids.add(Solid.rod(new double[]{a, y, 0}, 2, zk, zb1 + .03, Math.max(rb + .03, .62 * di), 0));
+         round(a, y, z0, z1, rv1);
+-        // The suction's line from its flange to the box's front face; the discharge's up from the neck's flange.
+-        nozzles.add(new Nozzle(Role.SUCTION, new double[]{a, y, zf + .02}, 2, -1, zf + .02, s, 0));
+-        double base0 = neck + td - .01, face = Math.ceil(neck + td + EquipmentShape.STAND_OUT);
++        // One equipment neck behind each connection flange, with a small overlap into its casting.
++        double suctionBase=zf+ts+.01;
++        nozzles.add(new Nozzle(Role.SUCTION, new double[]{a, y, suctionBase}, 2, -1, suctionBase, s, 0));
++        double base0 = neck - .01, face = Math.ceil(neck + td + EquipmentShape.STAND_OUT);
+         nozzles.add(new Nozzle(Role.DISCHARGE, new double[]{a, base0, zc}, 1, 1, face - base0, d, 0));
+     }
+ 
+@@ -1364,16 +1360,16 @@ public final class ProcessUnit {
+                 box(new double[]{x - .025, y + split, z - .025}, new double[]{x + .025, y + split + .06, z + .025}, Material.BOLT, false);
+             }
+         for (double z : new double[]{zc - .3 * lc, zc + .3 * lc}) box(new double[]{a - .03, y + rc - .05, z - .08}, new double[]{a + .03, y + rc + .12, z + .08}, Material.MACHINE, false);
+-        // The suction branch to the constructor's right (-x), the discharge branch to its left, each with its Class 300 flange.
++        // Cast branches blend into the sized equipment necks; only the connection face carries a flange.
++        double root=rv+.05;
+         for (int side = -1; side <= 1; side += 2) {
+-            double bore = side < 0 ? s : d, reach = side < 0 ? reachS : reachD, fr = side < 0 ? fs : fd, ft = side < 0 ? ts : td;
++            double bore = side < 0 ? s : d;
+             var branch = Frame.of(new double[]{a, yn, zc}, 0, side);
+             int nn = sides(bore + .1);
+-            mesh.frustum(branch, .6 * bore + .06, .5 * bore + .04, .5 * lx, reach, nn, Material.MACHINE);
+-            mesh.cylinder(branch, fr, reach, reach + ft, nn, Material.FLANGE);
+-            mesh.bolts(branch, bore, .5 * bore + .03, fr, reach + ft, 1, Material.BOLT);
+-            double inner = a + side * .5 * lx, outer = a + side * (reach + ft);
+-            solids.add(Solid.rod(new double[]{0, yn, zc}, 0, Math.min(inner, outer), Math.max(inner, outer), Math.max(fr, .6 * bore + .06), 0));
++            mesh.frustum(branch, .6 * bore + .06, .5 * bore + .04, .5 * lx, root+.01, nn, Material.MACHINE);
++            mesh.annulus(branch,0,.5*bore+.04,root+.01,nn,1,Material.MACHINE);
++            double inner = a + side * .5 * lx, outer = a + side * (root+.01);
++            solids.add(Solid.rod(new double[]{0, yn, zc}, 0, Math.min(inner, outer), Math.max(inner, outer), .6 * bore + .06, 0));
+         }
+         // The brackets, seal chambers and finned bearing housings at both ends; the shaft through them.
+         bracket(f, rb + .03, .45 * di, zf1, z0, n);
+@@ -1413,10 +1409,12 @@ public final class ProcessUnit {
+         volumes.add(Solid.rod(new double[]{a, y, 0}, 2, z0 + .05, z1 - .05, rc - .05, 0));
+         volumes.add(Solid.box(new double[]{a - lx + .05, low + .05, z0 + .05}, new double[]{a + lx - .05, y, z1 - .05}));
+         round(a, y, zc - wv / 2, zc + wv / 2, rv);
+-        // The nozzles: from each flange's face to the block face beyond it.
+-        double bs = a - reachS - ts + .02, bd = a + reachD + td - .02;
+-        nozzles.add(new Nozzle(Role.SUCTION, new double[]{bs, yn, zc}, 0, -1, bs - Math.floor(bs - .03 - EquipmentShape.STAND_OUT), s, 0));
+-        nozzles.add(new Nozzle(Role.DISCHARGE, new double[]{bd, yn, zc}, 0, 1, Math.ceil(bd + .03 + EquipmentShape.STAND_OUT) - bd, d, 0));
++        // Preserve both connection planes while giving their necks clear space behind the flange.
++        double outerS=a-reachS-ts+.02,outerD=a+reachD+td-.02;
++        double faceS=Math.floor(outerS-.03-EquipmentShape.STAND_OUT),faceD=Math.ceil(outerD+.03+EquipmentShape.STAND_OUT);
++        double bs=a-root,bd=a+root;
++        nozzles.add(new Nozzle(Role.SUCTION, new double[]{bs, yn, zc}, 0, -1, bs-faceS, s, 0));
++        nozzles.add(new Nozzle(Role.DISCHARGE, new double[]{bd, yn, zc}, 0, 1, faceD-bd, d, 0));
+     }
+ 
+     /**
+diff --git a/src/main/java/com/wormzjl/icheme/world/level/block/entity/FluidDeviceBlockEntity.java b/src/main/java/com/wormzjl/icheme/world/level/block/entity/FluidDeviceBlockEntity.java
+index 7ed2d144..ddb662c2 100644
+--- a/src/main/java/com/wormzjl/icheme/world/level/block/entity/FluidDeviceBlockEntity.java
++++ b/src/main/java/com/wormzjl/icheme/world/level/block/entity/FluidDeviceBlockEntity.java
+@@ -50,7 +50,7 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements FluidVi
+      * What the model needs beyond the block state: the bore, the line met at each face (seven bits each), the faces whose
+      * joint is flanged (a bit each: a line meeting equipment or a vessel nozzle), and whether this pipe ends a spool.
+      */
+-    public record Drawn(double bore, long faces, int flanged, boolean spool, int moverPorts) {
++    public record Drawn(double bore, long faces, int flanged, boolean spool) {
+         public int face(Direction direction) {
+             return (int) (faces >>> (7 * direction.ordinal()) & 127);
+         }
+@@ -66,8 +66,6 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements FluidVi
+     private long identity;
+     private FluidView lastView;
+     private double bore = .05;
+-    /** Static neighboring nozzle roles: 0 none, 1 suction, 2 discharge, two bits per face. Rebuilt, never saved. */
+-    private int moverPorts;
+     private final byte[] faces = new byte[6];
+     public FluidDeviceBlockEntity(BlockPos pos,BlockState state){super(ModBlockEntities.FLUID_DEVICE.get(),pos,state);}
+     @Override public long fluidIdentity(){return identity;}
+@@ -128,13 +126,12 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements FluidVi
+         }
+     }
+     /** Server: recompute the faces from the neighbours; true when they changed. */
+-    public boolean refreshFaces(){var before=faces.clone();int oldPorts=moverPorts;computeFaces();return oldPorts!=moverPorts||!Arrays.equals(before,faces);}
++    public boolean refreshFaces(){var before=faces.clone();computeFaces();return !Arrays.equals(before,faces);}
+     public void refreshFacesAndSync(){if(refreshFaces())sync();}
+     private void sync(){setChanged();if(level!=null)level.sendBlockUpdated(worldPosition,getBlockState(),getBlockState(),2);}
+     private void computeFaces() {
+         if(level==null)return;
+         boolean pipe=kind()==TopologyCompiler.Kind.PIPE;
+-        moverPorts=0;
+         for(var direction:Direction.values()) {
+             int code=0;boolean flanged=false;
+             if(getBlockState().getValue(FluidDeviceBlock.connection(direction))&&level.isLoaded(worldPosition.relative(direction))) {
+@@ -151,10 +148,6 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements FluidVi
+                     // The vessel's flange is the pipe's size, its neck too (owner decision 2026-10-21: a 1 m pipe has a 1 m root): the pipe's flange matches it.
+                     if(nozzle!=null){
+                         code=PipeSizes.code(PipeSizes.outside(bore));flanged=true;
+-                        if(shell.shape()!=null&&shell.shape().kind().mover()) {
+-                            int role=switch(nozzle.role()){case SUCTION->1;case DISCHARGE->2;default->0;};
+-                            moverPorts|=role<<(2*direction.ordinal());
+-                        }
+                     }
+                 }
+             }
+@@ -184,11 +177,10 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements FluidVi
+     @Override protected void saveAdditional(CompoundTag tag,HolderLookup.Provider registries){super.saveAdditional(tag,registries);tag.putLong("FluidIdentity",identity);}
+     @Override protected void loadAdditional(CompoundTag tag,HolderLookup.Provider registries){
+         super.loadAdditional(tag,registries);identity=tag.getLong("FluidIdentity");lastView=null;
+-        int roles=tag.getInt("MoverPorts");moverPorts=roles>=0&&roles<=0xfff?roles:0;
+         if(tag.contains("Bore")){double read=tag.getDouble("Bore");if(read>0&&read<=1)bore=read;}
+         if(tag.contains("Faces")){var read=tag.getByteArray("Faces");if(read.length==6)for(int i=0;i<6;i++){int v=read[i]&255;faces[i]=(byte)(Math.min(64,v&127)|v&FLANGED);}}
+     }
+-    @Override public CompoundTag getUpdateTag(HolderLookup.Provider registries){var tag=new CompoundTag();tag.putLong("FluidIdentity",identity);tag.putDouble("Bore",bore);tag.putByteArray("Faces",faces.clone());tag.putInt("MoverPorts",moverPorts);return tag;}
++    @Override public CompoundTag getUpdateTag(HolderLookup.Provider registries){var tag=new CompoundTag();tag.putLong("FluidIdentity",identity);tag.putDouble("Bore",bore);tag.putByteArray("Faces",faces.clone());return tag;}
+     @Override public ClientboundBlockEntityDataPacket getUpdatePacket(){return ClientboundBlockEntityDataPacket.create(this);}
+     /** Drawn geometry that arrives after the block was meshed: refresh the model data and rebuild the section. */
+     @Override public void onDataPacket(net.minecraft.network.Connection connection,ClientboundBlockEntityDataPacket packet,HolderLookup.Provider registries) {
+@@ -198,7 +190,7 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements FluidVi
+     @Override public ModelData getModelData() {
+         long packed=0;int flanged=0;
+         for(int i=0;i<6;i++){packed|=(long)(faces[i]&127)<<(7*i);if((faces[i]&FLANGED)!=0)flanged|=1<<i;}
+-        return ModelData.of(DRAWN,new Drawn(bore,packed,flanged,spoolEnd(),moverPorts));
++        return ModelData.of(DRAWN,new Drawn(bore,packed,flanged,spoolEnd()));
+     }
+     /** A straight pipe whose coordinate along its run is a multiple of {@link #SPOOL}: it carries the flange pair between spools. */
+     private boolean spoolEnd() {

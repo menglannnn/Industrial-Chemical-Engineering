@@ -1,0 +1,6 @@
+marked 376, banded 372, none 4, fewer than 4 sides 0; band length p10 0.194 p50 0.280 p90 0.650 min 0.100; 1419 ms
+bands shorter than 0.20 m: 60
+none    COLUMN d=0.50 REFLUX od=0.100
+none    COLUMN d=0.50 FEED od=0.100
+none    COLUMN d=0.50 VAPOUR_RETURN od=0.150
+none    COLUMN d=15.00 VAPOUR_OUTLET od=0.800

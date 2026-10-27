@@ -1,0 +1,19 @@
+# Support and large-bore layout review
+
+Implementation b2269322, codex/inline-mover-supports,2026-10-25. Base is the paused integration candidate ccf3a5d3; target claude/floating-roof-tanks-81d68b remains ff9fdfed. Merge/client launch remain paused at the owner's request.
+
+Expected: every visible support rests on the block below. Large machines have enough room between their connection flanges for a legible lower casting, without extending their wet end into the supporting block.
+
+Previously the foot followed the chamber bottom, leaving small machines floating; large chambers/feet could extend below the host cell. Compact flange pairs also squeezed large castings along the pipe. The casting's per-triangle box projection introduced abrupt texture-axis changes.
+
+- mountingFeet now puts the bottom face exactly at local y=0, with at least1/32m plate/column thickness. The chamber bottom stays at least0.11m above that plane; the drain and flattened large-bore inlet passage also stay above the support block. Existing motor/coupling/gearbox form remains.
+- boundaryJoints selects block-face joints above drawn-size code14 (approximately0.2m bore;0.2m remains compact and0.21m uses borders). Precision follows the existing1/64m outside-diameter key: the actual transition is about0.206m bore. Geometry and FluidDeviceBlock.hasBoundaryFitting use the same selector, so adjacent pipes draw their matching native flange half after the existing scheduled diameter publication.
+- Large models use normal square-shouldered boundary flanges/joint seams/reducers. Their casing can use more axial room. Native one-block flange sizing matches adjacent pipes; small models retain compact paired joints and recessed throats.
+- Curved scroll/passage/bowl walls use continuous wrapped UV frames per patch instead of switching box projection across triangles. Shared native mesh clipping keeps those coordinates across cell boundaries. Materials/textures are unchanged.
+- Verification: one existing expanded geometry test passes, zero failures/errors/skips; jar successful with no client running. Covers four headings, both models and six bores around the threshold/extremes, finite vertices, winding, y>=0, downward support face at y=0, and the presence/absence of flange faces at both block borders. No new test class/GameTest.
+-242 native software views generated: seven bores, four headings, both models, three angles/lower closeups, item views and14 connected-pipe scenes. Reviewed the support-layout sheet,0.4m lower casing and1m connected pump; previous sheets are in renders-before-supports. No Minecraft/desktop input or in-game lighting/chunk-sync claim.
+- No physics, storage, identity, collision, settings, format or protocol change. Checkpoint19/unit12, accessory1, fluid-14/instruments-1, mod0.11.2 retained.
+- Tooling: tools/inline-mover-accessories; support-layout-verification.json and logs/support-layout-logs-2026-10-25.tar.gz. No detached tracked probe, Gradle switch/task or gate membership change. Guide/index/changelog updated.
+- Paused pre-revision candidate qualification: quick1402/2 and slow185/1, all three remaining failure messages exactly match retained baseline; stale checkpoint assertion is now current and two filter regressions were repaired in ccf3a5d3. That qualification precedes this revision and is not claimed for the final geometry. Required full quick/slow must run again if integration resumes.
+
+Integration update2026-10-25: owner resumed; all final changes integrated into claude/floating-roof-tanks-81d68b as f658697c. Quick1409/1 and slow185/1, two exact retained baseline failures/no new failure; ten local files preserved; target compile/package passes and client running. This supersedes feature-delivery pause status. See documentation/2026-10-25-sight-glass-ratio-seams-sound/MERGE_REVIEW.md.

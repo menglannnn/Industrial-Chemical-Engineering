@@ -1,0 +1,33 @@
+  node[1] id=3 JUNCTION y=-59.0 P=101325.0 mass=997.0480319717385 rho=997.0480319717385 liquid=1.0 vapour=0.0 solidKg=0.0 storedSolidKg=0.0
+  node[3] id=-3 JUNCTION y=-59.0 P=101325.0 mass=997.0480319717385 rho=997.0480319717385 liquid=1.0 vapour=0.0 solidKg=0.0 storedSolidKg=0.0
+  node[1] id=3 JUNCTION y=-59.0 P=399992.03190214984 mass=1072.323237601792 rho=1072.323278637835 liquid=0.9500000038603859 vapour=0.0 solidKg=124.99989467815904 storedSolidKg=1.1411913145075545
+  node[4] id=-3 JUNCTION y=-59.0 P=101380.38034400638 mass=947.3233429236333 rho=997.031095781708 liquid=0.9501442301364712 vapour=0.0 solidKg=0.0 storedSolidKg=0.0
+  node[1] id=3 JUNCTION y=-59.0 P=400000.0 mass=947.3233429236329 rho=997.1824662354031 liquid=0.9500000000000001 vapour=0.0 solidKg=0.0 storedSolidKg=0.0
+  node[3] id=-3 JUNCTION y=-59.0 P=400000.0 mass=947.3233429236329 rho=997.1824662354031 liquid=0.9500000000000001 vapour=0.0 solidKg=0.0 storedSolidKg=0.0
+  node[1] id=3 JUNCTION y=-59.0 P=400000.0 mass=947.3233429236329 rho=997.1824662354031 liquid=0.9500000000000001 vapour=0.0 solidKg=0.0 storedSolidKg=0.0
+  node[3] id=-3 JUNCTION y=-59.0 P=400000.0 mass=947.3233429236329 rho=997.1824662354031 liquid=0.9500000000000001 vapour=0.0 solidKg=0.0 storedSolidKg=0.0
+  node[1] id=3 JUNCTION y=-59.0 P=400000.0 mass=997.1824662354031 rho=997.1824662354031 liquid=1.0 vapour=0.0 solidKg=0.0 storedSolidKg=0.0
+  node[3] id=-3 JUNCTION y=-59.0 P=400000.0 mass=997.1824662354031 rho=997.1824662354031 liquid=1.0 vapour=0.0 solidKg=0.0 storedSolidKg=0.0
+  node 1 id=3 JUNCTION z=-59.0 P=98690.90245291877 T=298.1505833550904 m=1.0
+  node 3 id=9 JUNCTION z=-59.0 P=93422.70382004864 T=298.1517500636031 m=0.9999999999999999
+  node 4 id=13 JUNCTION z=-59.0 P=219433.92615247684 T=298.1565939646315 m=1.0000000000000002
+  node 5 id=19 JUNCTION z=-59.0 P=200000.0 T=298.1608976818554 m=1.0000000000000002
+  node 7 id=-8 JUNCTION z=-59.0 P=210535.79059394667 T=298.1585644974728 m=1.0
+LIQUID_JUNCTION interval=5 generators:0.05 m_J=9.784 kg Q(1s)=54.02 kg/s m_J/Q=0.1811 s mismatch(1s)=-0.000389 mismatch(end)=1.39e-09 perSlice=[-0.000389,-4.12e-07,-4.35e-10,1.39e-09] junctionShare=2.30e-15 ms=8 newtonSolves=13
+LIQUID_JUNCTION interval=5 generators:0.02 m_J=1.565 kg Q(1s)=4.832 kg/s m_J/Q=0.3240 s mismatch(1s)=-0.00173 mismatch(end)=9.19e-09 perSlice=[-0.00173,-8.23e-06,-3.91e-08,9.19e-09] junctionShare=2.94e-15 ms=2 newtonSolves=13
+LIQUID_JUNCTION interval=5 tanks:0.05 m_J=9.784 kg Q(1s)=0.006672 kg/s m_J/Q=1466 s mismatch(1s)=-0.353 mismatch(end)=NaN perSlice=[-0.353,NaN,NaN,NaN] junctionShare=2.09e-16 ms=2 newtonSolves=4
+LIQUID_JUNCTION interval=5 tanks:0.02 m_J=1.565 kg Q(1s)=0.006672 kg/s m_J/Q=234.6 s mismatch(1s)=-0.347 mismatch(end)=NaN perSlice=[-0.347,NaN,NaN,NaN] junctionShare=1.64e-16 ms=2 newtonSolves=4
+LIQUID_JUNCTION interval=0.1 generators:0.05 m_J=9.784 kg Q(1s)=54.02 kg/s m_J/Q=0.1811 s tauFit(1.0-1.1s)=0.1810 s mismatch(1s)=-0.00289 mismatch(end)=2.23e-15 junctionShare=4.19e-16 ms=34
+LIQUID_JUNCTION interval=0.1 generators:0.02 m_J=1.565 kg Q(1s)=4.832 kg/s m_J/Q=0.3240 s tauFit(1.0-1.1s)=0.3241 s mismatch(1s)=-0.0189 mismatch(end)=-6.68e-15 junctionShare=3.27e-16 ms=25
+LIQUID_JUNCTION interval=0.1 tanks:0.05 m_J=9.784 kg Q(1s)=0.000 kg/s m_J/Q=Infinity s tauFit(1.0-1.1s)=NaN s mismatch(1s)=NaN mismatch(end)=NaN junctionShare=2.09e-16 ms=3
+LIQUID_JUNCTION interval=0.1 tanks:0.02 m_J=1.565 kg Q(1s)=0.000 kg/s m_J/Q=Infinity s tauFit(1.0-1.1s)=NaN s mismatch(1s)=NaN mismatch(end)=NaN junctionShare=1.64e-16 ms=3
+MIXED_GAS_COST interval=5 cases=12 ms=59 newtonSolves=299 allocatedMB=92.6
+JUNCTION_ARRIVING_PHASE waterToVoidKg=18.32124218978892 junctionLiquidWaterMassShare=1.0 junctionT=298.1489172931493
+JUNCTION_WATER_TRACE bulk 0.005 interval=0.1 slices=40 accepted=40 rejected=0 worstComponentLedger=3.1612381657618205E-16 worstEnergyLedger=4.069439305644648E-16 junctionWaterFraction=0.004999999999999992 waterToVoid=0.004269306209369472
+JUNCTION_WATER_TRACE bulk 0.005 interval=5.0 slices=4 accepted=12 rejected=0 worstComponentLedger=3.9800506742706195E-16 worstEnergyLedger=2.108012653075884E-16 junctionWaterFraction=0.005 waterToVoid=0.020717041973499863
+JUNCTION_WATER_TRACE bulk 0.01 interval=0.1 slices=40 accepted=40 rejected=0 worstComponentLedger=2.986238093048319E-16 worstEnergyLedger=4.5571504160876915E-16 junctionWaterFraction=0.009999999999999986 waterToVoid=0.008546541745282518
+JUNCTION_WATER_TRACE bulk 0.01 interval=5.0 slices=4 accepted=12 rejected=0 worstComponentLedger=3.0001275725508695E-16 worstEnergyLedger=1.3310086635003816E-16 junctionWaterFraction=0.009999999999999998 waterToVoid=0.04147158880137947
+JUNCTION_WATER_TRACE vapor port interval=0.1 slices=40 accepted=40 rejected=0 worstComponentLedger=3.5762748232961257E-16 worstEnergyLedger=4.327166157241804E-16 junctionWaterFraction=0.016171986352270393 waterToVoid=0.01361715740036189
+JUNCTION_WATER_TRACE vapor port interval=5.0 slices=4 accepted=12 rejected=0 worstComponentLedger=1.8851681239080354E-16 worstEnergyLedger=3.170910213233179E-16 junctionWaterFraction=0.017542426057635764 waterToVoid=0.06741332891091968
+PHASE_PORT_JUNCTIONS interval=0.1 worstComponentLedger=1.7046558185949368E-16 worstEnergyLedger=4.2062625995516817E-16 gasLineNitrogenFraction=0.9839923501066126 liquidLineWaterFraction=1.0
+PHASE_PORT_JUNCTIONS interval=5.0 worstComponentLedger=2.439182309534219E-16 worstEnergyLedger=1.778859953995425E-16 gasLineNitrogenFraction=0.9834281276672638 liquidLineWaterFraction=1.0

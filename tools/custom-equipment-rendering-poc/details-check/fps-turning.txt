@@ -1,0 +1,1 @@
+fpsprobe 60 60 fans-turning

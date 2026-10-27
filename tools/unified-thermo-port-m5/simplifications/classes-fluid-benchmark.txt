@@ -1,0 +1,3 @@
+com.wormzjl.createcheme.fluid.benchmark.FluidNetworkBenchmarkTest
+com.wormzjl.createcheme.fluid.benchmark.FluidPropertyBenchmarkTest
+com.wormzjl.createcheme.fluid.benchmark.FluidSolverRegressionTest

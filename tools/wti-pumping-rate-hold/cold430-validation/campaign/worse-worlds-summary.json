@@ -1,0 +1,312 @@
+{
+  "historical-c49:101": {
+    "header": "SEED 101 blocks=18 ms=8459 end=13292 holds=33 classes=[e:new] refused=0 islands=25:STEADY: no flow since 76.6 s;31:HELD: Substep refinement exhausted: Newton line search stall; crystalKg=16.0413 crystalVessels=3",
+    "ticks": [
+      1294,
+      1307,
+      1409,
+      1510,
+      1612,
+      1713,
+      1813,
+      1916,
+      2016,
+      2116,
+      2216,
+      2316,
+      2420,
+      2520,
+      2620,
+      2720,
+      2825,
+      2930,
+      3030,
+      3130,
+      3231,
+      3331,
+      3431,
+      3532,
+      3632,
+      3733,
+      3833,
+      3933,
+      4133,
+      4533,
+      5333,
+      6933,
+      10133
+    ],
+    "first": {
+      "tick": 1294,
+      "island": 28,
+      "committed": 1281,
+      "status": "HELD: Substep refinement exhausted: Newton iteration limit at residual 1.0214498258970433E-5; active-set pass=1; reasons={Newton iteration limit at residual #; active-set pass=#=17, Backward-Euler state change #=5, Newton line search stalled at residual #; active-set pass=#=4, Solid transport transition inside the step=2}"
+    },
+    "last": {
+      "tick": 10133,
+      "island": 31,
+      "committed": 1919,
+      "status": "HELD: Substep refinement exhausted: Newton line search stalled at residual 1.4726403656793678E-9; active-set pass=0; reasons={Newton line search stalled at residual #; active-set pass=#=52}"
+    }
+  },
+  "historical-c49:220": {
+    "header": "SEED 220 blocks=23 ms=2966 end=14578 holds=4 classes=[b:trace-underflow] refused=0 islands=35:STEADY: no flow since 118.8 s;37:STEADY: no flow since 137.3 s;39:STEADY: replaying 72.25 kg/s since 150.3 s, next check at 78; crystalKg=3.27268 crystalVessels=1",
+    "ticks": [
+      2053,
+      2153,
+      2353,
+      2579
+    ],
+    "first": {
+      "tick": 2053,
+      "island": 34,
+      "committed": 2049,
+      "status": "HELD: Substep refinement exhausted: Newton line search stalled at residual 227.71911188324464; active-set pass=4; reasons={Newton line search stalled at residual #; active-set pass=#=19, Matrix values must be finite=1}"
+    },
+    "last": {
+      "tick": 2579,
+      "island": 34,
+      "committed": 2049,
+      "status": "HELD: Substep refinement exhausted: Newton line search stalled at residual 227.71911188324464; active-set pass=4; reasons={Newton line search stalled at residual #; active-set pass=#=19, Matrix values must be finite=1}"
+    }
+  },
+  "historical-c49:855": {
+    "header": "SEED 855 blocks=26 ms=4715 end=13888 holds=9 classes=[e:new] refused=0 islands=30:STEADY: no flow since 103.4 s;39:STEADY: no flow since 109.3 s;43:HELD: Substep refinement exhausted: Newton iteration limit a; crystalKg=0.287485 crystalVessels=1",
+    "ticks": [
+      1886,
+      1889,
+      1891,
+      1991,
+      2191,
+      2591,
+      3391,
+      4991,
+      8191
+    ],
+    "first": {
+      "tick": 1886,
+      "island": 41,
+      "committed": 1884,
+      "status": "HELD: Substep refinement exhausted: Newton iteration limit at residual 0.12667684041321886; active-set pass=1; reasons={Newton line search stalled at residual #=18, Newton iteration limit at residual #; active-set pass=#=2}"
+    },
+    "last": {
+      "tick": 8191,
+      "island": 43,
+      "committed": 1888,
+      "status": "HELD: Substep refinement exhausted: Newton iteration limit at residual 0.12667684041321886; active-set pass=1; reasons={Newton line search stalled at residual #=18, Newton iteration limit at residual #; active-set pass=#=2}"
+    }
+  },
+  "historical-c49:907": {
+    "header": "SEED 907 blocks=29 ms=137618 end=14860 holds=10 classes=[e:new] refused=0 islands=26:STEADY: no flow since 99.7 s;49:STEADY: no flow since 157.6 s;51:STEADY: replaying 66.16 kg/s since 596.6 s, next check at 60; crystalKg=11.4166 crystalVessels=5",
+    "ticks": [
+      2875,
+      2975,
+      3075,
+      3175,
+      3275,
+      3478,
+      3578,
+      3682,
+      3782,
+      3883
+    ],
+    "first": {
+      "tick": 2875,
+      "island": 51,
+      "committed": 2867,
+      "status": "HELD: wall deadline"
+    },
+    "last": {
+      "tick": 3883,
+      "island": 51,
+      "committed": 2912,
+      "status": "HELD: wall deadline"
+    }
+  },
+  "selected-full:101": {
+    "header": "SEED 101 blocks=18 ms=8872 end=13292 holds=34 classes=[e:new] refused=0 islands=25:STEADY: no flow since 76.6 s;31:HELD: Substep refinement exhausted: Newton iteration limit a; crystalKg=12.5059 crystalVessels=2",
+    "ticks": [
+      1294,
+      1307,
+      1409,
+      1510,
+      1612,
+      1713,
+      1813,
+      1915,
+      2015,
+      2115,
+      2217,
+      2320,
+      2420,
+      2520,
+      2620,
+      2720,
+      2820,
+      2925,
+      3025,
+      3125,
+      3225,
+      3325,
+      3428,
+      3530,
+      3630,
+      3730,
+      3830,
+      3930,
+      4030,
+      4230,
+      4630,
+      5430,
+      7030,
+      10230
+    ],
+    "first": {
+      "tick": 1294,
+      "island": 28,
+      "committed": 1281,
+      "status": "HELD: Substep refinement exhausted: Newton iteration limit at residual 1.0214509628167989E-5; active-set pass=1; reasons={Newton iteration limit at residual #; active-set pass=#=17, Backward-Euler state change #=5, Newton line search stalled at residual #; active-set pass=#=4, Solid transport transition inside the step=2}"
+    },
+    "last": {
+      "tick": 10230,
+      "island": 31,
+      "committed": 1501,
+      "status": "HELD: Substep refinement exhausted: Newton iteration limit at residual 3.836654971336322E-6; active-set pass=1; reasons={Newton line search stalled at residual #; active-set pass=#=8, Solid transport transition inside the step=2, Newton iteration limit at residual #; active-set pass=#=13}"
+    }
+  },
+  "selected-full:220": {
+    "header": "SEED 220 blocks=23 ms=2613 end=14578 holds=11 classes=[b:trace-underflow, e:new] refused=0 islands=35:STEADY: no flow since 118.8 s;37:STEADY: no flow since 137.3 s;39:HELD: Substep refinement exhausted: Newton line search stall; crystalKg=0.00000 crystalVessels=0",
+    "ticks": [
+      2053,
+      2153,
+      2353,
+      2579,
+      2580,
+      2680,
+      2880,
+      3280,
+      4080,
+      5680,
+      8880
+    ],
+    "first": {
+      "tick": 2053,
+      "island": 34,
+      "committed": 2049,
+      "status": "HELD: Substep refinement exhausted: Newton line search stalled at residual 227.71911188324464; active-set pass=4; reasons={Newton line search stalled at residual #; active-set pass=#=19, Matrix values must be finite=1}"
+    },
+    "last": {
+      "tick": 8880,
+      "island": 39,
+      "committed": 2578,
+      "status": "HELD: Substep refinement exhausted: Newton line search stalled at residual 0.4202949741239488; reasons={Newton iteration limit at residual #=1, Newton line search stalled at residual #=19}"
+    }
+  },
+  "selected-full:855": {
+    "header": "SEED 855 blocks=26 ms=19108 end=13888 holds=9 classes=[e:new] refused=0 islands=30:STEADY: no flow since 103.4 s;39:STEADY: no flow since 109.3 s;43:HELD: wall deadline; crystalKg=0.287485 crystalVessels=1",
+    "ticks": [
+      1886,
+      1889,
+      1891,
+      1991,
+      2191,
+      2591,
+      3391,
+      4991,
+      8191
+    ],
+    "first": {
+      "tick": 1886,
+      "island": 41,
+      "committed": 1884,
+      "status": "HELD: wall deadline"
+    },
+    "last": {
+      "tick": 8191,
+      "island": 43,
+      "committed": 1888,
+      "status": "HELD: wall deadline"
+    }
+  },
+  "selected-full:907": {
+    "header": "SEED 907 blocks=29 ms=148659 end=14860 holds=13 classes=[e:new] refused=0 islands=26:STEADY: no flow since 99.7 s;49:STEADY: no flow since 157.6 s;51:STEADY: replaying 66.16 kg/s since 601.6 s, next check at 87; crystalKg=11.4167 crystalVessels=5",
+    "ticks": [
+      2875,
+      2975,
+      3075,
+      3175,
+      3275,
+      3475,
+      3875,
+      4675,
+      6278,
+      6378,
+      6482,
+      6582,
+      6683
+    ],
+    "first": {
+      "tick": 2875,
+      "island": 51,
+      "committed": 2867,
+      "status": "HELD: wall deadline"
+    },
+    "last": {
+      "tick": 6683,
+      "island": 51,
+      "committed": 2912,
+      "status": "HELD: wall deadline"
+    }
+  },
+  "exact-quick-cb89:101": {
+    "header": "SEED 101 blocks=18 ms=7237 end=13292 holds=34 classes=[e:new] refused=0 islands=25:STEADY: no flow since 76.6 s;31:HELD: Substep refinement exhausted: Newton iteration limit a; crystalKg=12.5059 crystalVessels=2",
+    "ticks": [
+      1294,
+      1307,
+      1409,
+      1510,
+      1612,
+      1713,
+      1813,
+      1915,
+      2015,
+      2115,
+      2217,
+      2320,
+      2420,
+      2520,
+      2620,
+      2720,
+      2820,
+      2925,
+      3025,
+      3125,
+      3225,
+      3325,
+      3428,
+      3530,
+      3630,
+      3730,
+      3830,
+      3930,
+      4030,
+      4230,
+      4630,
+      5430,
+      7030,
+      10230
+    ],
+    "first": {
+      "tick": 1294,
+      "island": 28,
+      "committed": 1281,
+      "status": "HELD: Substep refinement exhausted: Newton iteration limit at residual 1.0214509628167989E-5; active-set pass=1; reasons={Newton iteration limit at residual #; active-set pass=#=17, Backward-Euler state change #=5, Newton line search stalled at residual #; active-set pass=#=4, Solid transport transition inside the step=2}"
+    },
+    "last": {
+      "tick": 10230,
+      "island": 31,
+      "committed": 1501,
+      "status": "HELD: Substep refinement exhausted: Newton iteration limit at residual 3.836654971336322E-6; active-set pass=1; reasons={Newton line search stalled at residual #; active-set pass=#=8, Solid transport transition inside the step=2, Newton iteration limit at residual #; active-set pass=#=13}"
+    }
+  }
+}

@@ -1,0 +1,14 @@
+bundled	47	F	27	1826	1726	42	interval	-	wall deadline				crude_360K_281kPa@y-3 CH4_290K_175kPa@y0	tankx1 voidx1 valve[200kPa] filterx1	21p 8j 0.02/0.05	6m	27/27
+bundled	157	E5	24	845	781	34	interval	-	Newton line search stalled at |r|	3.5053167991474326E-8	0	ls28,lim8,tpFail14	crude_389K_353kPa@y-1 water_332K_278kPa@y-1	tankx1 pump[0.01,500kPa] valve[200kPa]	9p 5j 0.01/0.05	1m	14/20
+bundled	241	F	15	4824	4724	26	interval	-	wall deadline				crude_304K_296kPa@y0 water_286K_102kPa@y0	tankx2 voidx1 pump[0.01,500kPa] filterx1	8p 3j 0.01/0.02/0.05	2m	15/15
+bundled	372	E2	25	3536	3436	45	interval	-	Singular Newton Jacobian: Sparse LU rejected a singular matr		0		N2_339K_321kPa@y-2 crude_348K_337kPa@y0	voidx2 valve[200kPa][200kPa][200kPa] filterx1	17p 7j 0.01/0.02/0.05/0.1	5m	25/25
+bundled	430	F	12	4379	4279	20	interval	-	wall deadline				water_341K_236kPa@y-2 crude_326K_142kPa@y-1	tankx1 pump[0.01,1000kPa] comp[0.2,3.0] filterx1	6p 5j 0.02/0.05	2m	12/12
+bundled	431	E6	25	1377	1374	32	event	pipe0.02 gen[crude 386K 135kPa]	Newton iteration limit at |r|	3.887514956073604E-5	1	lim20	crude_386K_135kPa@y0	tankx4 voidx1 pump[0.05,500kPa][0.001,1000kPa] filterx1	12p 8j 0.02/0.05/0.1	4m	21/21
+bundled	446	E6	31	1931	1929	42	event	pipe0.05	Newton iteration limit at |r|	0.004624658558228063	3	ls14,lim6	crude_353K_385kPa@y0 CH4_277K_156kPa@y-1 water_318K_151kPa@y2	voidx1 filterx1	21p 12j 0.01/0.02/0.05/0.1	3m	26/28
+bundled	504	E8	16	1569	1469	20	interval	-	Interval substep limit; no partial interval may commit: 	0.08562808249999951		BEchg25	crude_297K_319kPa@y0	tankx2 pump[0.01,500kPa] comp[0.05,3.0][0.01,1.5] valve[200kPa]	9p 4j 0.02/0.05/0.1	3m	16/16
+bundled	579	E10	24	1907	1904	37	event	pipe0.05	No finite Jacobian trial at variable 0		0		water_347K_168kPa@y0 crude_397K_300kPa@y-5	tankx4 valve[120kPa]	17p 8j 0.01/0.02/0.05/0.1	7m	24/24
+bundled	600	E7	34	3256	3254	53	event	pipe0.02	Phase/device active-set cycle			cyc20	N2_312K_420kPa@y-2	tankx1 voidx1 pump[0.01,500kPa] comp[0.01,1.5] valve[150kPa] filterx2	24p 15j 0.01/0.02/0.05/0.1	6m	32/32
+bundled	698	E8	29	2517	2515	44	event	pipe0.05	Interval substep limit; no partial interval may commit: 		0		crude_356K_238kPa@y0 water_322K_180kPa@y0 water_327K_345kPa@y0	tankx2 voidx1 comp[0.05,3.0] valve[150kPa] filterx1	12p 5j 0.01/0.02/0.05/0.1	4m	21/26
+bundled	752	E5	24	1271	1269	20	event	pipe0.1	Newton line search stalled at |r|	0.4823441821137237	0	ls20	water_333K_328kPa@y-5	tankx2 voidx1 pump[0.01,500kPa]	6p 1j 0.02/0.1	5m	11/15
+bundled	779	E8	17	1267	1167	26	interval	-	Interval substep limit; no partial interval may commit: 	0.12299848043356207		BEchg20	crude_305K_344kPa@y1 CH4_322K_166kPa@y-4	tankx2 pump[0.05,1000kPa][0.01,500kPa] valve[120kPa][200kPa]	9p 3j 0.02/0.05	7m	17/17
+bundled	803	E8	23	2052	2020	32	interval	-	Interval substep limit; no partial interval may commit: 	1.0793882460733547E-8		ls2,lim10,gate509	water_347K_345kPa@y2	tankx3 voidx1 comp[0.2,1.5]	17p 5j 0.05	8m	23/23

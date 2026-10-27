@@ -1,0 +1,62 @@
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+index b43f7d96..743646b7 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+@@ -2356,14 +2356,27 @@ public final class PassiveStepSolver {
+             if(pipe.control() instanceof FlowControl.Mover pump) {
+                 allowed[e][1]=false;var a=graph.reservoirs().get(pipe.first());
+                 if(mode==FlowControl.Mode.PUMP_TARGET)prescribed[e]=suctionMassFlow(pump.targetVolumeFlow(),a.state(),pipe.firstPort());
++                // A pump that arrives on its suction limit is stated as the balance puts one there: its suction junction anchored at
++                // the floor, the pump passing what arrives ({@link #solve} sets the flow once the island balances around it). Anchored
++                // on the hydrocarbon floor alone, a water pump's suction was free again in the next round, the pump drew 72.6 kg/s
++                // on its rise law and the junction fell to the hull's 101 Pa, stated as steam (PumpCavitationTest, starved suction).
++                else if(mode==FlowControl.Mode.PUMP_SUCTION_LIMIT&&a.junction()&&suctionFloor(e)<Double.POSITIVE_INFINITY){anchor[pipe.first()]=suctionFloor(e);suctionLimited[e]=true;prescribed[e]=0;}
+                 else mover[e]=true;
+                 rises+=riseLimit(pump,rho[e][0],a.state().pressure());
+-                if(mode==FlowControl.Mode.PUMP_SUCTION_LIMIT&&a.junction()&&e<suctionFloors.length&&suctionFloors[e]<Double.POSITIVE_INFINITY)anchor[pipe.first()]=suctionFloors[e];
+             } else if(pipe.control() instanceof FlowControl.PressureValve valve) {
+                 allowed[e][1]=false;
+                 if(mode==FlowControl.Mode.VALVE_REGULATING&&graph.reservoirs().get(pipe.first()).junction())anchor[pipe.first()]=valve.targetPressure();
+             }
+         }
++        /** The floor of the liquid the pump on connection {@code e} draws: a two-phase hydrocarbon supplier's own pressure
++         * ({@link #suctionFloors}, K6), or the water curve where its suction junction holds free water (D59 (4)); infinite
++         * where neither. One statement for a pump the balance puts on its suction limit and for one that arrives there. */
++        private double suctionFloor(int e) {
++            var pipe=graph.pipes().get(e);var a=graph.reservoirs().get(pipe.first());var sa=a.state();
++            double floor=e<suctionFloors.length?suctionFloors[e]:Double.POSITIVE_INFINITY;
++            if(a.junction()&&FluidThermodynamics.holdsPhase(sa,FluidThermodynamics.WATER)&&pipe.control() instanceof FlowControl.Pump&&pipe.firstPort()!=PassiveNetwork.PhasePort.VAPOR){try{floor=Math.min(floor,model.saturationPressure(sa.temperature()));}catch(IllegalArgumentException outsideData){}}
++            return floor;
++        }
+         /** Linear interpolation of {@code table} in ln P at {@code pressure}, clamped to the table's range. */
+         private double at(int node,double[] table,double pressure) {
+             double[] tp=tableP[node];if(pressure<=tp[0])return table[0];if(pressure>=tp[TABLE-1])return table[TABLE-1];
+@@ -2517,10 +2530,7 @@ public final class PassiveStepSolver {
+                     double dz=graph.reservoirs().get(b).elevation()-graph.reservoirs().get(a).elevation();
+                     double rhoA=tableP[a]!=null?at(a,tableRho[a],pa):rho[e][0]*scale(a,pa);
+                     if(mode==FlowControl.Mode.PUMP_TARGET&&pb-pa+rhoA*GRAVITY*dz>riseLimit(pump,rhoA,pa)*(1+1e-9)){modes.set(e,FlowControl.Mode.PUMP_HEAD_LIMIT);prescribed[e]=Double.NaN;mover[e]=true;changed=true;continue;}
+-                    // The floor of the liquid the pump draws: a two-phase hydrocarbon supplier's own pressure ({@link #suctionFloors}, K6), or
+-                    // the water curve where the suction junction holds free water (D59 (4)).
+-                    double floor=e<suctionFloors.length?suctionFloors[e]:Double.POSITIVE_INFINITY;var sa=graph.reservoirs().get(a).state();
+-                    if(graph.reservoirs().get(a).junction()&&FluidThermodynamics.holdsPhase(sa,FluidThermodynamics.WATER)&&pipe.control() instanceof FlowControl.Pump&&pipe.firstPort()!=PassiveNetwork.PhasePort.VAPOR){try{floor=Math.min(floor,model.saturationPressure(sa.temperature()));}catch(IllegalArgumentException outsideData){}}
++                    double floor=suctionFloor(e);
+                     if((mode==FlowControl.Mode.PUMP_TARGET||mode==FlowControl.Mode.PUMP_HEAD_LIMIT)&&graph.reservoirs().get(a).junction()&&floor<Double.POSITIVE_INFINITY&&pa<floor*(1-1e-9)) {
+                         modes.set(e,FlowControl.Mode.PUMP_SUCTION_LIMIT);anchor[a]=floor;p[a]=floor;mover[e]=false;suctionLimited[e]=true;prescribed[e]=Math.max(0,inflowExcept(a,e,p));changed=true;
+                     } else if(suctionLimited[e]){double q=Math.max(0,inflowExcept(a,e,p));if(Math.abs(q-prescribed[e])>1e-9*Math.max(1,q)){prescribed[e]=q;changed=true;}}
+diff --git a/src/test/java/com/wormzjl/createcheme/runtime/fluid/PumpCavitationTest.java b/src/test/java/com/wormzjl/createcheme/runtime/fluid/PumpCavitationTest.java
+index 11476ea0..b7f77b64 100644
+--- a/src/test/java/com/wormzjl/createcheme/runtime/fluid/PumpCavitationTest.java
++++ b/src/test/java/com/wormzjl/createcheme/runtime/fluid/PumpCavitationTest.java
+@@ -163,8 +163,10 @@ class PumpCavitationTest {
+         double steam=suction.waterVapor()/(suction.waterLiquid()+suction.waterVapor());
+         System.out.println("PUMP_CAVITATION_ARRIVAL modes="+result.endpointModes()+" flows="+Arrays.toString(result.averageMassFlows())+" suctionP="+suction.pressure()
+                 +" vapourP="+vapour+" suctionT="+suction.temperature()+" steamShare="+steam);
+-        assertEquals(FlowControl.Mode.PUMP_SUCTION_LIMIT,result.endpointModes().get(pump),"the pump cavitates");
+-        assertEquals(vapour,suction.pressure(),1e-3*vapour,"its suction stands at the vapour pressure");
++        // The cavitation is what the gate reads, not the mode's name: the pump stands where its head limit and its suction limit
++        // both bind (owner direction 2026-10-21, BALANCE_CONVERGENCE_REVIEW.md), and either label holds the same suction at the
++        // vapour pressure and the same flow (0.47887 kg/s on the head limit against 0.47882 on the suction limit).
++        assertEquals(vapour,suction.pressure(),1e-3*vapour,"the pump cavitates: its suction stands at the vapour pressure");
+         assertTrue(suction.waterLiquid()>0&&steam<1e-3,"the suction junction holds liquid water beside a trace of steam: "+steam);
+         assertTrue(q>0&&q<.001*suction.mass()/suction.volume(),"it delivers what the line gives, below its target: "+q);
+     }

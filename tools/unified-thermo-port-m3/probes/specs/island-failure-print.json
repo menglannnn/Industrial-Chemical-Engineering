@@ -1,0 +1,6 @@
+[
+ {
+  "from": "            catch(com.wormzjl.createcheme.science.fluid.solver.SparseNewton.Nonconvergence|IllegalArgumentException|ApproximationAnchor.Rejected failed) {\n                cancellationToken.throwIfCancellationRequested();\n                // A failure a typed",
+  "to": "            catch(com.wormzjl.createcheme.science.fluid.solver.SparseNewton.Nonconvergence|IllegalArgumentException|ApproximationAnchor.Rejected failed) {\n                cancellationToken.throwIfCancellationRequested();if(Boolean.getBoolean(\"m3.trace\")){System.out.println(\"M3TRACE island failure\");failed.printStackTrace(System.out);}\n                // A failure a typed"
+ }
+]

@@ -1,0 +1,49 @@
+designs 315, refused 89, side nozzles 1194, off their band 1, turned 249 {DRAW=22, FEED=2, PUMPAROUND_DRAW=20, REFLUX=44, RETURN=48, STEAM=73, VAPOUR_RETURN=40}
+ladders 877, moved 59; davits moved 30; top platform gone 0; clashes: cage 48, deck 0, mast 0
+cage clashes into a pipe block cell: 0
+designs with a deck walk cut between a ladder and the next (or the top manway): 19
+  walk: d 0.5 n 10 kettle: level 9 pieces [360-447] ladder 135
+  walk: d 0.5 n 15 kettle: level 12 pieces [360-447] ladder 135
+  walk: d 0.5 n 15 steam+draw: level 12 pieces [360-447] ladder 135
+  walk: d 0.5 n 20 kettle: level 15 pieces [360-447] ladder 135
+  walk: d 0.5 n 40 kettle: level 27 pieces [360-447] ladder 135
+  walk: d 0.5 n 64 kettle: level 41 pieces [360-447] ladder 135
+  walk: d 1.0 n 3 kettle: level 2 pieces [58-99M] ladder 135
+  walk: d 1.0 n 5 kettle: level 2 pieces [58-99M] ladder 135
+  walk: d 1.0 n 5 steam+draw: level 2 pieces [58-99M] ladder 135
+  walk: d 1.0 n 10 kettle+steam+draw+PA: level 2 pieces [58-99M] ladder 135
+  walk: d 1.0 n 15 kettle+steam+draw+PA: level 2 pieces [58-99M] ladder 135
+  walk: d 1.0 n 20 kettle+steam+draw+PA: level 2 pieces [58-99M] ladder 135
+  off: d 15.0 n 1 steam+draw: STEAM wanted 13.20 at 11.50, side 1
+  d 0.5: designs 7 cage 0 deck 0 mast 0
+  d 1.0: designs 27 cage 24 deck 0 mast 0
+  d 1.5: designs 27 cage 24 deck 0 mast 0
+  d 2.0: designs 27 cage 0 deck 0 mast 0
+  d 3.0: designs 27 cage 0 deck 0 mast 0
+  d 4.0: designs 27 cage 0 deck 0 mast 0
+  d 6.0: designs 28 cage 0 deck 0 mast 0
+  d 8.0: designs 28 cage 0 deck 0 mast 0
+  d 15.0: designs 28 cage 0 deck 0 mast 0
+  refused 4: pumparound 1's draw has no free row by its tray on any side of a N-tray column
+  refused 4: pumparound 1's return has no free row by its tray on any side of a N-tray column
+  refused 12: pumparound 2's draw has no free row by its tray on any side of a N-tray column
+  refused 11: pumparound 2's return has no free row by its tray on any side of a N-tray column
+  refused 36: side draw 1 has no free row by its tray on any side of a N-tray column
+  refused 8: side draw 2 has no free row by its tray on any side of a N-tray column
+  refused 5: steam feed 1 has no free row by its tray on any side of a N-tray column
+  refused 8: the feed nozzle has no free row by its tray on any side of a N-tray column
+  refused 1: the reboiler's vapour return has no free row by its tray on any side of a N-tray column
+d 1.0 n 1 kettle: REFLUX->front FEED->left VAPOUR_RETURN->right clash [1, 0, 0]
+d 1.0 n 3 kettle: clash [1, 0, 0]
+d 1.0 n 3 steam+draw: STEAM->right clash [2, 0, 0]
+d 1.0 n 5 kettle: clash [1, 0, 0]
+d 1.0 n 5 steam+draw: DRAW->front clash [1, 0, 0]
+d 1.0 n 10 kettle+steam+draw+PA: REFLUX->front PUMPAROUND_DRAW->left RETURN->left VAPOUR_RETURN->front DRAW->back clash [1, 0, 0]
+d 1.0 n 15 kettle+steam+draw+PA: REFLUX->front PUMPAROUND_DRAW->front RETURN->left VAPOUR_RETURN->front DRAW->back clash [1, 0, 0]
+d 1.0 n 20 kettle+steam+draw+PA: REFLUX->front PUMPAROUND_DRAW->front RETURN->front VAPOUR_RETURN->front clash [1, 0, 0]
+d 1.0 n 20 full: REFLUX->front PUMPAROUND_DRAW->front RETURN->left VAPOUR_RETURN->front DRAW->back DRAW->front clash [4, 0, 0]
+d 1.0 n 30 kettle+steam+draw+PA: PUMPAROUND_DRAW->front RETURN->front VAPOUR_RETURN->front clash [1, 0, 0]
+d 1.0 n 30 full: PUMPAROUND_DRAW->front RETURN->left VAPOUR_RETURN->front DRAW->front DRAW->right clash [3, 0, 0]
+d 1.0 n 40 kettle+steam+draw+PA: REFLUX->front RETURN->front VAPOUR_RETURN->front DRAW->right clash [1, 0, 0]
+d 1.0 n 40 full: REFLUX->front RETURN->front PUMPAROUND_DRAW->front RETURN->left VAPOUR_RETURN->front DRAW->front clash [3, 0, 0]
+d 1.0 n 64 kettle+steam+draw+PA: REFLUX->front PUMPAROUND_DRAW->front VAPOUR_RETURN->front clash [1, 0, 0]

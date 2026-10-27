@@ -1,0 +1,137 @@
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/HydrocarbonModel.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/HydrocarbonModel.java
+@@ -183,6 +183,13 @@
+                 root==PengRobinsonKernel.Root.VAPOR&&PhaseIdentification.vapourLike(values.phaseIdentificationParameter(),values.compressibility()));
+     }
+ 
++    /** The equation of state's own record of one phase at ({@code t}, {@code p}): its heat capacity and volume derivatives
++     * beside what {@link #phase} keeps (form D of the t38 plan reads the vapour's cp/cv and a liquid's cp from it); the
++     * kernel's refusals pass through as {@link IllegalArgumentException}s. */
++    TranslatedPengRobinson.Values values(double t,double p,double[] amounts,PengRobinsonKernel.Root root) {
++        return translated.evaluateValues(t,p,amounts,root,translated.prepare(t));
++    }
++
+     /**
+      * Whether an evaluated root is liquid-like: {@link PhaseIdentification}'s parameter of the root above one and above the
+      * root's compressibility factor ({@link PhaseIdentification#liquidLike(double, double)}; the one implementation of
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/FluidThermodynamics.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/FluidThermodynamics.java
+@@ -4,6 +4,7 @@
+ import com.wormzjl.createcheme.science.fluid.diagnostics.SolverDiagnostics;
+ import com.wormzjl.createcheme.science.fluid.solver.PhaseLayout;
+ import com.wormzjl.createcheme.science.fluid.transport.MixtureViscosity;
++import com.wormzjl.createcheme.science.math.DeterministicMath;
+ import com.wormzjl.createcheme.science.material.MaterialCatalog;
+ import com.wormzjl.createcheme.science.material.SolidMaterialCatalog;
+ import com.wormzjl.createcheme.science.thermo.NumericalBox;
+@@ -382,8 +383,84 @@
+     public double maximumVelocityMetresPerSecond(){return maximumVelocity;}
+     /** The per-node phase support the step solver freezes its Newton unknowns with. */
+     public TraceTruncationPolicy traceTruncation(){return tracePolicy;}
+-    /** A hydraulic rate bound only; temperature and phase allocation still come from the EOS/energy equations. */
+-    public double velocityLimit(State state){return Math.min(maximumVelocity,isothermalAcousticBound(state));}
++    /** A hydraulic rate bound only; temperature and phase allocation still come from the EOS/energy equations. Form D of the
++     * t38 plan: the bulk stream's choke velocity at the state's density, its choke mass flux ({@link #chokeFlux}) over its
++     * density; the configured maximum is not read. */
++    public double velocityLimit(State state){return chokeFlux(state,-1)/(state.mass()/state.volume());}
++    /**
++     * The choke mass flux (kg/(m2 s)) of what a connection draws from {@code state}: phase {@code GAS}, {@code OIL} or
++     * {@code WATER}, or the bulk ({@code -1}). Form D of the t38 plan (owner request of 2026-10-18): a law with the state's
++     * own pressure dependence in place of a configured velocity.
++     * <ul>
++     * <li>Gas: the isentropic choke of the vapour on the equation of state's own quantities, {@code G* = rho c_T sqrt(gamma)
++     * K(gamma)}, {@code K = (2/(gamma+1))^((gamma+1)/(2(gamma-1)))}, {@code c_T} the isothermal sound speed the acoustic bound
++     * states and {@code gamma = cp/cv} of the vapour ({@code cv = cp + T (dV/dT)^2 / (dV/dP)}), the steam alone at 4/3: equal to
++     * {@code P sqrt(gamma M/(Z R T)) K} for a gas whose Z does not move with pressure, about {@code 0.667 rho c_T} at gamma 1.3
++     * and within 3 % of that from 1.2 to 1.4; near a critical point gamma grows as c_T falls and the product stays finite.</li>
++     * <li>A liquid: Bernoulli to its vapour pressure with the two-phase choke as a floor, {@code G = sqrt(2 rho (P - P_sat) +
++     * G_2^2)}: a flashing liquid cannot pass a throat below P_sat without choking there, and at saturation it still passes
++     * Leung's omega-method flux with its critical pressure ratio near 0.9, {@code G_2 = 0.9 h_lg / (v_lg sqrt(c_pl T))}
++     * ({@link #twoPhaseChokeFlux}); the sum in quadrature is smooth in P. P_sat is the state's own pressure where it holds
++     * vapour (a two-phase node, as K6 reads it), water's saturation curve for the free water, and nothing for a subcooled
++     * hydrocarbon liquid, which overstates its flux by up to a third near its bubble point (seed 397's LNG at 222 kPa: 32
++     * against 24 m/s) and by nothing 3 MPa above it; a bubble-point flash would close that at a flash per node and pass.</li>
++     * <li>The bulk of a state holding more than one phase chokes at the smallest of its phases' fluxes; a state holding no
++     * fluid keeps the acoustic bound's form.</li>
++     * </ul>
++     */
++    public double chokeFlux(State state,int phase) {
++        if(phase<0) {
++            double flux=Double.POSITIVE_INFINITY;
++            if(state.vaporVolume()>0)flux=Math.min(flux,chokeFlux(state,GAS));
++            if(state.liquidVolume()>0)flux=Math.min(flux,chokeFlux(state,OIL));
++            if(state.waterVolume()>0)flux=Math.min(flux,chokeFlux(state,WATER));
++            return flux<Double.POSITIVE_INFINITY?flux:state.mass()/state.volume()*isothermalAcousticBound(state);
++        }
++        if(phase==GAS) {
++            double stiffness=state.waterPartialPressure(),gamma=4.0/3;
++            if(state.vaporProperties()!=null) {
++                var gas=state.vaporProperties();stiffness+=-gas.molarVolume()/gas.volumePressureDerivative();
++                try {
++                    var v=hydrocarbon.values(state.temperature(),state.hydrocarbonPartialPressure(),state.vaporView(),PengRobinsonKernel.Root.VAPOR);
++                    double cp=v.heatCapacity(),dvdt=v.volumeTemperatureDerivative(),dvdp=v.volumePressureDerivative();
++                    double cv=cp+state.temperature()*dvdt*dvdt/dvdp;
++                    if(cv>0&&cp>cv)gamma=cp/cv;
++                }catch(IllegalArgumentException refused){/* gamma stays 4/3 */}
++            }
++            double rho=vaporDensity(state),ct=acoustic(state.vaporVolume(),vaporMass(state),state.vaporVolume()/stiffness);
++            return rho*ct*Math.sqrt(gamma)*DeterministicMath.pow(2/(gamma+1),(gamma+1)/(2*(gamma-1)));
++        }
++        double rho=phaseMass(state,phase)/phaseVolume(state,phase),p=state.pressure(),psat;
++        if(phase==WATER){try{psat=saturationPressure(state.temperature());}catch(IllegalArgumentException outsideData){psat=p;}}
++        else psat=state.vaporVolume()>0?p:0;
++        double floor=phase==WATER||state.vaporVolume()>0?twoPhaseChokeFlux(state,phase):0;
++        return Math.sqrt(Math.max(0,2*rho*(p-psat))+floor*floor);
++    }
++    /**
++     * Leung's two-phase choke flux of a saturated liquid, {@code 0.9 h_lg / (v_lg sqrt(c_pl T))} (the omega method with its
++     * critical pressure ratio at 0.9, which its polynomial gives from omega 20 to 90: water at 1 atm 1080, LNG 1470, crude
++     * near 800 kg/(m2 s)), on the state's two phases: the vapour and the liquid of the equation of state for a
++     * hydrocarbon liquid, the ideal steam and Region 1 for the free water (its heat capacity 4180 J/(kg K)); zero where
++     * the state gives no vapour to read it from.
++     */
++    private double twoPhaseChokeFlux(State state,int phase) {
++        double t=state.temperature(),hlg,vlg,cpl;
++        if(phase==WATER) {
++            double psat;try{psat=saturationPressure(t);}catch(IllegalArgumentException outsideData){return 0;}
++            var liquid=waterLiquid(t,state.pressure());
++            hlg=(vaporWaterEnthalpy(t)-liquid.molarEnthalpy())/waterMolecularWeight;
++            vlg=R*t/(psat*waterMolecularWeight)-liquid.molarVolume()/waterMolecularWeight;cpl=4180;
++        } else {
++            if(state.vaporProperties()==null||state.liquidProperties()==null)return 0;
++            double[] v=state.vaporView(),l=state.liquidView();double nv=0,nl=0,mv=0,ml=0;
++            for(int i=0;i<v.length;i++){nv+=v[i];mv+=v[i]*hydrocarbon.molecularWeight(i);nl+=l[i];ml+=l[i]*hydrocarbon.molecularWeight(i);}
++            if(!(nv>0)||!(nl>0))return 0;
++            double mg=mv/nv,mliq=ml/nl;var g=state.vaporProperties();var liquid=state.liquidProperties();
++            hlg=g.molarEnthalpy()/mg-liquid.molarEnthalpy()/mliq;vlg=g.molarVolume()/mg-liquid.molarVolume()/mliq;
++            try{cpl=hydrocarbon.values(t,state.pressure(),l,PengRobinsonKernel.Root.LIQUID).heatCapacity()/mliq;}catch(IllegalArgumentException refused){return 0;}
++        }
++        return hlg>0&&vlg>0&&cpl>0?.9*hlg/(vlg*Math.sqrt(cpl*t)):0;
++    }
+     /**
+      * Frozen-phase isothermal acoustic bound used by the configured hydraulic velocity clamp: the node's compliance is
+      * {@code sum_phases V_phase kappa_phase}, the hydrocarbon liquid's and the free water's own isothermal
+@@ -453,12 +530,8 @@
+         if(state.waterVapor()>0)h+=state.waterVapor()*(prepared==null?vaporWaterEnthalpy(state.temperature()):match(prepared,state.temperature()).vaporEnthalpy());
+         return h/vaporMass(state);
+     }
+-    /** The vapour stream's velocity limit: {@code min(maximum, V_v/sqrt(M_v V_v/stiffness))}. */
+-    public double vaporVelocityLimit(State state) {
+-        double stiffness=state.waterPartialPressure();
+-        if(state.vaporProperties()!=null){var gas=state.vaporProperties();stiffness+=-gas.molarVolume()/gas.volumePressureDerivative();}
+-        return Math.min(maximumVelocity,acoustic(state.vaporVolume(),vaporMass(state),state.vaporVolume()/stiffness));
+-    }
++    /** The vapour stream's velocity limit: its choke flux ({@link #chokeFlux}) over its density (form D). */
++    public double vaporVelocityLimit(State state){return chokeFlux(state,GAS)/vaporDensity(state);}
+     /**
+      * {@code V / sqrt(M C)}. The product of a phase's mass and compliance goes subnormal for a trace phase (a vanishing
+      * nitrogen vapour below about 2e-150 mol) and is zero below about 2e-158 mol, the bound then infinite; such a product
+@@ -573,7 +646,7 @@
+      * network's states (water 1480, LNG about 1000 at 112 K, crude about 900), so it never binds below the cap; only a
+      * pure light liquid within a few kelvin of its critical point would fall under it (owner decision D37, S5). */
+     public double phaseVelocityLimit(State state,int phase) {
+-        return phase==GAS?vaporVelocityLimit(state):maximumVelocity;
++        return chokeFlux(state,phase)/(phaseMass(state,phase)/phaseVolume(state,phase));
+     }
+     /** A phase stream's viscosity: {@link #vaporViscosity} for the gas; a liquid's own viscosity with the slurry
+      * correction for its share of the solids, over the stream's volume. */

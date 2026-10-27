@@ -1,0 +1,3 @@
+gamemode creative
+effect give @s minecraft:instant_health 1 5
+tp @s 200.5 -60 16.7 180 0

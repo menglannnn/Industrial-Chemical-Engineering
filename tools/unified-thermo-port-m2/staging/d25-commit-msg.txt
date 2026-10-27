@@ -1,0 +1,56 @@
+thermo: the outer phase check keeps the populated phases and adds the missing ones (D25)
+
+Physics. A vessel's phases change by what happens to them: a phase is used up (boiled away, drained,
+vented, dissolved), or it appears where the state can hold it, as a nucleus that then grows. Where T
+and P leave the split open (a pure fluid on its saturation line, a node on a phase boundary) volume
+and energy fix it, not a TP answer. The outer check took the TP answer at a pass's (T, P) as the
+node's phase set and swapped one populated set for another: hold-fuzz seed 116's node of 1 kg of
+water boiling under vacuum (304.2 K, 4.52 kPa) flipped between all liquid and all steam until the
+active-set cycle refused the step, and a rigid liquid-full mixture vessel crossing its bubble point
+was seeded with the TP split at an overshot (T, P), several vessel volumes of vapour it cannot hold.
+Owner decision D25 (2026-10-15): "should not be limited to pure compounds for the sake of
+future-proofing".
+
+The rule (FluidThermodynamics.phaseCheck; no pure-compound test anywhere):
+- a populated phase stays; it leaves only when the solve empties it, through the trace fold (D34,
+  below 1e-9 of the node), also of an unsuccessful pass's last iterate;
+- a phase the node's TP answer holds and the node lacks enters as a nucleus of 1e-6 of the node's
+  amount (PHASE_NUCLEUS_FRACTION; the TP answer's own amount when less) at the TP composition,
+  taken per component from the populated phases, so the totals stay the node's; the rows then grow
+  it to the node's own split or empty it;
+- a complete node (both hydrocarbon phases or neither, both water phases or neither) has nothing to
+  add and is not flashed, whatever its vapour slot's root;
+- a phase the trace rule removed in this solve is not added back (the foldedPhases record, A85).
+PassiveStepSolver.phaseCorrection (still one node per call) and InventoryEquilibrium's regime loop
+both call it; phaseCode reads FluidThermodynamics.phaseBits. Absorbed: main's pure-water TP flip,
+the branch's pure-coexistence check and phaseCorrection's converged/unconverged switch.
+
+Not ported: the branch's P6 vessel split (FluidThermodynamics.vesselSplit). LiquidFullBubblePointTest,
+ported here from 9aaafd4 onto main's API (C2H6, CO2 or N2 in methane, and CO2 under the pilot's
+crystal competition, cooled liquid-full through the bubble point at -200 W), passes 4/4 on the
+nucleus alone. NetworkPhaseEngineTest's coexistence row now states the check: a node holding both
+phases is kept, a vapour-only nitrogen node at 100 K gains a liquid nucleus of 1e-6 of its 40 mol,
+an excluded phase is not added, water 1e-9 below its vapour pressure keeps its liquid and gains steam.
+
+Checks: seed 116 clean (was E7 at 0ab70bc8); science.thermo 168/0; fluidScienceTest 260/0
+(NetworkPhaseEngineTest 7/7 with the new row); fluidRuntimeTest 303, the two untraced bounds failing
+as before (CadenceTrajectory, McpGameplay; bounds unchanged).
+
+Printed lines that move against e59da6ee (D24), each for its physical reason:
+- PhysicalFluidTopology STACK_PASS: both headspaces -134 Pa (upper 103498.8 -> 103364.6 Pa), lower
+  liquid 292.5153 -> 292.5149 kg. The upper tank's last 1.3 g of water drains as liquid and its
+  headspace keeps its vapour (99.95 % saturated at 298.81 K); the old verdict condensed 0.021 mol
+  (0.37 g) of that vapour on the last drain slice, heated the upper gas 0.81 K with its latent heat
+  (851 J moved between the tanks, the total energy equal to 0.03 J) and drained the condensate.
+- PhasePortPriority oil-water-overflow: the vent gives 1.60619 kg of gas before the pentane (was
+  1.60592) and 101.21765 kg of pentane before the water (was 101.21791), the sum equal to 1e-5 kg:
+  the last headspace gas leaves through the vent as gas instead of being dissolved into the pentane
+  by a TP verdict; solving the vanishing headspace down takes 279/26 accepted/rejected substeps (was
+  273/21). The oil-water-drain slices move by at most 1.3e-9 relative (the Newton tolerance).
+- FluidPumpedFillLine three-tank fill: the certified rest's replayed residual 3.251e-10 -> 3.247e-10
+  kg/s, the noise of a rest, not a flow.
+- PumpCavitation suction pressure (2.4e-13 relative) and McpGameplay's below-sea-level line
+  (1.6e-15): rounding.
+The 33 junction lines and MIXED_GAS_COST (339) are unchanged by D24 and D25.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>

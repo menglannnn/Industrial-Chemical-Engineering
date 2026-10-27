@@ -1,0 +1,267 @@
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/network/ConservativeTransport.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/ConservativeTransport.java
+index ba199ba3..5f60f911 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/ConservativeTransport.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/ConservativeTransport.java
+@@ -372,7 +372,7 @@ public final class ConservativeTransport {
+         // is re-solved, so every step accepted before is unchanged to the bit.
+         for(int c=0;c<components;c++) {
+             boolean negative=false;for(int node=0;node<nodes;node++)if(index[node]>=0&&solved[c][index[node]]<0){negative=true;break;}
+-            if(!negative)continue;
++            if(!negative||PassiveStepSolver.T26_OFF.contains("partition"))continue;
+             var partition=new ArrayList<TreeMap<Integer,Double>>();for(var column:columns)partition.add(new TreeMap<>(column));
+             double[] b=rhs[c].clone(),ratio=new double[flows.length];int[] from=new int[flows.length];Arrays.fill(from,-1);
+             for(int edge=0;edge<flows.length;edge++) {
+@@ -397,7 +397,12 @@ public final class ConservativeTransport {
+         for(int node=0;node<nodes;node++) {
+             var reservoir=graph.reservoirs().get(node);if(index[node]<0){moles[node]=old[node];states.add(candidate.get(node));continue;}
+             double total=0,molesPerKg=0;
+-            for(int c=0;c<components;c++){double w=solved[c][index[node]];if(w<0||!Double.isFinite(w))throw new SparseNewton.Nonconvergence("Negative transport reconstruction");fractions[node][c]=w;total+=w;molesPerKg+=w/molecularWeight[c];}
++            for(int c=0;c<components;c++){double w=solved[c][index[node]];if((w<0||!Double.isFinite(w))&&T19Trace.ON){double heldTotal=0;for(double n:old[node])heldTotal+=n;
++                    var sb=new StringBuilder(String.format("NEGATIVE node=%d id=%d kind=%s c=%d w=%.6g endMass=%.6g dt=%.6g held_c=%.6g mol held_total=%.6g mol share=%.3g rhs=%.6g",node,reservoir.id(),reservoir.kind(),c,w,endMass[node],dt,old[node][c],heldTotal,old[node][c]/heldTotal,rhs[c][index[node]]));
++                    for(int e=0;e<flows.length;e++){var p=graph.pipes().get(e);int dn=flows[e]>=0?p.first():p.second(),rc=flows[e]>=0?p.second():p.first();if(dn!=node&&rc!=node||flows[e]==0)continue;
++                        sb.append(String.format(" | e%d %s q=%.6g kg/s drawn=%s rates=%s",e,dn==node?"out":"in",flows[e],drawn[e]==null?"bulk":String.format("%.6g mol",dt*Math.abs(flows[e])*drawn[e][c]/molecularWeight[c]),draws==null||draws[e]==null?"-":Arrays.toString(draws[e])));}
++                    T19Trace.line(sb.toString());}
++                if(w<0||!Double.isFinite(w))throw new SparseNewton.Nonconvergence("Negative transport reconstruction");fractions[node][c]=w;total+=w;molesPerKg+=w/molecularWeight[c];}
+             for(int c=components;c<conserved;c++){double w=solved[c][index[node]];if(w<0||!Double.isFinite(w))throw new SparseNewton.Nonconvergence("Negative solid reconstruction");fractions[node][c]=w;total+=w;}
+             if(Math.abs(total-1)>1e-8)throw new SparseNewton.Nonconvergence("Junction mass continuity does not close");
+             if(reservoir.junction()) {
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+index 7ffdf770..e9cd9bf2 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+@@ -72,6 +72,8 @@ public final class PassiveStepSolver {
+      * capacity as having met it.
+      */
+     private static final double FILTER_CAPACITY_MARGIN=1e-12;
++    /** t26 scratch (never commit): -Dt26off=start,emptied,entry,held disables each of t26's rules for its gate proof. */
++    static final String T26_OFF=System.getProperty("t26off","");
+     /**
+      * How far a connection's loss slope may move from the one a reused Jacobian states before a chord step stops being
+      * worth taking ({@link Equations#linearisationHolds}). A chord step on a row whose stated slope is k times its own
+@@ -452,7 +454,7 @@ public final class PassiveStepSolver {
+         // {@link #closeDeadHeads} and documentation/DEAD_HEADED_LINE.md.
+         var reachable=reachableComponents(graph,null,boundaryClosed);
+         var seeds=initialPhaseSeeds(graph,dt,checkpoint,reachable,modes,boundaryClosed);
+-        var seen=new HashSet<PassKey>();
++        var seen=new HashSet<PassKey>();var t26Keys=new ArrayList<PassKey>();
+         // Constant for this solve: every pass keys on the same graph identity and component support.
+         var pipeIdentities=identities(graph);
+         long[] nodeIds=nodeIds(graph);byte[] kinds=new byte[nodeIds.length];
+@@ -495,6 +497,7 @@ public final class PassiveStepSolver {
+             var supports=supports(graph,seeds,reachable,promoted);
+             var equations=new Equations(graph,dt,modes,caps,boundaryClosed,seeds,reachable,supports,pipeIdentities);
+             System.arraycopy(equations.capDirections,0,caps,0,caps.length);
++            if(T19Trace.ON)T19Trace.line("PASS "+pass+" dt="+dt+" rate="+rateOnly+" caps="+Arrays.toString(caps)+" modes="+modes+" closed="+Arrays.toString(boundaryClosed)+" phases="+Arrays.toString(phases)+" seg="+Arrays.toString(equations.segmentCodes())+" folded="+Arrays.toString(foldedPhases)+" emptying="+Arrays.toString(emptying)+" donors="+Arrays.toString(equations.junctionDonorFirst)+" sup="+Arrays.hashCode(supportCodes(supports))+" stocks="+t26Stocks(original)+" start: "+equations.t19Edges(equations.initial()));
+             // The active-set state is exactly what varies between passes, so the structure key is
+             // also the cycle key: repeating one means the pass sequence cannot make progress. The
+             // frozen junction donors belong to it for the same reason the modes do - they decide
+@@ -503,6 +506,7 @@ public final class PassiveStepSolver {
+             var structure=new WorkspaceKey(0,nodeIds,kinds,pipeIdentities,phases,componentMask,supportCodes(supports),modeCodes,boundaryClosed.clone(),equations.junctionDonorFirst);
+             // The cap states are part of the cycle key, not of the workspace key: a capped row has the columns of the row it
+             // replaces, and the workspaces are shared across cap states as they were when the cap was a branch of the row.
++            if(T19Trace.ON){var k26=new PassKey(structure,equations.segmentCodes(),foldedPhases.clone(),capCodes(caps));if(seen.contains(k26))T19Trace.line("CYCLE pass="+pass+" repeats pass="+t26Keys.indexOf(k26));t26Keys.add(k26);}
+             if(!seen.add(new PassKey(structure,equations.segmentCodes(),foldedPhases.clone(),capCodes(caps))))throw new SparseNewton.Nonconvergence("Phase/device active-set cycle");
+             var key=new WorkspaceKey(Double.doubleToLongBits(dt),nodeIds,kinds,pipeIdentities,phases,componentMask,structure.supports,modeCodes,structure.boundaryClosed,structure.junctionDonors);
+             var workspace=workspaces.get(key);
+@@ -538,6 +542,7 @@ public final class PassiveStepSolver {
+             double tolerance=acceptance==Acceptance.APPROXIMATE?1e-6:smallHeadspace?1e-10:1e-9;
+             try{numerical=SparseNewton.solve(equations,equations.initial(),new SparseNewton.Settings(20,tolerance,1e-6,24),checkpoint,workspace);}
+             catch(SparseNewton.Nonconvergence failure) {
++                if(T19Trace.ON)T19Trace.line("FAIL pass="+pass+" "+failure.getMessage()+(failure.lastVariables()==null?"":" at: "+equations.t19Edges(failure.lastVariables())));
+                 if(failure.lastVariables()==null)throw failure;
+                 double[] trialFlows=Arrays.copyOfRange(failure.lastVariables(),equations.edgeOffset,equations.edgeOffset+graph.pipes().size());
+                 // Owner decision D59 (4): a pump whose target or head limit pulled its suction below the vapour pressure of the
+@@ -555,12 +560,12 @@ public final class PassiveStepSolver {
+                 // more than its cap, and a stated flow its ends cannot push is no state, so a Newton walking either went
+                 // through states that do not exist. The pass is solved again from its start. Taken before the phase
+                 // corrections below, which read the same iterate.
+-                if(equations.correctCaps(failure.lastVariables(),caps,tolerance))continue;
++                if(equations.correctCaps(failure.lastVariables(),caps,tolerance)){if(T19Trace.ON)T19Trace.line("WHY pass="+pass+" failcaps caps="+Arrays.toString(caps));continue;}
+                 // Decision D54: a vessel the failed iterate drained to nothing runs dry within the step. Its end state has no
+                 // contents, so the pass laid out with them has no root (every step size fails the same way); it is solved
+                 // again with the vessel as a junction holding its stock, which ends the step empty (emptyingGraph).
+                 var drained=equations.runsDry(failure.lastVariables(),emptying);
+-                if(drained!=null){emptying=drained;continue;}
++                if(drained!=null){if(T19Trace.ON)T19Trace.line("WHY pass="+pass+" runsDry "+Arrays.toString(drained));emptying=drained;continue;}
+                 // A point the Newton never reached is deliberately not read as evidence about this
+                 // pass's frozen junction donors, nor about the junction basis those donors state,
+                 // unlike the converged tests further down. Measured on the filter block line:
+@@ -578,6 +583,7 @@ public final class PassiveStepSolver {
+                 // pass whose seed still holds it may have no root (see drainedSeeds).
+                 if(changedSeeds==null)changedSeeds=equations.drainedSeeds(checkpoint);
+                 if(changedSeeds==null)throw new SparseNewton.Nonconvergence(failure.getMessage()+"; active-set pass="+pass,failure.lastVariables(),failure.domainViolation());
++                if(T19Trace.ON)T19Trace.line("WHY pass="+pass+" failphase "+t26Seeds(graph,changedSeeds));
+                 seeds=changedSeeds;continue;
+             }
+             double[] x=numerical.variables();var states=equations.states(x);double[] flows=new double[graph.pipes().size()],heads=new double[flows.length];
+@@ -587,11 +593,11 @@ public final class PassiveStepSolver {
+             // The same outer stability question the phase correction above answers for a whole phase,
+             // asked per component of the frozen trace support: this converged point's own fugacity
+             // coefficients decide whether an omitted phase is still a trace.
+-            if(reactivate(equations,states,promoted)>0){seeds=states;continue;}
++            if(reactivate(equations,states,promoted)>0){if(T19Trace.ON)T19Trace.line("WHY pass="+pass+" reactivate");seeds=states;continue;}
+             // Decision D54: an emptying vessel whose outlet pressure the converged point puts above the ambient does not run
+             // dry (what reaches it is more than its outlets take at the ambient): it holds contents at the step's end and is
+             // solved again as the vessel it is, unless an earlier converged pass of this solve has confirmed it emptying.
+-            if(emptying!=null){var kept=keptEmptying(states,emptying,emptied);if(kept!=null){emptying=kept;continue;}}
++            if(emptying!=null){var kept=keptEmptying(states,emptying,emptied);if(kept!=null){if(T19Trace.ON)T19Trace.line("WHY pass="+pass+" keptEmptying "+Arrays.toString(kept)+" at: "+equations.t19Edges(x));emptying=kept;continue;}}
+             boolean changed=false;int illegalDirection=-1,capChange=-1,capNext=CAP_OPEN,deviceChange=-1;FlowControl.Mode deviceNext=null;
+             for(int i=0;i<flows.length;i++) {
+                 flows[i]=x[equations.edgeOffset+i];heads[i]=equations.controlOffsets[i]<0?0:x[equations.controlOffsets[i]]*1e5;
+@@ -616,6 +622,7 @@ public final class PassiveStepSolver {
+             // well below it turned between its head limit and its target, the line's cap never stated, until the pass
+             // sequence cycled). A boundary closure is never taken back within a solve, and a forbidden direction can be the
+             // symptom of a wrong cap as of a wrong device mode, so the reversible corrections come first.
++            if(T19Trace.ON)T19Trace.line("CONV pass="+pass+" iters="+numerical.iterations()+" device="+deviceChange+"->"+deviceNext+" capChange="+capChange+"->"+capNext+" illegal="+illegalDirection+" at: "+equations.t19Edges(x));
+             if(capChange>=0){caps[capChange]=capNext;changed=true;}
+             else if(deviceChange>=0) {
+                 // A device that changes mode has its cap decided afresh on the next pass's start point.
+@@ -664,11 +671,13 @@ public final class PassiveStepSolver {
+             // (which phases a port draws at its capacity and which one carries the rest); otherwise the pass is solved
+             // again, starting from these flows, under the segments they decide (see PhaseDraw). Like an active-set change,
+             // and the cycle key carries the segments, so the sequence stays finite. An island without a phase port has none.
+-            if(equations.segmentsMoved(flows)){seeds=states;previousPipes=pipeIdentities;previousNodeIds=nodeIds;previousInputStates=inputStates;previousFlows=flows.clone();previousHeads=heads.clone();previousModes=List.copyOf(modes);previousCaps=caps.clone();continue;}
++            if(equations.segmentsMoved(flows)){if(T19Trace.ON)T19Trace.line("WHY pass="+pass+" segmentsMoved");seeds=states;previousPipes=pipeIdentities;previousNodeIds=nodeIds;previousInputStates=inputStates;previousFlows=flows.clone();previousHeads=heads.clone();previousModes=List.copyOf(modes);previousCaps=caps.clone();continue;}
+             for(int edge=0;edge<flows.length;edge++) {
+                 var pipe=graph.pipes().get(edge);var upstream=states.get(flows[edge]>=0?pipe.first():pipe.second());
+                 double cap=pipe.drawPort(flows[edge])==PassiveNetwork.PhasePort.BULK?massFlowLimit(pipe,upstream,PassiveNetwork.PhasePort.BULK)
+                         :equations.capLimit(edge,flows[edge]>=0?0:1,equations.cachedTransport[flows[edge]>=0?pipe.first():pipe.second()]);
++                if(Math.abs(flows[edge])>cap*(1+2e-8)+1e-12&&T19Trace.ON){int end=flows[edge]>=0?0:1;var node=equations.cachedTransport[end==0?pipe.first():pipe.second()];
++                    T19Trace.line(String.format("VELOCITY pass=%d dt=%.6g e%d %d>%d %s filter=%s port=%s q=%.9g check=%.9g capLimit=%.9g capState=%d transition=%d mode=%s closed=%s",pass,dt,edge,pipe.first(),pipe.second(),pipe.control().getClass().getSimpleName(),pipe.filter()!=null,pipe.drawPort(flows[edge]),flows[edge],cap,equations.capLimit(edge,end,node),caps[edge],equations.capTransition(edge,x,tolerance),modes.get(edge),boundaryClosed[edge]));}
+                 if(Math.abs(flows[edge])>cap*(1+2e-8)+1e-12)throw new SparseNewton.Nonconvergence("Velocity constraint did not close");
+             }
+             // What each phase-port outflow drew, phase by phase, at these flows on this candidate: the reconstruction books it
+@@ -678,17 +687,17 @@ public final class PassiveStepSolver {
+             // Decision D54: a dry vessel this pass's flows reached holds what they delivered (booked at the ambient, closed
+             // at its wall); the pass is solved again with it laid out from that state, so its end is the step's implicit
+             // end like every vessel's.
+-            if(filled(equations,projection)){seeds=projection.states();continue;}
++            if(filled(equations,projection)){if(T19Trace.ON)T19Trace.line("WHY pass="+pass+" filled "+t26Seeds(graph,projection.states()));seeds=projection.states();continue;}
+             // Hold class E3: a node this pass solved with no hydrocarbon phase, to which the booked flows deliver a
+             // hydrocarbon its layout omitted, was restated by the reconstruction as its flash (ConservativeTransport
+             // .repartition); the pass is solved again from it, as from any phase appearance. Before, that restatement
+             // failed and every step size was refused.
+-            if(phaseAppeared(graph,states,projection.states())){seeds=projection.states();continue;}
++            if(phaseAppeared(graph,states,projection.states())){if(T19Trace.ON)T19Trace.line("WHY pass="+pass+" appeared "+t26Seeds(graph,projection.states()));seeds=projection.states();continue;}
+             // Decision D34: the reconstruction folded a phase this pass solved (its booked share fell below the trace share),
+             // so the pass is solved again from the folded states: the Newton, the reconstruction and the equation gate then
+             // read the same phases.
+-            if(recordFolds(graph,states,projection.states(),foldedPhases)){SolverDiagnostics.count(SolverDiagnostics.traceFoldPasses);seeds=projection.states();continue;}
+-            var changedSeeds=phaseCorrection(graph,projection.states(),checkpoint,true,equations.cachedPrepared,foldedPhases);if(changedSeeds!=null){seeds=changedSeeds;continue;}
++            if(recordFolds(graph,states,projection.states(),foldedPhases)){if(T19Trace.ON)T19Trace.line("WHY pass="+pass+" folds "+Arrays.toString(foldedPhases));SolverDiagnostics.count(SolverDiagnostics.traceFoldPasses);seeds=projection.states();continue;}
++            var changedSeeds=phaseCorrection(graph,projection.states(),checkpoint,true,equations.cachedPrepared,foldedPhases);if(changedSeeds!=null){if(T19Trace.ON)T19Trace.line("WHY pass="+pass+" convphase "+t26Seeds(graph,changedSeeds));seeds=changedSeeds;continue;}
+             var reconstructed=x.clone();
+             for(int node=0;node<projection.states().size();node++)if(equations.layout[node]!=null){var encoded=equations.layout[node].encode(projection.states().get(node));System.arraycopy(encoded,0,reconstructed,equations.offsets[node],encoded.length);}
+             SolverDiagnostics.count(SolverDiagnostics.verificationResiduals);
+@@ -729,6 +738,7 @@ public final class PassiveStepSolver {
+             // The retained last solve keeps its equations and point, not their per-node decode caches (states, transport
+             // rows, prepared temperature workspaces): a later reader re-decodes (review 8.7 (c) E2).
+             equations.releaseDecodeCache();
++            if(T19Trace.ON){var sb=new StringBuilder("ACCEPT pass="+pass+" dt="+dt+" rate="+rateOnly+" emptying="+Arrays.toString(emptying)+" ends=");for(int i=0;i<projection.inventories().size();i++)if(original.reservoirs().get(i).kind()==PassiveNetwork.NodeKind.RESERVOIR)sb.append(String.format("n%d:%.6g kg ",i,molarMass(projection.inventories().get(i).moles())));sb.append(" flows="+Arrays.toString(flows));T19Trace.line(sb.toString());}
+             return accepted;
+         }
+         throw new SparseNewton.Nonconvergence("Device active-set limit");
+@@ -917,6 +927,20 @@ public final class PassiveStepSolver {
+      * and never from a Newton iterate, with the components this solve has already reactivated kept in
+      * both phases. A fixed node owns no unknowns and gets none.
+      */
++    /** t26 instrumentation: each vessel's held mass (kg) and capacity (m3). */
++    private String t26Stocks(PassiveNetwork graph) {
++        var sb=new StringBuilder("[");
++        for(int i=0;i<graph.reservoirs().size();i++){var node=graph.reservoirs().get(i);if(node.kind()!=PassiveNetwork.NodeKind.RESERVOIR)continue;
++            sb.append(String.format("n%d:%.6g kg/%.3g m3 ",i,molarMass(node.inventory().moles()),node.inventory().volume()));}
++        return sb.append("]").toString();
++    }
++    /** t26 instrumentation: each unfixed node's phase code, pressure, temperature and mass. */
++    private static String t26Seeds(PassiveNetwork graph,List<FluidThermodynamics.State> seeds) {
++        var sb=new StringBuilder();
++        for(int i=0;i<seeds.size();i++){if(graph.reservoirs().get(i).fixed())continue;var s=seeds.get(i);
++            sb.append(String.format("n%d:c%d P=%.7g T=%.6g m=%.4g w=%.3g/%.3g ",i,phaseCode(s),s.pressure(),s.temperature(),s.mass(),s.waterLiquid(),s.waterVapor()));}
++        return sb.toString();
++    }
+     /** The cap states of a pass as codes for its cycle key ({@link PassKey}). */
+     private static byte[] capCodes(int[] caps){byte[] codes=new byte[caps.length];for(int i=0;i<caps.length;i++)codes[i]=(byte)caps[i];return codes;}
+     private PhaseSupport[][] supports(PassiveNetwork graph,List<FluidThermodynamics.State> seeds,boolean[][] reachable,boolean[][] promoted) {
+@@ -2757,7 +2781,7 @@ public final class PassiveStepSolver {
+     private static boolean[] keptEmptying(List<FluidThermodynamics.State> states,boolean[] emptying,boolean[] emptied) {
+         boolean[] result=null;
+         for(int i=0;i<emptying.length;i++) {
+-            if(!emptying[i]||emptied[i])continue;
++            if(!emptying[i]||emptied[i]&&!T26_OFF.contains("emptied"))continue;
+             if(!(states.get(i).pressure()>PhaseLayout.AMBIENT_PRESSURE*(1+1e-9))){emptied[i]=true;continue;}
+             if(result==null)result=emptying.clone();
+             result[i]=false;
+@@ -2869,8 +2893,7 @@ public final class PassiveStepSolver {
+         /** The connections as the warm-flow check may compare them: never including the cake. They are the solve's own
+          * connections, also in a pass that stands an emptying vessel as a junction (decision D54, {@link #emptyingGraph}):
+          * that pass draws the vessel's bulk through the same connections, so it starts from the same carried flows as
+-         * every other pass of the step (random seed 257: from the static estimate instead, the drain to a void below
+-         * started inward, stood in the void's air, and the emptying pass converged with the vessel above the ambient). */
++         * every other pass of the step. */
+         final List<PassiveNetwork.Pipe.Identity> pipeIdentities;
+         final PassiveNetwork graph;final double dt;final PhaseLayout[] layout;final int[] offsets;
+         /** Per node, the frozen phase support its layout states (null for a fixed node): the equilibrium the reconstruction
+@@ -3084,7 +3107,7 @@ public final class PassiveStepSolver {
+         double junctionWeight=1;
+         Equations(PassiveNetwork graph,double dt,List<FlowControl.Mode> modes,int[] caps,boolean[] boundaryClosed,List<FluidThermodynamics.State> seeds,boolean[][] reachable,
+                   PhaseSupport[][] supports,List<PassiveNetwork.Pipe.Identity> pipeIdentities) {
+-            this.modes=List.copyOf(modes);capDirections=caps.clone();this.pipeIdentities=pipeIdentities;
++            this.modes=List.copyOf(modes);capDirections=caps.clone();this.pipeIdentities=T26_OFF.contains("start")?identities(graph):pipeIdentities;
+             prescribedFlow=this.modes.contains(FlowControl.Mode.PUMP_TARGET);
+             this.seeds=List.copyOf(seeds);this.supports=supports;
+             this.boundaryClosed=boundaryClosed.clone();
+@@ -3871,6 +3894,22 @@ public final class PassiveStepSolver {
+             double limit=pipe.filter()==null?capLimit(edge,end,node):filterCapFlow(edge,end,node,drawn(edge,end,node,q));
+             return Math.abs(q)>limit*(1+2e-8)+1e-12?end:CAP_OPEN;
+         }
++        /** t19 instrumentation: every node's pressure and every connection's flow, drive, cap drop, cap state at x. */
++        String t19Edges(double[] x) {
++            var sb=new StringBuilder();
++            try {
++                decode(x);
++                for(int i=0;i<layout.length;i++)sb.append(String.format("n%d:%s P=%.6g T=%.5g ",i,graph.reservoirs().get(i).kind().name().charAt(0),cachedStates[i].pressure(),cachedStates[i].temperature()));
++                double[] scratch=new double[size];
++                for(int e=0;e<graph.pipes().size();e++) {
++                    var pipe=graph.pipes().get(e);
++                    sb.append(String.format("| e%d %d>%d %s q=%.6g cap=%d",e,pipe.first(),pipe.second(),modes.get(e),x[edgeOffset+e],capDirections[e]));
++                    if(clamps(e)){edgeRows(e,x,cachedStates,cachedTransport,scratch);sb.append(String.format(" d=%.6g lim=%.6g dir=%d S=%.4g r=%.3g",rowDriving,rowLimitDrop,rowDirection,rowCapScale,scratch[edgeOffset+e]));}
++                    sb.append(' ');
++                }
++            }catch(RuntimeException failed){sb.append("(decode failed: ").append(failed.getMessage()).append(')');}
++            return sb.toString();
++        }
+         /**
+          * The cap corrections a failed Newton's last iterate {@code x} shows (decision A274), applied to {@code caps}; true when
+          * any was made. Every capped connection {@link #capTransition} would release there is released; when none is, every
+@@ -3889,10 +3928,7 @@ public final class PassiveStepSolver {
+                     decode(x);edgeRows(edge,x,cachedStates,cachedTransport,scratch);
+                     var pipe=graph.pipes().get(edge);double q=x[edgeOffset+edge];int end=q>=0?0:1;var node=cachedTransport[end==0?pipe.first():pipe.second()];
+                     double limit=pipe.filter()==null?capLimit(edge,end,node):filterCapFlow(edge,end,node,drawn(edge,end,node,q));
+-                    // The drive in the flow's direction, as capTransition releases on it: a line is choked only by a drive
+-                    // that pushes its flow (random seed 200: a filter line drawing 0.99 kg/s against a 325 kPa drive was
+-                    // released and entered again at the same point, and the pass sequence cycled).
+-                    if(Math.abs(q)>=limit*(1-1e-9)&&end==rowDirection&&(rowDirection==0?rowDriving:-rowDriving)>rowLimitDrop){entered[edge]=rowDirection;enter=true;}
++                    if(Math.abs(q)>=limit*(1-1e-9)&&end==rowDirection&&(T26_OFF.contains("entry")?Math.abs(rowDriving):rowDirection==0?rowDriving:-rowDriving)>rowLimitDrop){entered[edge]=rowDirection;enter=true;}
+                 }
+             }catch(IllegalArgumentException outsideDomain){return false;}
+             if(release)System.arraycopy(released,0,caps,0,caps.length);
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/network/T19Trace.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/T19Trace.java
+new file mode 100644
+index 00000000..5e5c31a3
+--- /dev/null
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/T19Trace.java
+@@ -0,0 +1,14 @@
++package com.wormzjl.createcheme.science.fluid.network;
++
++/** t19 instrumentation (never commit): appends lines to the file named by -Dt19trace=<path>. */
++final class T19Trace {
++    static final String PATH=System.getProperty("t19trace");
++    static final boolean ON=PATH!=null;
++    private static java.io.PrintWriter out;
++    private T19Trace(){}
++    static synchronized void line(String text) {
++        if(!ON)return;
++        try{if(out==null)out=new java.io.PrintWriter(new java.io.FileWriter(PATH,true),true);}catch(java.io.IOException e){return;}
++        out.println(Thread.currentThread().getName()+" "+text);
++    }
++}

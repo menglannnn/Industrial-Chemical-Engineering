@@ -1,0 +1,47 @@
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+index 8fae9348..5e2e6781 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+@@ -105,6 +105,8 @@ public final class PassiveStepSolver {
+     /** A connection's cap state ({@link Equations#capDirections}): on its law, or not decided yet (decided on the next
+      * pass's start point). A capped connection's state is the end its cap flow leaves, 0 or 1. */
+     static final int CAP_OPEN=-1,CAP_START=-2;
++    /** M5 trace hook (temporary instrumentation on 7bd5fafc, never commit): tools/unified-thermo-port-m5/trace. */
++    public static volatile java.util.function.Consumer<Object[]> M5_TRACE;
+     /**
+      * The movers (pipe ids) refused for the slice in progress ({@link FlowControl.Mode#INLET_WRONG_PHASE}, decision D6),
+      * set by the interval solver at each slice start ({@link #refuseInlets}) and read by every solve until the next;
+@@ -510,7 +512,8 @@ public final class PassiveStepSolver {
+             var structure=new WorkspaceKey(0,nodeIds,kinds,pipeIdentities,phases,componentMask,supportCodes(supports),modeCodes,boundaryClosed.clone(),equations.junctionDonorFirst);
+             // The cap states are part of the cycle key, not of the workspace key: a capped row has the columns of the row it
+             // replaces, and the workspaces are shared across cap states as they were when the cap was a branch of the row.
+-            if(!seen.add(new PassKey(structure,equations.segmentCodes(),foldedPhases.clone(),capCodes(caps))))throw new SparseNewton.Nonconvergence("Phase/device active-set cycle");
++            if(M5_TRACE!=null)M5_TRACE.accept(new Object[]{"pass",equations,pass,dt,List.copyOf(modes),boundaryClosed.clone(),caps.clone(),phases.clone(),rateOnly});
++            if(!seen.add(new PassKey(structure,equations.segmentCodes(),foldedPhases.clone(),capCodes(caps)))){if(M5_TRACE!=null)M5_TRACE.accept(new Object[]{"cycle",equations,pass,dt});throw new SparseNewton.Nonconvergence("Phase/device active-set cycle");}
+             var key=new WorkspaceKey(Double.doubleToLongBits(dt),nodeIds,kinds,pipeIdentities,phases,componentMask,structure.supports,modeCodes,structure.boundaryClosed,structure.junctionDonors);
+             var workspace=workspaces.get(key);
+             SolverDiagnostics.count(workspace==null?SolverDiagnostics.workspaceBuilds:SolverDiagnostics.workspaceReuses);
+@@ -545,6 +548,7 @@ public final class PassiveStepSolver {
+             double tolerance=acceptance==Acceptance.APPROXIMATE?1e-6:smallHeadspace?1e-10:1e-9;
+             try{numerical=SparseNewton.solve(equations,equations.initial(),new SparseNewton.Settings(20,tolerance,1e-6,24),checkpoint,workspace);}
+             catch(SparseNewton.Nonconvergence failure) {
++                if(M5_TRACE!=null)M5_TRACE.accept(new Object[]{"fail",equations,pass,dt,failure});
+                 if(failure.lastVariables()==null)throw failure;
+                 double[] trialFlows=Arrays.copyOfRange(failure.lastVariables(),equations.edgeOffset,equations.edgeOffset+graph.pipes().size());
+                 // Owner decision D59 (4): a pump whose target or head limit pulled its suction below the vapour pressure of the
+@@ -588,6 +592,7 @@ public final class PassiveStepSolver {
+                 seeds=changedSeeds;continue;
+             }
+             double[] x=numerical.variables();var states=equations.states(x);double[] flows=new double[graph.pipes().size()],heads=new double[flows.length];
++            if(M5_TRACE!=null)M5_TRACE.accept(new Object[]{"converged",equations,pass,dt,x.clone(),numerical.iterations()});
+             // The converged Newton point is not phase-checked here: the reconstructed point below, which is what an accepted
+             // step commits, is, and the two agree to the Newton tolerance, so checking both asks one question twice at a TP
+             // flash per single-phase node each (review 8.7 (c) D: 43 % of the wall time of a flowing island at 0.1 s).
+@@ -644,6 +649,7 @@ public final class PassiveStepSolver {
+             // closure to a later pass, where it is applied only if the direction is still illegal
+             // once every device runs in a mode it can actually hold.
+             if(!changed&&illegalDirection>=0){closeBoundary(graph,illegalDirection,boundaryClosed,modes,caps);changed=true;}
++            if(M5_TRACE!=null&&changed)M5_TRACE.accept(new Object[]{"change",equations,pass,dt,capChange,capNext,deviceChange,deviceNext,illegalDirection});
+             // Decision A272: a cap change re-solves the same pass from its own start (its seeds: what fills each connection,
+             // which phases exist, the junctions' start states; and its start flows and phase-port segments): it changes which
+             // equation states one flow, not the point the pass was laid out on. Re-seeded from the converged two-phase

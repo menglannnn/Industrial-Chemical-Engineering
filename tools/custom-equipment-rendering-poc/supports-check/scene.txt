@@ -1,0 +1,6 @@
+gamemode creative
+setblock 210 -60 0 createcheme:equipment_constructor[facing=south]
+createcheme equipment place 200 -60 12 3 6 vertical 2
+createcheme equipment place 190 -60 12 2.5 5 along_x 1
+createcheme equipment place 208 -60 12 3 6 along_z 2
+tp @s 199.5 -55 -5 0 14

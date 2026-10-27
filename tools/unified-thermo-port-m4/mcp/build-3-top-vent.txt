@@ -1,0 +1,3 @@
+# M4 GUI check, step 3: a top vent on the tank (the tank's gas port): pipe (62,102,78) up to a second void (62,103,78).
+setblock 62 102 78 createcheme:fluid_pipe
+setblock 62 103 78 createcheme:fluid_void

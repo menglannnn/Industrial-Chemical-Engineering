@@ -1,0 +1,22 @@
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/solver/SparseNewton.java b/src/main/java/com/wormzjl/createcheme/science/fluid/solver/SparseNewton.java
+index 12d9666a..156c9fc4 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/solver/SparseNewton.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/solver/SparseNewton.java
+@@ -125,6 +125,8 @@ public final class SparseNewton {
+         }
+     }
+ 
++    // SCRATCH (e6, never commit): -De6minone=true makes every solve take at least one iteration from a nonzero residual.
++    static final boolean SCRATCH_MINONE=Boolean.getBoolean("e6minone");
+     public static Result solve(Equations equations,double[] initial,Settings settings,Runnable checkpoint) {
+         return solve(equations,initial,settings,checkpoint,new Workspace());
+     }
+@@ -143,7 +145,7 @@ public final class SparseNewton {
+         ThermoDomainViolation domain=null;
+         for(int iteration=0;iteration<=settings.iterations();iteration++) {
+             checkpoint.run();
+-            if(norm<=settings.tolerance())return new Result(x,norm,iteration,calls,lastNonzeros,pattern.groups.size());
++            if(norm<=settings.tolerance()&&!(SCRATCH_MINONE&&iteration==0&&norm>0))return new Result(x,norm,iteration,calls,lastNonzeros,pattern.groups.size());
+             if(iteration==settings.iterations())break;
+             domain=null;
+             SolverDiagnostics.count(SolverDiagnostics.newtonIterations);

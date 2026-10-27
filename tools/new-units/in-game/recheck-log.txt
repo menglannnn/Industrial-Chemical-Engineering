@@ -1,0 +1,83 @@
+# compat recheck 2026-10-18: createcheme lines, player login/save markers, chat results and WARN/ERROR lines from run/mcp-client/logs/latest.log (runMcpClient lane)
+# shell-side marks (local time): play 22:07:41.28; in world 22:07:45.69; tp to 2.0 m cyclone ~22:07:48.5; shots t0 22:07:51.3/56.7/22:08:02.0; t30 22:08:27.8-49.5; tour rows 22:09:58-22:11:16 (10 s each); tour-after 22:11:42-58; fresh + compare 22:14:45-22:15:15; Save and Quit 22:18:12; reload play 22:18:40.7; reload shots 22:19:02-26; reload tour 22:20:35-22:21:55; Save and Quit 22:22:46; Quit Game 22:22:57
+9:[1810月2026 22:00:25.267] [main/WARN] [net.neoforged.jarjar.selection.JarSelector/]: Attempted to select a dependency jar for JarJar which was passed in as source: betteradvancedtooltips. Using Mod File: C:\Users\wormz\.gradle\caches\modules-2\files-2.1\dev.latvian.mods\better-advanced-tooltips\2101.1.0-build.1\4f9175f55758c06edba610cc8a32d317b15e8726\better-advanced-tooltips-2101.1.0-build.1.jar
+28:[1810月2026 22:00:25.895] [main/WARN] [mixin/]: Reference map 'ponder.refmap.json' for ponder-common.mixins.json could not be read. If this is a development environment you can ignore this message
+29:[1810月2026 22:00:26.330] [main/WARN] [mixin/]: Error loading class: org/jetbrains/annotations/ApiStatus$ScheduledForRemoval (java.lang.ClassNotFoundException: org.jetbrains.annotations.ApiStatus$ScheduledForRemoval)
+32:[1810月2026 22:00:30.871] [main/WARN] [net.minecraft.commands.Commands/]: Ambiguity between arguments [teleport, location] and [teleport, destination] with inputs: [0.1 -0.5 .9, 0 0 0]
+33:[1810月2026 22:00:30.872] [main/WARN] [net.minecraft.commands.Commands/]: Ambiguity between arguments [teleport, location] and [teleport, targets] with inputs: [0.1 -0.5 .9, 0 0 0]
+34:[1810月2026 22:00:30.874] [main/WARN] [net.minecraft.commands.Commands/]: Ambiguity between arguments [teleport, destination] and [teleport, targets] with inputs: [Player, 0123, @e, dd12be42-52a9-4a91-a8a1-11c01849e498]
+35:[1810月2026 22:00:30.875] [main/WARN] [net.minecraft.commands.Commands/]: Ambiguity between arguments [teleport, targets] and [teleport, destination] with inputs: [Player, 0123, dd12be42-52a9-4a91-a8a1-11c01849e498]
+36:[1810月2026 22:00:30.876] [main/WARN] [net.minecraft.commands.Commands/]: Ambiguity between arguments [teleport, targets, location] and [teleport, targets, destination] with inputs: [0.1 -0.5 .9, 0 0 0]
+37:[1810月2026 22:00:30.963] [Render thread/WARN] [net.minecraft.server.packs.VanillaPackResourcesBuilder/]: Assets URL 'union:/D:/Minecraft/Modding/1.21/CreateChemE/.claude/worktrees/custom-equipment-rendering-805e7d/build/moddev/artifacts/neoforge-21.1.219.jar%23197!/assets/.mcassetsroot' uses unexpected schema
+38:[1810月2026 22:00:30.964] [Render thread/WARN] [net.minecraft.server.packs.VanillaPackResourcesBuilder/]: Assets URL 'union:/D:/Minecraft/Modding/1.21/CreateChemE/.claude/worktrees/custom-equipment-rendering-805e7d/build/moddev/artifacts/neoforge-21.1.219.jar%23197!/data/.mcassetsroot' uses unexpected schema
+49:[1810月2026 22:00:31.363] [modloading-worker-0/WARN] [KubeJS/]: Plugin dev.latvian.mods.kubejs.integration.architectury.ArchitecturyIntegration does not have required mod 'architectury' loaded, skipping
+72:[1810月2026 22:00:35.095] [Render thread/WARN] [net.minecraft.client.sounds.SoundEngine/]: Missing sound for event: minecraft:item.goat_horn.play
+73:[1810月2026 22:00:35.095] [Render thread/WARN] [net.minecraft.client.sounds.SoundEngine/]: Missing sound for event: minecraft:entity.goat.screaming.horn_break
+90:[1810月2026 22:00:35.283] [Render thread/WARN] [net.minecraft.client.renderer.ShaderInstance/]: Shader rendertype_entity_translucent_emissive could not find sampler named Sampler2 in the specified shader program.
+109:[1810月2026 22:07:41.404] [Render thread/WARN] [net.neoforged.neoforge.common.CommonHooks/WP]: The following mods have version differences that were not resolved:
+134:[1810月2026 22:07:44.009] [Server thread/INFO] [com.wormzjl.createcheme.CreateChemE/]: fluid_world status=LOADED format=9 online_tick=22455 islands=2 certificates_saved=2 certificates_restored=2 awake=0
+135:[1810月2026 22:07:44.019] [Server thread/INFO] [com.wormzjl.createcheme.CreateChemE/]: process_solver lifecycle=STARTED epoch=1 workers=1 ready_capacity=8 deadline_ms=45000 graceful_shutdown_ms=1000 forced_shutdown_ms=1000
+136:[1810月2026 22:07:44.213] [Server thread/INFO] [com.wormzjl.createcheme.CreateChemE/]: equipment_refresh kind=column origin=24, -60, -3 shift=0,0 cleared=0 placed=0 blocked=0
+139:[1810月2026 22:07:44.266] [Server thread/INFO] [com.wormzjl.createcheme.CreateChemE/]: equipment_refresh kind=drum origin=11, -60, -8 shift=0,0 cleared=0 placed=0 blocked=0
+140:[1810月2026 22:07:44.278] [Server thread/INFO] [com.wormzjl.createcheme.CreateChemE/]: equipment_refresh kind=drum origin=-2, -60, -2 shift=0,0 cleared=0 placed=0 blocked=0
+141:[1810月2026 22:07:44.377] [Server thread/INFO] [com.wormzjl.createcheme.CreateChemE/]: equipment_refresh kind=column origin=39, -60, -4 shift=0,0 cleared=0 placed=0 blocked=0
+144:[1810月2026 22:07:44.744] [Server thread/INFO] [net.minecraft.server.players.PlayerList/]: FluidMcpTester[local:E:3ecd13bf] logged in with entity id 1 at (150.1199591735685, -28.488872633620193, 144.09324143559738)
+146:[1810月2026 22:07:44.851] [Server thread/INFO] [com.wormzjl.createcheme.CreateChemE/]: equipment_refresh kind=kettle origin=10, -60, 30 shift=0,0 cleared=0 placed=0 blocked=0
+148:[1810月2026 22:07:45.085] [Server thread/INFO] [com.wormzjl.createcheme.CreateChemE/]: equipment_refresh kind=compressor origin=54, -60, 31 shift=0,0 cleared=0 placed=0 blocked=0
+150:[1810月2026 22:07:45.090] [Server thread/INFO] [com.wormzjl.createcheme.CreateChemE/]: equipment_refresh kind=air_cooler origin=21, -60, 32 shift=0,0 cleared=0 placed=0 blocked=0
+151:[1810月2026 22:07:45.096] [Server thread/INFO] [com.wormzjl.createcheme.CreateChemE/]: equipment_refresh kind=ejector origin=32, -60, 33 shift=0,0 cleared=0 placed=0 blocked=0
+152:[1810月2026 22:07:45.100] [Server thread/INFO] [com.wormzjl.createcheme.CreateChemE/]: equipment_refresh kind=pump origin=43, -60, 32 shift=0,0 cleared=0 placed=0 blocked=0
+153:[1810月2026 22:07:46.582] [Server thread/INFO] [com.wormzjl.createcheme.CreateChemE/]: equipment_refresh kind=fcc_converter origin=123, -60, 171 shift=0,0 cleared=0 placed=0 blocked=0
+154:[1810月2026 22:07:46.804] [Server thread/INFO] [com.wormzjl.createcheme.CreateChemE/]: equipment_refresh kind=fluidized_bed_gasifier origin=102, -60, 175 shift=0,0 cleared=0 placed=0 blocked=0
+155:[1810月2026 22:07:46.997] [Server thread/INFO] [com.wormzjl.createcheme.CreateChemE/]: equipment_refresh kind=fixed_bed_gasifier origin=138, -60, 111 shift=0,0 cleared=0 placed=0 blocked=0
+158:[1810月2026 22:07:47.206] [Server thread/INFO] [com.wormzjl.createcheme.CreateChemE/]: equipment_refresh kind=grate_boiler origin=111, -60, 105 shift=0,0 cleared=0 placed=0 blocked=0
+159:[1810月2026 22:07:48.307] [Server thread/INFO] [com.wormzjl.createcheme.CreateChemE/]: equipment_refresh kind=fluidized_bed_boiler origin=177, -60, 159 shift=0,0 cleared=0 placed=0 blocked=0
+160:[1810月2026 22:07:48.478] [Server thread/INFO] [com.wormzjl.createcheme.CreateChemE/]: equipment_refresh kind=fluidized_bed_gasifier origin=90, -60, 106 shift=0,0 cleared=0 placed=0 blocked=0
+161:[1810月2026 22:07:48.651] [Server thread/INFO] [com.wormzjl.createcheme.CreateChemE/]: equipment_refresh kind=cabin_heater origin=73, -60, 176 shift=0,0 cleared=0 placed=0 blocked=0
+164:[1810月2026 22:07:48.962] [Server thread/INFO] [com.wormzjl.createcheme.CreateChemE/]: equipment_refresh kind=stirred_reactor origin=12, -60, 181 shift=0,0 cleared=0 placed=0 blocked=0
+165:[1810月2026 22:07:49.007] [Server thread/INFO] [com.wormzjl.createcheme.CreateChemE/]: equipment_refresh kind=exchanger origin=-1, -60, 30 shift=0,0 cleared=0 placed=0 blocked=0
+166:[1810月2026 22:07:49.045] [Server thread/INFO] [com.wormzjl.createcheme.CreateChemE/]: equipment_refresh kind=cyclone origin=-3, -60, 181 shift=0,1 cleared=3 placed=0 blocked=0
+167:[1810月2026 22:07:49.121] [Server thread/INFO] [com.wormzjl.createcheme.CreateChemE/]: equipment_refresh kind=adsorber origin=31, -60, 180 shift=0,0 cleared=0 placed=0 blocked=0
+168:[1810月2026 22:07:49.293] [Server thread/INFO] [com.wormzjl.createcheme.CreateChemE/]: equipment_refresh kind=cabin_heater origin=48, -60, 176 shift=0,0 cleared=0 placed=0 blocked=0
+169:[1810月2026 22:07:49.915] [Server thread/INFO] [com.wormzjl.createcheme.CreateChemE/]: equipment_refresh kind=fcc_converter origin=-15, -60, 107 shift=0,0 cleared=0 placed=0 blocked=0
+170:[1810月2026 22:07:50.257] [Server thread/INFO] [com.wormzjl.createcheme.CreateChemE/]: equipment_refresh kind=delayed_coker origin=24, -60, 108 shift=0,0 cleared=0 placed=0 blocked=0
+171:[1810月2026 22:07:50.832] [Server thread/INFO] [com.wormzjl.createcheme.CreateChemE/]: equipment_refresh kind=fluidized_bed_boiler origin=58, -60, 93 shift=0,0 cleared=0 placed=0 blocked=0
+172:[1810月2026 22:07:51.067] [Server thread/INFO] [com.wormzjl.createcheme.CreateChemE/]: equipment_refresh kind=condensing_turbine origin=90, -60, 61 shift=0,0 cleared=0 placed=0 blocked=0
+173:[1810月2026 22:07:51.086] [Server thread/INFO] [com.wormzjl.createcheme.CreateChemE/]: equipment_refresh kind=steam_turbine origin=78, -60, 62 shift=0,0 cleared=0 placed=0 blocked=0
+174:[1810月2026 22:07:51.144] [Server thread/INFO] [com.wormzjl.createcheme.CreateChemE/]: equipment_refresh kind=cyclone origin=109, -60, 65 shift=0,1 cleared=2 placed=0 blocked=0
+175:[1810月2026 22:07:51.201] [Server thread/INFO] [com.wormzjl.createcheme.CreateChemE/]: equipment_refresh kind=centrifugal_compressor origin=59, -60, 62 shift=0,0 cleared=0 placed=0 blocked=0
+176:[1810月2026 22:07:51.289] [Server thread/INFO] [com.wormzjl.createcheme.CreateChemE/]: equipment_refresh kind=ebullated_bed_reactor origin=42, -60, 63 shift=0,0 cleared=0 placed=0 blocked=0
+177:[1810月2026 22:07:51.306] [Server thread/INFO] [com.wormzjl.createcheme.CreateChemE/]: equipment_refresh kind=trickle_bed_reactor origin=27, -60, 64 shift=0,0 cleared=0 placed=0 blocked=0
+178:[1810月2026 22:07:51.353] [Server thread/INFO] [com.wormzjl.createcheme.CreateChemE/]: equipment_refresh kind=stirred_reactor origin=-3, -60, 64 shift=0,0 cleared=0 placed=0 blocked=0
+179:[1810月2026 22:07:51.405] [Server thread/INFO] [com.wormzjl.createcheme.CreateChemE/]: equipment_refresh kind=adsorber origin=12, -60, 61 shift=0,0 cleared=0 placed=0 blocked=0
+190:[1810月2026 22:09:56.325] [Server thread/INFO] [com.wormzjl.createcheme.CreateChemE/]: equipment_refresh kind=vertical_heater origin=71, -60, 29 shift=0,0 cleared=0 placed=0 blocked=0
+191:[1810月2026 22:09:56.794] [Server thread/INFO] [com.wormzjl.createcheme.CreateChemE/]: equipment_refresh kind=cabin_heater origin=90, -60, 28 shift=0,0 cleared=0 placed=0 blocked=0
+197:[1810月2026 22:11:06.504] [Server thread/INFO] [com.wormzjl.createcheme.CreateChemE/]: equipment_refresh kind=delayed_coker origin=220, -60, 176 shift=0,0 cleared=0 placed=0 blocked=0
+210:[1810月2026 22:14:49.016] [Render thread/INFO] [net.minecraft.client.gui.components.ChatComponent/]: [System] [CHAT] Placed 303 cells of a cyclone of 2.0 m at -3, -60, 222
+214:[1810月2026 22:14:52.767] [Render thread/INFO] [net.minecraft.client.gui.components.ChatComponent/]: [System] [CHAT] Placed 69 cells of a cyclone of 1.1 m at 109, -60, -32
+220:[1810月2026 22:15:02.354] [Render thread/INFO] [net.minecraft.client.gui.components.ChatComponent/]: [System] [CHAT] Test passed, count: 4875
+221:[1810月2026 22:15:04.474] [Render thread/INFO] [net.minecraft.client.gui.components.ChatComponent/]: [System] [CHAT] Test failed
+222:[1810月2026 22:15:06.677] [Render thread/INFO] [net.minecraft.client.gui.components.ChatComponent/]: [System] [CHAT] Test passed, count: 303
+225:[1810月2026 22:15:10.272] [Render thread/INFO] [net.minecraft.client.gui.components.ChatComponent/]: [System] [CHAT] Test failed
+226:[1810月2026 22:15:12.442] [Render thread/INFO] [net.minecraft.client.gui.components.ChatComponent/]: [System] [CHAT] Test passed, count: 1584
+227:[1810月2026 22:15:14.714] [Render thread/INFO] [net.minecraft.client.gui.components.ChatComponent/]: [System] [CHAT] Test passed, count: 69
+235:[1810月2026 22:18:12.821] [Server thread/INFO] [net.minecraft.client.server.IntegratedServer/]: Saving and pausing game...
+242:[1810月2026 22:18:15.175] [Server thread/INFO] [com.wormzjl.createcheme.CreateChemE/]: process_solver lifecycle=STOPPING terminated=true forced=false never_started=0 terminal_completions=0
+252:[1810月2026 22:18:15.268] [Server thread/INFO] [net.minecraft.server.MinecraftServer/]: ThreadedAnvilChunkStorage: All dimensions are saved
+258:[1810月2026 22:18:15.293] [Server thread/INFO] [com.wormzjl.createcheme.CreateChemE/]: process_solver lifecycle=STOPPED
+276:[1810月2026 22:18:42.690] [Server thread/INFO] [com.wormzjl.createcheme.CreateChemE/]: fluid_world status=LOADED format=9 online_tick=35032 islands=2 certificates_saved=2 certificates_restored=2 awake=0
+277:[1810月2026 22:18:42.694] [Server thread/INFO] [com.wormzjl.createcheme.CreateChemE/]: process_solver lifecycle=STARTED epoch=2 workers=1 ready_capacity=8 deadline_ms=45000 graceful_shutdown_ms=1000 forced_shutdown_ms=1000
+282:[1810月2026 22:18:42.940] [Server thread/INFO] [net.minecraft.server.players.PlayerList/]: FluidMcpTester[local:E:375488ec] logged in with entity id 3 at (117.47, -54.01, -30.0)
+296:[1810月2026 22:22:46.745] [Server thread/INFO] [net.minecraft.client.server.IntegratedServer/]: Saving and pausing game...
+303:[1810月2026 22:22:48.945] [Server thread/INFO] [com.wormzjl.createcheme.CreateChemE/]: process_solver lifecycle=STOPPING terminated=true forced=false never_started=0 terminal_completions=0
+313:[1810月2026 22:22:48.996] [Server thread/INFO] [net.minecraft.server.MinecraftServer/]: ThreadedAnvilChunkStorage: All dimensions are saved
+319:[1810月2026 22:22:49.016] [Server thread/INFO] [com.wormzjl.createcheme.CreateChemE/]: process_solver lifecycle=STOPPED
+# compare results above, in order (recheck-compare.txt): 2.0 m dz 40 all (placement offset) = passed 4875; dz 41 all (old origin offset) = failed; dz 40 masked = 303;
+#   1.1 m dz -97 all (placement offset) = failed; dz -98 all (new origin offset) = passed 1584; dz -98 masked = 69
+# second client session (22:24-22:26, third load of the copy, kit-camera shots): its latest.log has 0 equipment_refresh lines, 0 ERROR, no createcheme WARN:
+111:[1810月2026 22:25:16.762] [Server thread/INFO] [com.wormzjl.createcheme.CreateChemE/]: fluid_world status=LOADED format=9 online_tick=39914 islands=2 certificates_saved=2 certificates_restored=2 awake=0
+112:[1810月2026 22:25:16.774] [Server thread/INFO] [com.wormzjl.createcheme.CreateChemE/]: process_solver lifecycle=STARTED epoch=1 workers=1 ready_capacity=8 deadline_ms=45000 graceful_shutdown_ms=1000 forced_shutdown_ms=1000
+117:[1810月2026 22:25:17.335] [Server thread/INFO] [net.minecraft.server.players.PlayerList/]: FluidMcpTester[local:E:2cf1719f] logged in with entity id 1 at (230.5, -25.0, 150.5)
+131:[1810月2026 22:25:54.727] [Server thread/INFO] [com.wormzjl.createcheme.CreateChemE/]: process_solver lifecycle=STOPPING terminated=true forced=false never_started=0 terminal_completions=0
+141:[1810月2026 22:25:54.791] [Server thread/INFO] [net.minecraft.server.MinecraftServer/]: ThreadedAnvilChunkStorage: All dimensions are saved
+147:[1810月2026 22:25:54.809] [Server thread/INFO] [com.wormzjl.createcheme.CreateChemE/]: process_solver lifecycle=STOPPED

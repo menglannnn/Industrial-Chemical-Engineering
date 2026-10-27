@@ -1,0 +1,148 @@
+{
+ "id": "R1-h4",
+ "title": "Rig only (2026-10-18, H4 trace): row 10 up to the ice-a read, then the tank's crystal test, the UV search's steps and V(P) at the failing temperature",
+ "blocks": {
+  "Gw": {
+   "at": [
+    20,
+    101,
+    98
+   ],
+   "block": "generator"
+  },
+  "P1": {
+   "at": [
+    21,
+    101,
+    98
+   ],
+   "block": "pipe"
+  },
+  "T": {
+   "at": [
+    22,
+    101,
+    98
+   ],
+   "block": "reservoir"
+  },
+  "P2": {
+   "at": [
+    23,
+    101,
+    98
+   ],
+   "block": "pipe"
+  },
+  "Gm": {
+   "at": [
+    24,
+    101,
+    98
+   ],
+   "block": "generator"
+  },
+  "P3": {
+   "at": [
+    22,
+    101,
+    97
+   ],
+   "block": "pipe"
+  },
+  "V": {
+   "at": [
+    22,
+    101,
+    96
+   ],
+   "block": "void"
+  }
+ },
+ "steps": [
+  {
+   "op": "mark"
+  },
+  {
+   "op": "place",
+   "ids": [
+    "Gw",
+    "Gm"
+   ]
+  },
+  {
+   "op": "set",
+   "id": "Gm",
+   "mixture": "Methane",
+   "pressure": 1200000,
+   "temperatureK": 120
+  },
+  {
+   "op": "set",
+   "id": "Gw",
+   "mixture": "Water",
+   "pressure": 101325,
+   "temperatureK": 298.15
+  },
+  {
+   "op": "place",
+   "ids": [
+    "T",
+    "V",
+    "P3",
+    "P2",
+    "P1"
+   ]
+  },
+  {
+   "op": "wait",
+   "s": 30
+  },
+  {
+   "op": "read",
+   "ids": [
+    "T"
+   ],
+   "views": [
+    "overview",
+    "organic",
+    "aqueous",
+    "outlets"
+   ],
+   "tag": "atm-water"
+  },
+  {
+   "op": "note",
+   "text": "row 10: water at 1 MPa enters, freezes at each refresh (Water (solid)) and boils methane; the water line P1 closes by deposition in the interval after each refresh"
+  },
+  {
+   "op": "set",
+   "id": "Gw",
+   "mixture": "Water",
+   "pressure": 1000000,
+   "temperatureK": 298.15
+  },
+  {
+   "op": "wait",
+   "s": 15
+  },
+  {
+   "op": "read",
+   "ids": [
+    "T"
+   ],
+   "views": [
+    "overview",
+    "aqueous",
+    "solids",
+    "vapor"
+   ],
+   "tag": "ice-a"
+  },
+  {
+   "op": "trace",
+   "kind": "h4",
+   "id": "T"
+  }
+ ]
+}

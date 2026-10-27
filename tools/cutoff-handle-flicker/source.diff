@@ -1,0 +1,54 @@
+commit 6f2f91e9f29126ab76602852d2b4ddecde9f87df
+Author:     wormzjl <wormzjl@gmail.com>
+AuthorDate: Sat Oct 24 17:31:23 2026 +0800
+Commit:     wormzjl <wormzjl@gmail.com>
+CommitDate: Sat Oct 24 17:31:23 2026 +0800
+
+    Remove overlapping cutoff handle tip faces
+
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index e437e8a9..4e00438a 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -30,6 +30,8 @@ All notable changes to Industrial Chemical Engineering (IChemE, formerly CreateC
+ 
+ ### Fixed
+ 
++- Remove the cutoff lever's overlapping shaft/grip/end-cap tip faces to prevent flickering, preserving the heavier handle's size and silhouette (batch: `2026-10-24-cutoff-handle-flicker`).
++
+ - Move constructed pump/compressor flow arrows onto equipment nozzle necks behind their connection flanges; remove redundant inner pump flanges and pipe-side arrow metadata while preserving connection positions and check-valve markings (commit `7cb42268`, batch: `2026-10-24-mover-equipment-arrows`).
+ 
+ - Keep a carried mover-limit rate result's phase basis with its flow/head guesses, resolving WTI pump-rate convergence holds; report accepted pump pressure/suction limits, inlet refusals and blocked forward flow through the normal equipment error status while retaining genuine solver failures (commits `9fa53354`, `c49f6654`, `98f3dce3`, batch: `2026-10-24-wti-pumping-rate-hold`).
+diff --git a/src/main/java/com/wormzjl/icheme/science/equipment/ShutoffValveGeometry.java b/src/main/java/com/wormzjl/icheme/science/equipment/ShutoffValveGeometry.java
+index 93076903..dcd9ab5e 100644
+--- a/src/main/java/com/wormzjl/icheme/science/equipment/ShutoffValveGeometry.java
++++ b/src/main/java/com/wormzjl/icheme/science/equipment/ShutoffValveGeometry.java
+@@ -35,10 +35,11 @@ public final class ShutoffValveGeometry {
+         double length=Math.min(.95,Math.max(.36,1.10*od)),width=Math.max(.065,Math.min(.19,.24*od)),thickness=Math.max(.035,.085*od);
+         var pivot=bonnet.along(radius+rise);double[] lever=open?run:cross(stem,run);
+         bar(mesh,pivot,lever,stem,1.35*width,1.15*thickness,-.28*length,.12*length,Material.FLANGE);
+-        bar(mesh,pivot,lever,stem,width,thickness,0,length,Material.FLANGE);
++        // Buried shaft/grip ends have no face: only the outer cap closes the tip, avoiding coplanar paint/metal.
++        bar(mesh,pivot,lever,stem,width,thickness,0,.54*length,START,Material.FLANGE);
+         var rib=pivot.clone();for(int i=0;i<3;i++)rib[i]-=.65*thickness*stem[i];
+         bar(mesh,rib,lever,stem,.48*width,.65*thickness,-.10*length,.65*length,Material.STEELWORK);
+-        bar(mesh,pivot,lever,stem,1.28*width,1.50*thickness,.48*length,length,Material.GUARD);
++        bar(mesh,pivot,lever,stem,1.28*width,1.50*thickness,.48*length,.96*length,START,Material.GUARD);
+         bar(mesh,pivot,lever,stem,1.30*width,1.55*thickness,.94*length,length,Material.BOLT);
+         mesh.cylinder(new Frame(pivot,stem,run),Math.max(1.35*neck,.55*width),-thickness,1.05*thickness,6,Material.BOLT);
+         if(!accessory)for(int face:new int[]{axis,axis^1}) {
+@@ -50,9 +51,13 @@ public final class ShutoffValveGeometry {
+     }
+ 
+     private static void bar(Mesh mesh,double[] origin,double[] direction,double[] up,double width,double height,double from,double to,Material material) {
++        bar(mesh,origin,direction,up,width,height,from,to,BOTH_ENDS,material);
++    }
++    private static void bar(Mesh mesh,double[] origin,double[] direction,double[] up,double width,double height,double from,double to,int ends,Material material) {
+         double[] side=cross(up,direction);var previous=mesh.transform();
+         mesh.transform(new Transform(new int[]{(int)side[0],(int)up[0],(int)direction[0],(int)side[1],(int)up[1],(int)direction[1],(int)side[2],(int)up[2],(int)direction[2]},origin));
+-        mesh.box(new double[]{-width/2,-height/2,from},new double[]{width/2,height/2,to},63,material);
++        int faces=(ALL_FACES&~48)|((ends&START)!=0?16:0)|((ends&END)!=0?32:0);
++        mesh.box(new double[]{-width/2,-height/2,from},new double[]{width/2,height/2,to},faces,material);
+         mesh.transform(previous);
+     }
+ }

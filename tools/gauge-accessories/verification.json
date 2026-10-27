@@ -1,0 +1,17 @@
+{
+  "branch": "codex/gauge-accessories",
+  "base": "1ba146c4",
+  "implementation": "e927f599",
+  "focused_tests": 61,
+  "failures": 0,
+  "software_views": 125,
+  "protocol": "instruments-1",
+  "accessory_storage": 1,
+  "checkpoint": 18,
+  "unit": 11,
+  "process_protocol": "fluid-14",
+  "mod_version": "0.11.2",
+  "jar_sha256": "c7bcae74fa710276fd9708c996063384ea9dac01ec18fb85384dc8fbcf7c20c7",
+  "mcp": "fresh-world render/install/isolated-hover checked; client closed; editor/manual interactions remain",
+  "highlight": "constructed equipment only; native preview alpha56/88, circular accents135"
+}

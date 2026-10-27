@@ -1,0 +1,22 @@
+{
+  "implementation": "5a6e1ecc",
+  "base": "ff9fdfed",
+  "branch": "codex/accessory-refinements",
+  "tests": 41,
+  "failures": 0,
+  "errors": 0,
+  "jar": "icheme-0.11.2.jar",
+  "renders": 123,
+  "mcp_runs": 1,
+  "manual": [
+    "wrench sneak interaction/timing",
+    "final static refresh/title and probe-depth refinements"
+  ],
+  "formats": {
+    "checkpoint": 19,
+    "unit": 12,
+    "accessories": 1,
+    "process": "fluid-14",
+    "instruments": "instruments-1"
+  }
+}

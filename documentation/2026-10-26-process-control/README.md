@@ -1,0 +1,29 @@
+# Process control
+
+Implemented 2026-10-27: main fast-forwarded to `0e697177` (0.14.1), holding `codex/process-control`, the review fixes and main 0.14.0. Not pushed.
+
+## History
+- 2026-10-27: owner approved sensors/local controllers, geometry and outlet rules; cables/remote level are a later batch.
+- 2026-10-27: `0f3a569a` implements the first batch; `01c5250c` records its unreleased changelog; `21193cbf` updates the static sensor metadata GameTest assertion.
+- 2026-10-27: final model lane passes 1476 quick / 187 slow gates, exact chain-100 and 23 fluid GameTests; campaign clean counts 975/993/1000 per 1000 seeds. New E5 seed 236 is minimized to nine blocks and traced, unresolved.
+- 2026-10-27: one native MCP session finds and verifies the fitting-refresh fix (`a33ec4a6`), ideal flow control, blank housings, module interaction and GUI measurements. Post-client server regression passes 24/24.
+- 2026-10-27: `b92385c6` preserves the local actuator bore for held-opening equations/checkpoints; focused topology/carry/checkpoint cases pass. After tooling cleanup, current-code quick 1477/1477 and slow 187/187 pass. Results are in PROCESS_CONTROL_REVIEW.md.
+- 2026-10-27: second-reader code review of `8523595a` (static; no Gradle run because a dev client was running). Merge blocker: fluid facts schema 2 and version 0.14.0 are now taken by main. Physics defects: the boot-drum head counts the boot column twice, and the round-vessel head drops the solids' mass. Seed-236 lead: the 50/50 mixed stream at vanishing flow. Also: flowmeter taps lost on reload, flow valves never rest, volume-flow conflicts undetected, cost of the dense dependence check. See PROCESS_CONTROL_CODE_REVIEW.md.
+- 2026-10-27: findings 2-4 fixed on `claude/process-control-fixes` (`fa62fd81`, off `8523595a`): the head stands over the body bottom, the round-vessel head weighs its solids, and the mixed end stream is amount-weighted over the connection volume. Focused tests 213/213 pass. Seed 236 is held identically on base and fix (tick 7367, residual 0.5302, b:trace-underflow), so the mixed-stream lead is disproven. Not merged into `codex/process-control`.
+- 2026-10-27: seed 236 traced (SEED236_TRACE_REVIEW.md; probe tools/process-control/seed236-probe). The water-full tank keeps a 1e-21 mol hydrocarbon trace as two trace phases with no receiver (D34/A84), seeded from 1e-12 entry traces (D40 A). The bulk difference step makes the Jacobian fail for steps of 1/32 s or more; for shorter steps the step-end closure asks a subcooled-liquid trace for two-phase equilibrium and stalls at 0.53. The failing paths predate the branch; its LIQUID co-draw makes the state reachable. Options 1-3 await the owner; nothing fixed.
+- 2026-10-27: option 1, narrowed, on `claude/process-control-fixes` (`8b91a822`, changelog `b58c166e`; SEED236_FIX_REVIEW.md). A water-full vessel omits a hydrocarbon trace below the D34 share and within 1e-15 of its volume (`FluidThermodynamics.omittedTrace`, replacing `carriedTrace`), with no phantom entry traces. Junctions keep D41's dry gas only: omitting their liquid trace made a new gate hold at tick 2080. Focused 139 + slow gates 47 pass. The new seed-236 world test fails on the old code. Bundled seed 236: 0 holds to tick 13840. Not merged.
+- 2026-10-27: quick check of `claude/process-control-fixes` (`b58c166e`) against an export of `8523595a`, seeds 1-200. Cold random 195/195 with the same seeds and identical counters. Bundled random 198 (base) to 199 (fix): base seed 6 is a wall-deadline hold that ends identically. Bundled defaults 200/200 with identical counters. No new hold. Over the seeds clean in both: Newton iterations +0.14 %, gate rejections 10 to 13. See SEED236_FIX_REVIEW.md.
+- 2026-10-27: merge preparation on `claude/process-control-merge` (owner: fix findings 5 and 6, version 0.14.1).
+  - `6445a3b8` merges main 0.14.0: the process-control facts become schema 3 with a new corpus image; `Device.withControl` keeps a laid pipe's joints when a sensor configures its valve.
+  - `ab8cb8ba` keeps flowmeter taps through a reload and an installation (finding 5). `3ed2351c` lets a flow-valve island rest (finding 6). `0e697177` is the release prep.
+  - Final lane: quick 1558/1558, slow 187/187, chain-100 exact, GameTests 27/27, campaign 975/994/1000 with no seed newly held (seed 236 clean). The 33 junction lines are unchanged. See MERGE_REVIEW.md. Main is unchanged at `4a7c807b`; the merge is a fast-forward and awaits the owner.
+- 2026-10-27: owner approved. The code guide patch is applied (8 chapters). Main is fast-forwarded from `4a7c807b` to `0e697177` (0.14.1). The INDEX row is Implemented and the code guide snapshot lines name main. Not pushed: `origin/main` is still `4a7c807b`.
+
+## Documents
+PROCESS_CONTROL_PLAN.md (approved scope), PROCESS_CONTROL_REVIEW.md (delivery/release review), CONTROL_NUMERICS_REVIEW.md (campaign and open regression), SENSOR_GUI_REVIEW.md (native check), PROCESS_CONTROL_CODE_REVIEW.md (second-reader code review), SEED236_TRACE_REVIEW.md (seed-236 diagnosis), SEED236_FIX_REVIEW.md (seed-236 fix), MERGE_REVIEW.md (merge onto 0.14.0, findings 5-6, final lane), DATA_SYSTEM_CONTRACT.md (later cables).
+
+## Code and tooling
+Fluid science/runtime, instruments/accessory store, equipment registration, item models and process menus/screens. Code guide: reference/code-guide/process-control.md plus the six affected subsystem chapters and README. Offline qualification/trace/native-input helpers and compressed logs: tools/process-control/ (indexed).
+
+## Open items
+The push of main (`0e697177`), on the owner's word. `codex/process-control` and `claude/process-control-fixes` are now contained in main; their owners decide whether to delete them. Findings 7 and 8 and the minor items 9-12 of PROCESS_CONTROL_CODE_REVIEW.md stay open (owner, 2026-10-27). Cables and remote level regulation are a separate batch.

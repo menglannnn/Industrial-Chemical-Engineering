@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="820" height="490" viewBox="0 0 820 490" font-family="Segoe UI, Arial, sans-serif">
+<title>Condenser forms: water-cooled shell and tube, air-cooled forced draft</title>
+<style>
+.ts{font-size:12px;fill:#444441}.th{font-size:13px;font-weight:600;fill:#2C2C2A}
+.steel{fill:#D3D1C7;stroke:#5F5E5A;stroke-width:1}
+.light{fill:#ECEAE3;stroke:#5F5E5A;stroke-width:1}
+.frame{fill:none;stroke:#5F5E5A;stroke-width:2.2}
+.tube{stroke:#B4B2A9;stroke-width:.7}
+.vap{fill:none;stroke:#D85A30;stroke-width:3}
+.liq{fill:none;stroke:#185FA5;stroke-width:3}
+.utl{fill:none;stroke:#0F6E56;stroke-width:2;stroke-dasharray:6 3}
+.lead{fill:none;stroke:#888780;stroke-width:.8;stroke-dasharray:3 2}
+</style>
+<defs>
+<marker id="a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5"/></marker>
+<pattern id="fins" width="3" height="18" patternUnits="userSpaceOnUse"><path d="M1.5 0V18" stroke="#9C9A92" stroke-width=".6"/></pattern>
+</defs>
+<rect width="820" height="490" fill="#fff"/>
+<text class="th" x="40" y="28">A. Water-cooled condenser, TEMA AES: shell 1.25 m, tubes 6 m (1 m = 30 px)</text>
+<line x1="50" y1="158" x2="320" y2="158" stroke="#5F5E5A" stroke-width="2"/>
+<g class="steel">
+<path d="M88 101.25A18 18.75 0 0 0 88 138.75Z"/>
+<rect x="88" y="101.25" width="171" height="37.5"/>
+<rect x="86.5" y="98.25" width="4" height="43.5"/>
+<rect x="257" y="98.25" width="8" height="43.5"/>
+<rect x="265" y="101.25" width="22.5" height="37.5"/>
+<rect x="287.5" y="98.25" width="3.5" height="43.5"/>
+<rect x="164.5" y="92" width="18" height="9.25"/><rect x="161" y="88" width="25" height="4"/>
+<rect x="99.25" y="138.75" width="7.5" height="7.25"/><rect x="96.5" y="146" width="13" height="3"/>
+<rect x="271" y="94" width="10" height="7.25"/><rect x="269" y="91" width="14" height="3"/>
+<rect x="271" y="138.75" width="10" height="7.25"/><rect x="269" y="146" width="14" height="3"/>
+<polygon points="110,138.75 126,138.75 128,158 108,158"/>
+<polygon points="221,138.75 237,138.75 239,158 219,158"/>
+</g>
+<path class="tube" d="M100 108H257M100 114H257M100 120H257M100 126H257M100 132H257"/>
+<rect x="92" y="104" width="8" height="32" fill="none" stroke="#5F5E5A" stroke-width=".8" stroke-dasharray="2 2"/>
+<path d="M265 120H287.5" stroke="#5F5E5A" stroke-width=".8" stroke-dasharray="3 2"/>
+<path class="vap" d="M173.5 56V84" marker-end="url(#a)"/>
+<path class="liq" d="M103 150V166" marker-end="url(#a)"/>
+<path class="utl" d="M276 166V152" marker-end="url(#a)"/>
+<path class="utl" d="M276 88V70" marker-end="url(#a)"/>
+<path d="M300 128H362" stroke="#5F5E5A" stroke-width="1.2" marker-end="url(#a)"/>
+<path class="lead" d="M70 76L79 100M165 180L120 160M181 180L227 160M376 96L283 108"/>
+<g class="ts">
+<text x="40" y="72">Floating-head cover</text>
+<text x="173.5" y="50" text-anchor="middle">Vapour in</text>
+<text x="276" y="62" text-anchor="middle">Cooling water out</text>
+<text x="103" y="182" text-anchor="middle">Condensate out</text>
+<text x="173" y="192" text-anchor="middle">Saddles</text>
+<text x="276" y="182" text-anchor="middle">Cooling water in</text>
+<text x="380" y="100">Channel: two tube passes, water inside the tubes</text>
+<text x="370" y="132">Bundle pulls out away from the column</text>
+</g>
+<text class="th" x="40" y="262">B. Air-cooled condenser, forced draft, own stand: D 3 has two bays 3.5 m × 9 m, two 2.8 m fans each</text>
+<line x1="50" y1="440" x2="360" y2="440" stroke="#5F5E5A" stroke-width="2"/>
+<path class="frame" d="M72 440V323M205 440V347M338 440V323"/>
+<polygon class="light" points="89.5,392 320.5,392 338,347 72,347"/>
+<rect x="84" y="329" width="242" height="18" fill="#E3E1D9" stroke="none"/>
+<rect x="84" y="329" width="242" height="18" fill="url(#fins)" stroke="#5F5E5A"/>
+<g class="steel">
+<rect x="72" y="326" width="12" height="24"/><rect x="326" y="326" width="12" height="24"/>
+<rect x="74" y="316" width="8" height="10"/><rect x="72" y="313" width="12" height="3"/>
+<rect x="330" y="350" width="8" height="8"/><rect x="328" y="358" width="12" height="3"/>
+<rect x="89.5" y="392" width="96" height="12"/><rect x="224.5" y="392" width="96" height="12"/>
+<rect x="129" y="404" width="17" height="18"/><rect x="264" y="404" width="17" height="18"/>
+</g>
+<path d="M92 398H183M227 398H318" stroke="#5F5E5A" stroke-width=".8" stroke-dasharray="4 3"/>
+<path d="M137.5 422V440M272.5 422V440" stroke="#5F5E5A" stroke-width="1.5"/>
+<path class="vap" d="M78 285V309" marker-end="url(#a)"/>
+<path class="liq" d="M334 361V436" marker-end="url(#a)"/>
+<path class="lead" d="M366 328L327 336M366 348L338 352M366 372L332 370M366 396L321 398M366 418L281 414M366 440L340 440"/>
+<g class="ts">
+<text x="88" y="296">Vapour in, inlet header</text>
+<text x="370" y="332">Finned-tube bundle</text>
+<text x="370" y="352">Outlet header, condensate down to the reflux drum</text>
+<text x="370" y="376">Plenum</text>
+<text x="370" y="400">Fans 2.8 m, forced draft</text>
+<text x="370" y="422">Motors and drives</text>
+<text x="370" y="444">Stand legs to grade; the bundle sits 9 m up</text>
+<text x="40" y="472">Sized for about 120 kW per m² of face (35 K air rise at 3 m/s): D 3 m, about 7 MW, takes two such bays, 63 m².</text>
+</g>
+</svg>

@@ -1,0 +1,2 @@
+com.wormzjl.createcheme.science.thermo.reference.HelmholtzReferenceParityTest
+com.wormzjl.createcheme.science.thermo.reference.HelmholtzReferenceTest

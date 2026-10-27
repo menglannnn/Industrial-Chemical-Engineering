@@ -1,0 +1,21 @@
+diff --git a/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/HydrocarbonModel.java b/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/HydrocarbonModel.java
+index 1fcff84e..0a6f06f8 100644
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/HydrocarbonModel.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/thermo/HydrocarbonModel.java
+@@ -14,6 +14,7 @@ public final class HydrocarbonModel {
+     /** A numerical guard on the hydrocarbon <em>partial</em> pressure a vapour is evaluated at, which in a gas that is
+      * nearly all steam can be arbitrarily small; the state's own pressure is bounded by the package's domain. */
+     public static final double VAPOR_PARTIAL_PRESSURE_FLOOR = 1e-6;
++    public static final java.util.concurrent.atomic.AtomicInteger INSTR_E3=new java.util.concurrent.atomic.AtomicInteger();
+     private final MaterialCatalog.Package propertyPackage;
+     private final TranslatedPengRobinson translated;
+     private final GlobalLiquidResponse liquidResponse;
+@@ -120,7 +121,7 @@ public final class HydrocarbonModel {
+         // state that carries it checks the total pressure.
+         domain.checkPhaseTemperature(t,amounts);
+         if(root==PhaseRoot.VAPOR) {
+-            if(p<VAPOR_PARTIAL_PRESSURE_FLOOR)throw new IllegalArgumentException("Hydrocarbon vapour partial pressure below the numerical floor");
++            if(p<VAPOR_PARTIAL_PRESSURE_FLOOR){if(System.getProperty("instr","").contains("e3")&&INSTR_E3.getAndIncrement()<6){System.out.println("INSTR_E3 t="+t+" pc="+p+" amounts="+java.util.Arrays.toString(amounts));new Throwable().printStackTrace(System.out);}throw new IllegalArgumentException("Hydrocarbon vapour partial pressure below the numerical floor");}
+             if(p>domain.envelope().maximumPressure())domain.checkEnvelope(t,p);
+         } else domain.check(t,p,amounts,null,0);
+         // The same numbers from the workspace's own buffer, copying only the coefficients the returned record keeps (the

@@ -1,0 +1,42 @@
+# D38: D36 reverted, and one vanishing rule for every node
+
+Batch `2026-09-24-coolprop-low-temperature`, branch `claude/unified-thermo-port`, 2026-10-18, owner decision D38 (2026-10-17). Two commits on `65036f2b`: `26090bf0` and `67e5f3e7`. Tools and logs: `tools/unified-thermo-port-m5/d38/` (README; `logs/d38-logs.tar.gz`). Tests ran on the Gradle-free javac lane; seeds ran through `bisect-seeds.sh` (Gradle, one worker).
+
+## 1. Gas weighs its density again (`26090bf0`, D36 reverted)
+
+**Physics.** A gas column weighs M g/(Z R T) of its pressure per metre, at any pressure: 1.1e-4 per metre for air (11 Pa/m at 1 atm), 1.6 to 2.1e-4 for seed 19's CO2-rich gases. Seed 19's CO2-rich gases at 5.4 MPa (87 to 117 kg/m3) weigh 0.5 to 1.15 kPa/m, 25 to 30 % of an LNG column (3.6 to 4.4 kPa/m), so a weightless dense gas misplaces a liquid level by that share of a height difference.
+
+**Change.** `git revert 03bc70f6`, reworded. Gas weighs its density in every static column (the row, the start drives, the sign tests, the rest gauge, `NetworkReduction.drives`) and in a mover's column (its suction stream); D34's fill by volume stays. Three things return: the riser drive (116.7 Pa between two 480 kPa nitrogen tanks 2 m apart), the gas thermosiphon (31.6 Pa round the loop, 0.016 to 0.023 kg/s) and the gas-only junction's column scaling. Deleted: `RestResolutionTest`'s two D36 gates. The three tests D36 restated read their D34 statements again.
+
+**References.** None re-recorded. Printed numbers move in the 15 runtime tests D36 moved, back to D34's values plus the S1 to S6 deltas. FedTankOpenOutletsTest (2), LiquidCo2LetDownTest and SealedDischargeTest print D34's output exactly. The D34 gate's gas column is 44.896 Pa (D34: 44.895). The stack's upper tank is at 103304.54 Pa (D34: 103305.62; S1 accounts for -1.08 Pa). The other moved tests carry S1's and S6's deltas. Junction lines: 33, the 5- and 6-port cases at D34's values plus S1's round-off. MIXED_GAS_COST newtonSolves 340 (339 at D34, 312 at D36; case 0.02:5:true takes 22 against 21).
+
+## 2. One vanishing rule for every node (`67e5f3e7`, rule C)
+
+**Physics.** A bubble in a subcooled liquid condenses, and a drop in a superheated gas evaporates. In seed 30, LNG junction n5 (56 mol) returns to 3.49 MPa at 169.8 K, all liquid, 1.3 MPa above the pressure at which the line beside it boils. The re-minted start, however, states n5 flashed at 2.03 MPa with 4.5 % of its moles as vapour. The rate solve's failed iterate had that vapour at 1.0e-8 of the moles, above the 1e-9 trace share, so the D28 A' trial kept it. The island held at tick 1595 (E5, |r| = 1.47e-9, 405 k checks).
+
+**Change.** The rule lives in `FluidThermodynamics.phaseCheck`, the stage of D25's fold and D28 A''s trial fold. Its callers now pass `from`, the node at the start of the solve that judges it: `PassiveStepSolver.phaseCorrection` passes the step's start (`inputStates`), `InventoryEquilibrium.passes` the closure's start. A phase under VANISHING_SHARE (1e-6) of its node's fluid moles, at a smaller share than at `from`, folds by the trace rule (`foldTracePhases` with the vanishing bits). It folds at a converged point (written into the A85 record) and at a failed iterate (a trial on a copy; A' is unchanged), in a junction or a vessel. A proposed phase is refused where the own split leaves it vanishing, against its own start (D26) or against `from`. Deleted: the `junction?0:` exemption. The 1e-9 fold stays for phases that do not shrink. The javadocs of VANISHING_SHARE, `vanishing`, `foldTracePhases` and `phaseCheck` now name every node.
+
+**Two parts the suites forced (for the owner to validate).** The literal rule held 12 suite tests in "Phase/device active-set cycle" (logs `c2b-*`, `trace-failing-v2`). Two fixes, each traced:
+- (a) The TP answer at the folded point offered the removed phase straight back, and the next pass was laid out as before. A phase the fold removes as vanishing is now excluded from that check's proposals.
+- (b) For a vanishing gas whose hydrocarbons have no hydrocarbon liquid to go to (nitrogen over water), only its humidity was folded, and the next TP answer wetted it again. Such a gas now stays whole (the carried-gas split applies to a trace gas only) and leaves through the ports.
+
+**Conservation.** A folded phase goes into the node's other phases at the node's T and P; every component and the node's mass are unchanged, and nothing is booked. Energy also stays closed, because a fold changes only a layout (the next pass's seed, or a failed iterate's trial) and the step commits the reconstruction of a converged pass. There a vessel is closed to its booked amounts and U (`InventoryEquilibrium.close`); U is the authority, so the fold's latent heat (at most 1e-6 of the moles) moves the vessel's T and P, never U. A junction is its relaxation row's buffer m_J w, m_J h (D46: virtual, not inventory), and the ledger's junction term counts the buffer's change. `checkConservation` (components, solids, energy) passed on every committed step of the suites and the gate.
+
+**Gate.** `HoldClassWorldsTest#aJunctionsVapourCollapsingInASubcooledLiquidLeavesAtAFailedIterate` places seed 30's pair-minimal 11 blocks through a cold `EventPathWorld(catalog, model)`. With the rule, the world keeps up to tick 2093 in 2 s: its three junctions are liquid only (2.40 to 3.80 MPa, 168.5 to 169.1 K), and the tank is at 2.39 MPa with 16.6 kg of CO2-I. Rule-off proof: with `rule-c-off.patch` (this commit's `src/main` reversed), the test run alone holds at tick 1595 on the same stall (|r| = 1.4743852805310098e-9).
+
+**Suites** (javac lane, against `26090bf0`). These all pass: science.fluid.network 184, runtime.fluid 296, runtime 29, science.fluid.solver 21, .transport 9, .topology 5, .thermo 66, science.material 82, science.thermo 34, .phase 78, .qualification 39, .reference 25, network 29, client.gui 56. science.fluid passes 15 of 16: PackagedSparseLuTest needs the built jar, as at the base. No reference was re-recorded. Printed numbers move in 6 tests:
+- PhasePortPriorityTest, drains at 5 s and 0.1 s: the condensate film of the expanding headspace (1.5e-10 and 5.5e-10 of the mass) leaves while it shrinks. The tank is dry at slices 28 and 1377 (never before), and the final pressures agree within 0.01 Pa.
+- PhasePortPriorityTest, pentane over water: the last 3 g of nitrogen leave dissolved in the pentane overflow (the top port passes 1.6029 kg of gas against 1.6059 kg), with one rejection fewer.
+- WaterIntoCryogenicMethaneTest: the vessel's methane vapour, collapsing from 1.56 mol at the step start to 2.5e-5 mol at the failed iterates, leaves there in interval 5. That interval takes 40 substeps with 16 rejections against 43 and 19, and ends 0.028 K colder. Interval 6 ends with 37.6 kg of ice against 36.1 kg: the substep path through the stiff freeze changed.
+- LiquidCo2LetDownTest: slice 2 ends at 483.40 kg against 483.51 kg (73/10 substeps against 75/12); by slice 5 the two agree within 5 g.
+- The D34 gate: the lower tank holds 4.99402e-6 m3 of liquid against 4.99410e-6, because the drop line's shrinking liquid trace leaves the line's junctions earlier.
+
+Junction lines: 33, identical to commit 1. MIXED_GAS_COST newtonSolves: 340.
+
+**Seeds, replayed alone at `67e5f3e7`.** Seed 30 is clean (0 holds to tick 13593); its 11-block world runs clean to tick 5593 with at most 105 676 checks, against 405 349 when it held at commit 1. Seed 48 is still E5 at tick 1256 (island 24, |r| = 4.06e-8), the same stall as at `26090bf0`. Rule C acts there once, on a far-off failed iterate that states the lower tank as 4.8 mol of liquid with 1.2e-7 mol of vapour, against 40.9 mol of nitrogen gas at the step start; that trial's next pass cycles. The stall is not a vanishing phase, and I did not trace it further.
+
+**Options for the owner.**
+1. `from` is the start of the solve that judges the phase (the step or substep, or the closure), not the island interval's start. Using the interval start would need threading through `PassiveIntervalSolver`; it would also catch a phase that stalls without shrinking within a substep.
+2. Parts (a) and (b) above, which the literal rule did not have.
+
+**Code guide:** no change now, because the guide describes main. At the merge, `fluid-science.md`'s "Trace fold / flush" line gains the vanishing rule (1e-6, shrinking since the solve's start, every node), and `verification.md` gains the cold-world gate and `EventPathWorld(catalog, model)`. The gas-column rows stay as main states them.

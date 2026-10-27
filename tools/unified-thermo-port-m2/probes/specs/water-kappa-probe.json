@@ -1,0 +1,10 @@
+[
+  {
+    "from": "    public static final double METASTABLE_MARGIN_PASCAL = 2e6;\n",
+    "to": "    public static final double METASTABLE_MARGIN_PASCAL = 2e6;\n    /** M2PROBE: when positive, the network's liquid water follows the retired GlobalLiquidResponse law with this compressibility about M2PROBE_P0 (never committed). */\n    public static volatile double M2PROBE_KAPPA = 0, M2PROBE_P0 = 101325;\n"
+  },
+  {
+    "from": "            throw new ThermoDomainViolation(scope,\"Water\",ThermoDomainViolation.Property.PRESSURE,pressurePascal,minimum,REGION_1_MAXIMUM_PRESSURE);\n        fill(workspace,temperatureKelvin,pressurePascal);\n",
+    "to": "            throw new ThermoDomainViolation(scope,\"Water\",ThermoDomainViolation.Property.PRESSURE,pressurePascal,minimum,REGION_1_MAXIMUM_PRESSURE);\n        if (M2PROBE_KAPPA > 0) {\n            fill(workspace,temperatureKelvin,M2PROBE_P0);\n            Workspace w=workspace; double k=M2PROBE_KAPPA, e=-k*(pressurePascal-M2PROBE_P0), t=temperatureKelvin;\n            double f=com.wormzjl.createcheme.science.math.DeterministicMath.exp(e), integral=-com.wormzjl.createcheme.science.math.DeterministicMath.expm1(e)/k;\n            double v0=w.specificVolume, vt0=w.volumeTemperatureDerivative, vtt0=w.volumeSecondTemperatureDerivative;\n            w.specificVolume=v0*f; w.volumeTemperatureDerivative=vt0*f; w.volumeSecondTemperatureDerivative=vtt0*f;\n            w.specificEnthalpy=w.specificEnthalpy+(v0-t*vt0)*integral; w.specificHeatCapacity=w.specificHeatCapacity-t*vtt0*integral;\n            w.volumePressureDerivative=-k*w.specificVolume; w.specificInternalEnergy=w.specificEnthalpy-pressurePascal*w.specificVolume;\n            w.enthalpyPressureDerivative=w.specificVolume-t*w.volumeTemperatureDerivative;\n            return;\n        }\n        fill(workspace,temperatureKelvin,pressurePascal);\n"
+  }
+]

@@ -1,0 +1,299 @@
+From 70bafcfb5409655830556be42a7a72bae98ef111 Mon Sep 17 00:00:00 2001
+From: wormzjl <wormzjl@gmail.com>
+Date: Fri, 16 Oct 2026 12:59:54 +0800
+Subject: [PATCH] =?UTF-8?q?=F0=9F=90=9B=20Keep=20the=20OS=20cursor=20still?=
+ =?UTF-8?q?=20while=20the=20game=20window=20is=20in=20the=20background.?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- On Windows GLFW reports a window shown by a background process as focused
+  (GetActiveWindow is per thread), so glfwSetCursorPos and GLFW_CURSOR_DISABLED
+  moved and confined the user's real cursor, and Minecraft grabbed the mouse
+  on world join, screen close and in-world clicks.
+- New OsInputGuard reads the real foreground window (JNA User32, bundled with
+  Minecraft) and gates setCursorPos, the java.awt.Robot fallbacks and the
+  exit_control_mode grab on it; its client-tick hook hands a background window
+  focus=false through the game's own GLFW focus callback, and focus=true once
+  the window is in front.
+- exit_control_mode also matches the Mojang name grabMouse; the Robot
+  setCursorPos fallback uses glfwGetWindowPos (glfwGetWindowPosX/Y do not exist).
+- Unchanged when the window is in front, on other platforms, or when the
+  foreground window cannot be read.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../mcp/common/ControlModeHelper.java         |   9 +-
+ .../mcp/common/InputInjectionHelper.java      |  36 +++--
+ .../minecraft/mcp/common/OsInputGuard.java    | 147 ++++++++++++++++++
+ 3 files changed, 176 insertions(+), 16 deletions(-)
+ create mode 100644 packages/common/src/main/java/xyz/langyo/minecraft/mcp/common/OsInputGuard.java
+
+diff --git a/packages/common/src/main/java/xyz/langyo/minecraft/mcp/common/ControlModeHelper.java b/packages/common/src/main/java/xyz/langyo/minecraft/mcp/common/ControlModeHelper.java
+index e4c245c..b6e9311 100644
+--- a/packages/common/src/main/java/xyz/langyo/minecraft/mcp/common/ControlModeHelper.java
++++ b/packages/common/src/main/java/xyz/langyo/minecraft/mcp/common/ControlModeHelper.java
+@@ -77,14 +77,18 @@ public final class ControlModeHelper {
+             logModEvent("exit_control_mode", "Manual control restored");
+             mouseReleaseActive = false;
+             waitingForRelease = true;
+-            if (ReflectionCache.LWJGL3) {
++            if (!OsInputGuard.mayUseOsInput(WindowHelper.getWindowHandle(mc))) {
++                // Grabbing would centre and confine the user's cursor over a background window;
++                // the game grabs it itself once its window is in front and clicked.
++                ReflectionHelper.dbg("exitMcpControlMode: window in the background, cursor not grabbed");
++            } else if (ReflectionCache.LWJGL3) {
+                 try {
+                     Object mh = ReflectionCache.getMouseHandler(mc);
+                     if (mh != null) {
+                         initMouseFields(mh);
+                         for (Method m : mh.getClass().getMethods()) {
+                             String n = m.getName();
+-                            if (m.getParameterCount() == 0 && (n.equals("lockCursor") || n.equals("method_1611") || n.equals("func_224798_b"))) {
++                            if (m.getParameterCount() == 0 && (n.equals("grabMouse") || n.equals("lockCursor") || n.equals("method_1611") || n.equals("func_224798_b"))) {
+                                 m.setAccessible(true);
+                                 m.invoke(mh);
+                                 break;
+@@ -187,6 +191,7 @@ public final class ControlModeHelper {
+     public static boolean isMouseReleaseActive() { return mouseReleaseActive; }
+ 
+     public static void tickMcpControlMode(Object mc) {
++        OsInputGuard.tick(mc);
+         if (!mcpControlMode) return;
+         try {
+             if (ReflectionCache.LWJGL3) {
+diff --git a/packages/common/src/main/java/xyz/langyo/minecraft/mcp/common/InputInjectionHelper.java b/packages/common/src/main/java/xyz/langyo/minecraft/mcp/common/InputInjectionHelper.java
+index adb01a5..cbf4f12 100644
+--- a/packages/common/src/main/java/xyz/langyo/minecraft/mcp/common/InputInjectionHelper.java
++++ b/packages/common/src/main/java/xyz/langyo/minecraft/mcp/common/InputInjectionHelper.java
+@@ -37,7 +37,8 @@ public final class InputInjectionHelper {
+         }
+         try {
+             Robot r = awtRobot;
+-            if (r == null) return;
++            // Robot input goes to whichever window is in front: never while the game is in the background.
++            if (r == null || !OsInputGuard.mayUseOsInput(handle)) return;
+             int vk = glfwToAwt(key);
+             if (vk < 0) return;
+             if (action == 1) r.keyPress(vk);
+@@ -91,7 +92,8 @@ public final class InputInjectionHelper {
+         }
+         try {
+             Robot r = awtRobot;
+-            if (r == null) return;
++            // Robot input goes to whichever window is in front: never while the game is in the background.
++            if (r == null || !OsInputGuard.mayUseOsInput(handle)) return;
+             int mask = button == 1 ? InputEvent.BUTTON2_DOWN_MASK
+                      : button == 2 ? InputEvent.BUTTON3_DOWN_MASK
+                      : InputEvent.BUTTON1_DOWN_MASK;
+@@ -168,7 +170,8 @@ public final class InputInjectionHelper {
+         }
+         try {
+             Robot r = awtRobot;
+-            if (r == null) return;
++            // Robot input goes to whichever window is in front: never while the game is in the background.
++            if (r == null || !OsInputGuard.mayUseOsInput(handle)) return;
+             r.mouseWheel((int) scrollY);
+         } catch (Exception e) { System.err.println("[Input] sendScroll: " + e.getMessage()); }
+     }
+@@ -217,12 +220,16 @@ public final class InputInjectionHelper {
+         ReflectionCache.initClassCache();
+         if (ReflectionCache.LWJGL3) {
+             try {
+-                java.lang.reflect.Method glfwSetCursorPosMethod = ReflectionCache.getGlfwSetCursorPosMethod();
+-                if (glfwSetCursorPosMethod != null) {
+-                    glfwSetCursorPosMethod.invoke(null, handle, x, y);
+-                } else {
+-                    java.lang.reflect.Method setPos = ReflectionCache.getGlfwClass().getMethod("glfwSetCursorPos", long.class, double.class, double.class);
+-                    setPos.invoke(null, handle, x, y);
++                // glfwSetCursorPos moves the global OS cursor; in the background only the game's own
++                // cursor fields below are set.
++                if (OsInputGuard.mayUseOsInput(handle)) {
++                    java.lang.reflect.Method glfwSetCursorPosMethod = ReflectionCache.getGlfwSetCursorPosMethod();
++                    if (glfwSetCursorPosMethod != null) {
++                        glfwSetCursorPosMethod.invoke(null, handle, x, y);
++                    } else {
++                        java.lang.reflect.Method setPos = ReflectionCache.getGlfwClass().getMethod("glfwSetCursorPos", long.class, double.class, double.class);
++                        setPos.invoke(null, handle, x, y);
++                    }
+                 }
+ 
+                 Object mc = ReflectionCache.getMinecraftInstance();
+@@ -251,15 +258,16 @@ public final class InputInjectionHelper {
+         }
+         try {
+             Robot r = awtRobot;
+-            if (r == null) return;
++            // Robot input goes to whichever window is in front: never while the game is in the background.
++            if (r == null || !OsInputGuard.mayUseOsInput(handle)) return;
+             int wx = 0, wy = 0;
+             if (ReflectionCache.LWJGL3) {
+                 try {
+                     Class<?> glfwClass = Class.forName("org.lwjgl.glfw.GLFW");
+-                    java.lang.reflect.Method getX = glfwClass.getMethod("glfwGetWindowPosX", long.class);
+-                    java.lang.reflect.Method getY = glfwClass.getMethod("glfwGetWindowPosY", long.class);
+-                    wx = ((Number) getX.invoke(null, handle)).intValue();
+-                    wy = ((Number) getY.invoke(null, handle)).intValue();
++                    int[] px = new int[1], py = new int[1];
++                    glfwClass.getMethod("glfwGetWindowPos", long.class, int[].class, int[].class).invoke(null, handle, px, py);
++                    wx = px[0];
++                    wy = py[0];
+                 } catch (Exception ignored) {}
+             } else {
+                 try {
+diff --git a/packages/common/src/main/java/xyz/langyo/minecraft/mcp/common/OsInputGuard.java b/packages/common/src/main/java/xyz/langyo/minecraft/mcp/common/OsInputGuard.java
+new file mode 100644
+index 0000000..36a49f7
+--- /dev/null
++++ b/packages/common/src/main/java/xyz/langyo/minecraft/mcp/common/OsInputGuard.java
+@@ -0,0 +1,147 @@
++package xyz.langyo.minecraft.mcp.common;
++
++import java.lang.reflect.Method;
++
++/**
++ * Keeps the mod from touching the OS cursor or sending desktop input while the game window is
++ * in the background.
++ *
++ * <p>On Windows GLFW decides "focused" with {@code GetActiveWindow()}, which is per thread. A
++ * window shown by a background process (a client launched by an agent or a script) becomes its
++ * own thread's active window without ever becoming the foreground window. GLFW then reports
++ * {@code GLFW_FOCUSED}, moves the global cursor on {@code glfwSetCursorPos} and confines it on
++ * {@code GLFW_CURSOR_DISABLED}; Minecraft receives the same focus and grabs the mouse on world
++ * join, screen close or an in-world click. This class asks the OS for the real foreground window
++ * instead, gates the mod's own cursor calls and {@code java.awt.Robot} fallbacks on it, and
++ * {@link #tick} tells Minecraft that a background window is not focused, so vanilla never grabs
++ * or recentres the cursor there.
++ *
++ * <p>Other platforms report focus correctly through GLFW and are left alone. When the foreground
++ * window cannot be read (no JNA, or LWJGL 2 without {@code Display.isActive}) the previous
++ * behaviour is kept.
++ */
++public final class OsInputGuard {
++
++    private static final boolean WINDOWS =
++            System.getProperty("os.name", "").toLowerCase().startsWith("windows");
++
++    private static boolean lookupDone = false;
++    private static Object user32;
++    private static Method getForegroundWindow, getPointer, pointerNativeValue, glfwGetWin32Window;
++    private static Method glfwGetWindowAttrib, glfwSetWindowFocusCallback, focusCallbackInvoke;
++    private static int glfwFocused;
++
++    /** True while this class has told Minecraft its (background) window is not focused. */
++    private static volatile boolean focusWithheld = false;
++
++    private OsInputGuard() {}
++
++    /**
++     * True when the mod may move the OS cursor, change the cursor mode or send desktop input for
++     * this window: the window is the OS foreground window, or that cannot be determined.
++     */
++    public static boolean mayUseOsInput(long handle) {
++        Boolean fg = isForeground(handle);
++        return fg == null || fg;
++    }
++
++    /**
++     * Called every client tick. Withholds focus from Minecraft while GLFW reports a background
++     * window as focused, and gives it back once the window is really in front.
++     */
++    public static void tick(Object mc) {
++        if (!WINDOWS || !ReflectionCache.LWJGL3) return;
++        try {
++            long handle = WindowHelper.getWindowHandle(mc);
++            if (handle == 0) return;
++            Boolean fg = isForeground(handle);
++            if (fg == null) return;
++            if (!fg && !focusWithheld && glfwReportsFocused(handle)) {
++                if (deliverFocus(handle, false)) {
++                    focusWithheld = true;
++                    ReflectionHelper.dbg("OsInputGuard: window is not the foreground window, focus withheld");
++                }
++            } else if (fg && focusWithheld) {
++                deliverFocus(handle, true);
++                focusWithheld = false;
++                ReflectionHelper.dbg("OsInputGuard: window is in front, focus restored");
++            }
++        } catch (Exception e) {
++            ReflectionHelper.dbg("OsInputGuard.tick: " + e.getMessage());
++        }
++    }
++
++    /** Real foreground state of the game window, or null when it cannot be read. */
++    static Boolean isForeground(long handle) {
++        ReflectionCache.initClassCache();
++        if (!ReflectionCache.LWJGL3) return lwjgl2DisplayActive();
++        if (!WINDOWS) return Boolean.TRUE;
++        if (handle == 0) return null;
++        lookup();
++        if (user32 == null || glfwGetWin32Window == null) return null;
++        try {
++            long hwnd = ((Number) glfwGetWin32Window.invoke(null, handle)).longValue();
++            Object fgHwnd = getForegroundWindow.invoke(user32);
++            long fg = fgHwnd == null ? 0 : ((Number) pointerNativeValue.invoke(null, getPointer.invoke(fgHwnd))).longValue();
++            return hwnd != 0 && hwnd == fg;
++        } catch (Exception e) {
++            return null;
++        }
++    }
++
++    private static Boolean lwjgl2DisplayActive() {
++        try {
++            Class<?> display = ReflectionCache.getDisplayClass();
++            if (display == null) return null;
++            return (Boolean) display.getMethod("isActive").invoke(null);
++        } catch (Exception e) {
++            return null;
++        }
++    }
++
++    private static boolean glfwReportsFocused(long handle) throws Exception {
++        return glfwGetWindowAttrib != null
++                && ((Number) glfwGetWindowAttrib.invoke(null, handle, glfwFocused)).intValue() != 0;
++    }
++
++    /**
++     * Hands a focus change to the game's own GLFW focus callback, read back with
++     * glfwSetWindowFocusCallback (it returns the previous callback, which is put straight back).
++     * Must run on the main thread.
++     */
++    private static boolean deliverFocus(long handle, boolean focused) throws Exception {
++        if (glfwSetWindowFocusCallback == null || focusCallbackInvoke == null) return false;
++        Object gameCallback = glfwSetWindowFocusCallback.invoke(null, handle, null);
++        glfwSetWindowFocusCallback.invoke(null, handle, gameCallback);
++        if (gameCallback == null) return false;
++        focusCallbackInvoke.invoke(gameCallback, handle, focused);
++        return true;
++    }
++
++    private static synchronized void lookup() {
++        if (lookupDone) return;
++        lookupDone = true;
++        try {
++            Class<?> glfw = ReflectionCache.getGlfwClass();
++            Class<?> callbackI = Class.forName("org.lwjgl.glfw.GLFWWindowFocusCallbackI");
++            glfwGetWindowAttrib = glfw.getMethod("glfwGetWindowAttrib", long.class, int.class);
++            glfwFocused = glfw.getField("GLFW_FOCUSED").getInt(null);
++            glfwSetWindowFocusCallback = glfw.getMethod("glfwSetWindowFocusCallback", long.class, callbackI);
++            focusCallbackInvoke = callbackI.getMethod("invoke", long.class, boolean.class);
++            glfwGetWin32Window = Class.forName("org.lwjgl.glfw.GLFWNativeWin32").getMethod("glfwGetWin32Window", long.class);
++        } catch (Exception e) {
++            ReflectionHelper.dbg("OsInputGuard: GLFW lookup failed: " + e.getMessage());
++        }
++        try {
++            Class<?> user32Class = Class.forName("com.sun.jna.platform.win32.User32");
++            Class<?> pointerClass = Class.forName("com.sun.jna.Pointer");
++            getForegroundWindow = user32Class.getMethod("GetForegroundWindow");
++            getPointer = Class.forName("com.sun.jna.PointerType").getMethod("getPointer");
++            pointerNativeValue = pointerClass.getMethod("nativeValue", pointerClass);
++            user32 = user32Class.getField("INSTANCE").get(null);
++        } catch (Throwable e) {
++            user32 = null;
++            ReflectionHelper.dbg("OsInputGuard: JNA User32 unavailable, background detection off: " + e.getMessage());
++        }
++    }
++}
+-- 
+2.45.1.windows.1
+

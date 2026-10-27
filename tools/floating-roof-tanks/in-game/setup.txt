@@ -1,0 +1,6 @@
+gamerule doDaylightCycle false
+gamerule doMobSpawning false
+gamerule doWeatherCycle false
+difficulty peaceful
+time set noon
+tp @s 0.5 -60 -10.5 0 0

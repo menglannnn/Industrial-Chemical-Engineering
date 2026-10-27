@@ -1,0 +1,108 @@
+fcc 10.5 x 34 s9 placed 0 116: box 31 x 56 x 19 origin -15,-60,107 (x -15..15 z 107..125 y -60..-5) fits=true
+  frame box x -8.0..23.0 z -11.0..8.0; regen axis world x -6.50 z 118.50; riser axis x 4.50; regen straight 24.75 top tangent y -26.25; reactor 6.30 x 13.56, bottom -23.68 top -10.12; stripper 3.68 x 8.15 bottom -34.10
+  floors (walking surface y): -56.42 -44.22 -33.80 -17.80 -9.87  frame x 0.35..11.05 half 6.084499999999999
+  rcsv (x 2.01 y -54.04) on floor -56.42; scsv (x 1.44 y -41.95) on floor -44.22; spent standpipe: stripper start x 3.26, elbow (x 0.30 y -46.89), shell entry y -48.44; regen standpipe top y -50.15, wye y -57.00
+  tower: lane A x 11.50, lane B x 12.50; lane A foot z 113.616; far (lane A top / lane B foot) z 118.116; landings 112.416..113.616 and 118.116..119.316
+    flight 0 lane A +z from y -60.000 to -56.415, length 4.50, reaches floor 0
+    flight 1 lane B -z from y -56.415 to -53.366, length 4.00, reaches landing
+    flight 2 lane A +z from y -53.366 to -50.317, length 4.00, reaches landing
+    flight 3 lane B -z from y -50.317 to -47.267, length 4.00, reaches landing
+    flight 4 lane A +z from y -47.267 to -44.218, length 4.00, reaches floor 1
+    flight 5 lane B -z from y -44.218 to -40.746, length 4.50, reaches landing
+    flight 6 lane A +z from y -40.746 to -37.274, length 4.50, reaches landing
+    flight 7 lane B -z from y -37.274 to -33.801, length 4.50, reaches floor 2
+    flight 8 lane A +z from y -33.801 to -30.601, length 4.25, reaches landing
+    flight 9 lane B -z from y -30.601 to -27.400, length 4.25, reaches landing
+    flight 10 lane A +z from y -27.400 to -24.199, length 4.25, reaches landing
+    flight 11 lane B -z from y -24.199 to -20.999, length 4.25, reaches landing
+    flight 12 lane A +z from y -20.999 to -17.798, length 4.25, reaches floor 3
+    flight 13 lane B -z from y -17.798 to -15.155, length 3.50, reaches landing
+    flight 14 lane A +z from y -15.155 to -12.511, length 3.50, reaches landing
+    flight 15 lane B -z from y -12.511 to -9.868, length 3.50, reaches floor 4
+fcc 17.0 x 44 s11 placed 146 185: box 46 x 74 x 28 origin 123,-60,171 (x 123..168 z 171..198 y -60..13) fits=true
+  frame box x -13.0..33.0 z -17.0..11.0; regen axis world x 136.50 z 188.50; riser axis x 152.50; regen straight 34.50 top tangent y -14.50; reactor 10.20 x 18.24, bottom -13.16 top 5.08; stripper 5.95 x 10.10 bottom -26.94
+  floors (walking surface y): -55.86 -53.56 -40.29 -26.64 -4.94 5.33  frame x 146.60..162.05 half 9.068
+  rcsv (x 147.43 y -50.58) on floor -53.56; scsv (x 148.15 y -37.50) on floor -40.29; spent standpipe: stripper start x 150.42, elbow (x 146.84 y -43.60), shell entry y -45.44; regen standpipe top y -47.86, wye y -56.25
+  tower: lane A x 162.50, lane B x 163.50; lane A foot z 180.632; far (lane A top / lane B foot) z 185.132; landings 179.432..180.632 and 185.132..186.332
+    flight 0 lane A +z from y -60.000 to -57.929, length 2.75, reaches landing
+    flight 1 lane B -z from y -57.929 to -55.858, length 2.75, reaches floor 0
+    flight 2 lane A +z from y -55.858 to -53.558, length 3.00, reaches floor 1
+    flight 3 lane B -z from y -53.558 to -50.241, length 4.25, reaches landing
+    flight 4 lane A +z from y -50.241 to -46.925, length 4.25, reaches landing
+    flight 5 lane B -z from y -46.925 to -43.609, length 4.25, reaches landing
+    flight 6 lane A +z from y -43.609 to -40.293, length 4.25, reaches floor 2
+    flight 7 lane B -z from y -40.293 to -36.880, length 4.50, reaches landing
+    flight 8 lane A +z from y -36.880 to -33.466, length 4.50, reaches landing
+    flight 9 lane B -z from y -33.466 to -30.053, length 4.50, reaches landing
+    flight 10 lane A +z from y -30.053 to -26.640, length 4.50, reaches floor 3
+    flight 11 lane B -z from y -26.640 to -23.540, length 4.00, reaches landing
+    flight 12 lane A +z from y -23.540 to -20.440, length 4.00, reaches landing
+    flight 13 lane B -z from y -20.440 to -17.340, length 4.00, reaches landing
+    flight 14 lane A +z from y -17.340 to -14.240, length 4.00, reaches landing
+    flight 15 lane B -z from y -14.240 to -11.140, length 4.00, reaches landing
+    flight 16 lane A +z from y -11.140 to -8.040, length 4.00, reaches landing
+    flight 17 lane B -z from y -8.040 to -4.940, length 4.00, reaches floor 4
+    flight 18 lane A +z from y -4.940 to -1.516, length 4.50, reaches landing
+    flight 19 lane B -z from y -1.516 to 1.907, length 4.50, reaches landing
+    flight 20 lane A +z from y 1.907 to 5.331, length 4.50, reaches floor 5
+fcc 10.5 x 34 s9 placed 0 260: box 31 x 56 x 19 origin -15,-60,251 (x -15..15 z 251..269 y -60..-5) fits=true
+  frame box x -8.0..23.0 z -11.0..8.0; regen axis world x -6.50 z 262.50; riser axis x 4.50; regen straight 24.75 top tangent y -26.25; reactor 6.30 x 13.56, bottom -23.68 top -10.12; stripper 3.68 x 8.15 bottom -34.10
+  floors (walking surface y): -56.42 -44.22 -33.80 -17.80 -9.87  frame x 0.35..11.05 half 6.084499999999999
+  rcsv (x 2.01 y -54.04) on floor -56.42; scsv (x 1.44 y -41.95) on floor -44.22; spent standpipe: stripper start x 3.26, elbow (x 0.30 y -46.89), shell entry y -48.44; regen standpipe top y -50.15, wye y -57.00
+  tower: lane A x 11.50, lane B x 12.50; lane A foot z 257.616; far (lane A top / lane B foot) z 262.116; landings 256.416..257.616 and 262.116..263.316
+    flight 0 lane A +z from y -60.000 to -56.415, length 4.50, reaches floor 0
+    flight 1 lane B -z from y -56.415 to -53.366, length 4.00, reaches landing
+    flight 2 lane A +z from y -53.366 to -50.317, length 4.00, reaches landing
+    flight 3 lane B -z from y -50.317 to -47.267, length 4.00, reaches landing
+    flight 4 lane A +z from y -47.267 to -44.218, length 4.00, reaches floor 1
+    flight 5 lane B -z from y -44.218 to -40.746, length 4.50, reaches landing
+    flight 6 lane A +z from y -40.746 to -37.274, length 4.50, reaches landing
+    flight 7 lane B -z from y -37.274 to -33.801, length 4.50, reaches floor 2
+    flight 8 lane A +z from y -33.801 to -30.601, length 4.25, reaches landing
+    flight 9 lane B -z from y -30.601 to -27.400, length 4.25, reaches landing
+    flight 10 lane A +z from y -27.400 to -24.199, length 4.25, reaches landing
+    flight 11 lane B -z from y -24.199 to -20.999, length 4.25, reaches landing
+    flight 12 lane A +z from y -20.999 to -17.798, length 4.25, reaches floor 3
+    flight 13 lane B -z from y -17.798 to -15.155, length 3.50, reaches landing
+    flight 14 lane A +z from y -15.155 to -12.511, length 3.50, reaches landing
+    flight 15 lane B -z from y -12.511 to -9.868, length 3.50, reaches floor 4
+fcc 10.5 x 32 s9 placed 40 260: box 31 x 54 x 19 origin 25,-60,251 (x 25..55 z 251..269 y -60..-7) fits=true
+  frame box x -8.0..23.0 z -11.0..8.0; regen axis world x 33.50 z 262.50; riser axis x 44.50; regen straight 24.75 top tangent y -26.25; reactor 6.30 x 13.56, bottom -25.68 top -12.12; stripper 3.68 x 8.15 bottom -36.10
+  floors (walking surface y): -56.42 -44.91 -35.80 -19.80 -11.87  frame x 40.35..51.05 half 6.084499999999999
+  rcsv (x 42.01 y -54.04) on floor -56.42; scsv (x 41.47 y -42.63) on floor -44.91; spent standpipe: stripper start x 43.26, elbow (x 40.30 y -46.89), shell entry y -48.44; regen standpipe top y -50.15, wye y -57.00
+  tower: lane A x 51.50, lane B x 52.50; lane A foot z 257.616; far (lane A top / lane B foot) z 262.116; landings 256.416..257.616 and 262.116..263.316
+    flight 0 lane A +z from y -60.000 to -56.415, length 4.50, reaches floor 0
+    flight 1 lane B -z from y -56.415 to -53.539, length 3.75, reaches landing
+    flight 2 lane A +z from y -53.539 to -50.663, length 3.75, reaches landing
+    flight 3 lane B -z from y -50.663 to -47.786, length 3.75, reaches landing
+    flight 4 lane A +z from y -47.786 to -44.910, length 3.75, reaches floor 1
+    flight 5 lane B -z from y -44.910 to -41.874, length 4.00, reaches landing
+    flight 6 lane A +z from y -41.874 to -38.838, length 4.00, reaches landing
+    flight 7 lane B -z from y -38.838 to -35.801, length 4.00, reaches floor 2
+    flight 8 lane A +z from y -35.801 to -32.601, length 4.25, reaches landing
+    flight 9 lane B -z from y -32.601 to -29.400, length 4.25, reaches landing
+    flight 10 lane A +z from y -29.400 to -26.199, length 4.25, reaches landing
+    flight 11 lane B -z from y -26.199 to -22.999, length 4.25, reaches landing
+    flight 12 lane A +z from y -22.999 to -19.798, length 4.25, reaches floor 3
+    flight 13 lane B -z from y -19.798 to -17.155, length 3.50, reaches landing
+    flight 14 lane A +z from y -17.155 to -14.511, length 3.50, reaches landing
+    flight 15 lane B -z from y -14.511 to -11.868, length 3.50, reaches floor 4
+fcc 4.0 x 32 s8 placed 75 260: box 18 x 46 x 10 origin 66,-60,255 (x 66..83 z 255..264 y -60..-15) fits=true
+  frame box x -4.0..14.0 z -5.0..5.0; regen axis world x 70.50 z 260.50; riser axis x 77.50; regen straight 15.00 top tangent y -37.00; reactor 2.40 x 8.88, bottom -25.44 top -16.56; stripper 1.40 x 6.20 bottom -32.51
+  floors (walking surface y): -56.22 -46.16 -32.21 -21.90 -16.31  frame x 74.10..81.05 half 3.5
+  rcsv (x 75.20 y -54.44) on floor -56.22; scsv (x 74.71 y -44.45) on floor -46.16; spent standpipe: stripper start x 77.11, elbow (x 73.76 y -49.18), shell entry y -50.43; regen standpipe top y -51.45, wye y -57.00
+  tower: lane A x 81.50, lane B x 82.50; lane A foot z 258.200; far (lane A top / lane B foot) z 262.700; landings 257.000..258.200 and 262.700..263.900
+    flight 0 lane A +z from y -60.000 to -58.110, length 2.50, reaches landing
+    flight 1 lane B -z from y -58.110 to -56.220, length 2.50, reaches floor 0
+    flight 2 lane A +z from y -56.220 to -52.868, length 4.25, reaches landing
+    flight 3 lane B -z from y -52.868 to -49.516, length 4.25, reaches landing
+    flight 4 lane A +z from y -49.516 to -46.165, length 4.25, reaches floor 1
+    flight 5 lane B -z from y -46.165 to -42.676, length 4.50, reaches landing
+    flight 6 lane A +z from y -42.676 to -39.187, length 4.50, reaches landing
+    flight 7 lane B -z from y -39.187 to -35.699, length 4.50, reaches landing
+    flight 8 lane A +z from y -35.699 to -32.210, length 4.50, reaches floor 2
+    flight 9 lane B -z from y -32.210 to -28.775, length 4.50, reaches landing
+    flight 10 lane A +z from y -28.775 to -25.339, length 4.50, reaches landing
+    flight 11 lane B -z from y -25.339 to -21.904, length 4.50, reaches floor 3
+    flight 12 lane A +z from y -21.904 to -19.109, length 3.50, reaches landing
+    flight 13 lane B -z from y -19.109 to -16.314, length 3.50, reaches floor 4

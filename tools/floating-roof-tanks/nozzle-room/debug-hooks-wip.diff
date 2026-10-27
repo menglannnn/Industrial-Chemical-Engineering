@@ -1,0 +1,80 @@
+diff --git a/src/main/java/com/wormzjl/icheme/science/equipment/ProcessUnit.java b/src/main/java/com/wormzjl/icheme/science/equipment/ProcessUnit.java
+index 8b785034..71550156 100644
+--- a/src/main/java/com/wormzjl/icheme/science/equipment/ProcessUnit.java
++++ b/src/main/java/com/wormzjl/icheme/science/equipment/ProcessUnit.java
+@@ -357 +357 @@ public final class ProcessUnit {
+-         * pressure ratio of about 2); at most 1 m ({@code MACHINES_SCALE_RESEARCH.md}).
++         * pressure ratio of about 2); at most a pipe's largest ({@code MACHINES_SCALE_RESEARCH.md}).
+@@ -551 +551,23 @@ public final class ProcessUnit {
+-    final List<Solid> solids = new ArrayList<>(), volumes = new ArrayList<>();
++    // DEBUG-NOZZLE-ROOM (temporary)
++    static final Map<Solid, String> ORIGIN = java.util.Collections.synchronizedMap(new java.util.IdentityHashMap<>());
++    final List<Solid> solids = new ArrayList<>() {
++        @Override public boolean add(Solid x) { ORIGIN.put(x, origin()); return super.add(x); }
++        @Override public boolean addAll(java.util.Collection<? extends Solid> c) { for (var x : c) ORIGIN.put(x, origin()); return super.addAll(c); }
++    };
++    final List<Solid> volumes = new ArrayList<>();
++    private static String origin() {
++        var sb = new StringBuilder();
++        int n = 0;
++        for (var e : Thread.currentThread().getStackTrace()) {
++            String c = e.getClassName();
++            if (c.startsWith("java.") || c.startsWith("jdk.") || c.contains("ProcessUnit$1") || e.getMethodName().equals("origin")) continue;
++            if (n++ == 3) break;
++            sb.append(c.substring(c.lastIndexOf('.') + 1)).append('.').append(e.getMethodName()).append(':').append(e.getLineNumber()).append(' ');
++        }
++        return sb.toString();
++    }
++    String what(double[] p) {
++        for (var x : solids) if (x.contains(p)) return "solid " + ORIGIN.get(x) + (x.axis() == -1 ? "box" : "r" + String.format("%.2f", x.radius()));
++        for (var climb : ladders) if (climb.rungs(p)) return "ladder rungs";
++        return null;
++    }
+@@ -842 +864 @@ public final class ProcessUnit {
+-        double tube = Math.min(1, .4 * d), shellOd = Math.min(1, d / 2), flange = PipeSizes.flange(shellOd);
++        double tube = Math.min(PipeSizes.MAX_OUTSIDE, .4 * d), shellOd = Math.min(PipeSizes.MAX_OUTSIDE, d / 2), flange = PipeSizes.flange(shellOd);
+@@ -887 +909 @@ public final class ProcessUnit {
+-        double tube = Math.min(1, .4 * db), liquid = Math.min(1, db / 2), vapour = Math.min(1, dk / 2), flange = PipeSizes.flange(liquid);
++        double tube = Math.min(PipeSizes.MAX_OUTSIDE, .4 * db), liquid = Math.min(PipeSizes.MAX_OUTSIDE, db / 2), vapour = Math.min(PipeSizes.MAX_OUTSIDE, dk / 2), flange = PipeSizes.flange(liquid);
+@@ -2265 +2287,3 @@ public final class ProcessUnit {
+-        double yFuel = Math.floor(y0 - 1.2 - .5) + .5, pipe = .04 + .004 * dia;
++        // The ring header low enough that the fuel's line at a pipe's largest passes under the burners' mufflers (owner
++        // decision 2026-10-21: a 1 m pipe has a 1 m root, other components give way).
++        double yFuel = Math.floor(Math.min(y0 - 1.2, y0 - BURNER_DROP - .05 - PipeSizes.MAX_OUTSIDE / 2) - .5) + .5, pipe = .04 + .004 * dia;
+@@ -2638,0 +2663,3 @@ public final class ProcessUnit {
++    /** How far a burner's muffler hangs under the floor, m. */
++    static final double BURNER_DROP = 1.05;
++
+@@ -2645 +2672 @@ public final class ProcessUnit {
+-        double muffler = 1.3 * register, low = y0 - 1.05;
++        double muffler = 1.3 * register, low = y0 - BURNER_DROP;
+@@ -2877,0 +2905,6 @@ public final class ProcessUnit {
++    /**
++     * The least a nozzle's flange face stands off the surface its neck leaves: a pipe's largest hub and flange behind a
++     * 0.1 m neck (owner decision 2026-10-21: a 1 m pipe has a 1 m root, other components give way).
++     */
++    static final double NECK = .1 + PipeSizes.flangeThickness(PipeSizes.MAX_OUTSIDE) + PipeSizes.hub(PipeSizes.MAX_OUTSIDE) + .02;
++
+diff --git a/src/main/java/com/wormzjl/icheme/science/equipment/ShapeRasterizer.java b/src/main/java/com/wormzjl/icheme/science/equipment/ShapeRasterizer.java
+index 97447f74..8e8c7e2d 100644
+--- a/src/main/java/com/wormzjl/icheme/science/equipment/ShapeRasterizer.java
++++ b/src/main/java/com/wormzjl/icheme/science/equipment/ShapeRasterizer.java
+@@ -281,0 +282,12 @@ public final class ShapeRasterizer {
++    // DEBUG-NOZZLE-ROOM (temporary)
++    static String what(EquipmentShape shape, double x, double y, double z) {
++        var g = geometry(shape);
++        var p = g.transform.local(new double[]{x, y, z});
++        if (g.inVessel(p)) return "vessel";
++        if (g.column != null && g.column.inside(p)) return "column parts";
++        if (g.manway != null && g.manway.inside(p)) return "manway";
++        if (g.unit != null) { String s = g.unit.what(p); if (s != null) return s; }
++        for (int k = 0; k < g.nozzles.size(); k++) if (g.inNozzle(p, k, 0)) return "nozzle " + g.nozzles.get(k).role();
++        return "?";
++    }
++
+@@ -527 +539 @@ public final class ShapeRasterizer {
+-            portLow = openingHeight - openingRadius - EquipmentShape.PORT_COLLAR - .05;
++            portLow = Math.max(EquipmentShape.PLATE, openingHeight - openingRadius - EquipmentShape.PORT_COLLAR - .05);
+@@ -796 +808 @@ public final class ShapeRasterizer {
+-            double apothem = radius * apothemFactor, port = line + EquipmentShape.PORT_CLEARANCE, rim = port + EquipmentShape.PORT_COLLAR;
++            double apothem = radius * apothemFactor, port = EquipmentShape.portRadius(2 * line), rim = port + EquipmentShape.PORT_COLLAR;

@@ -1,0 +1,143 @@
+diff --git a/src/main/java/com/wormzjl/icheme/science/fluid/network/ConservativeTransport.java b/src/main/java/com/wormzjl/icheme/science/fluid/network/ConservativeTransport.java
+index 21e8b8f..d8917f0 100644
+--- a/src/main/java/com/wormzjl/icheme/science/fluid/network/ConservativeTransport.java
++++ b/src/main/java/com/wormzjl/icheme/science/fluid/network/ConservativeTransport.java
+@@ -243,9 +243,15 @@ public final class ConservativeTransport {
+         boolean[] reached=new boolean[nodes],kept=new boolean[nodes];
+         for(int edge=0;edge<flows.length;edge++)if(flows[edge]!=0){var pipe=graph.pipes().get(edge);reached[flows[edge]>0?pipe.second():pipe.first()]=true;}
+         for(var transfer:graph.scheduledTransfers())if(transfer instanceof ScheduledTransfer.Injection)reached[transfer.node()]=true;
++        // Owner rule of 2026-10-21 (seed 895): an open vessel keeps the gas it receives and vents what it started with. One whose
++        // releases take all it holds and that no connection reaches or draws from ends the step with nothing (decision D54), a
++        // kept node: what it held leaves as its vent and spill, and the ambient's work on its collapsing bag at the vessel.
++        boolean[] drawnFrom=new boolean[nodes],ventedEmpty=new boolean[nodes];
++        for(int edge=0;edge<flows.length;edge++)if(flows[edge]!=0){var pipe=graph.pipes().get(edge);drawnFrom[flows[edge]>0?pipe.first():pipe.second()]=true;}
+         for(int node=0;node<nodes;node++) {
+             var reservoir=graph.reservoirs().get(node);old[node]=reservoir.inventory().moles();
+             if(PassiveStepSolver.holdsNoFluidVessel(reservoir)&&!reached[node]){kept[node]=true;continue;}
++            if(releases!=null&&!reached[node]&&!drawnFrom[node]&&OpenVessel.releasesAll(reservoir,releases[node])){kept[node]=ventedEmpty[node]=true;continue;}
+             for(int c=0;c<components;c++)endMass[node]+=old[node][c]*molecularWeight[c];
+             endMass[node]+=reservoir.inventory().solids().massKg();
+             if(frozen&&reservoir.junction()) {
+@@ -413,7 +419,7 @@ public final class ConservativeTransport {
+         for(int node=0;node<nodes;node++) {
+             var reservoir=graph.reservoirs().get(node);
+             if(index[node]<0) {
+-                moles[node]=old[node];
++                moles[node]=old[node];if(ventedEmpty[node])moles[node]=new double[components];
+                 // A kept vessel is stated with the solids it holds, not with the candidate's. A pass
+                 // that laid it out from an arrival the pinned flows then booked as nothing leaves the candidate a roundoff of
+                 // that arrival, solids included, and the vessel's inventory takes its state's solids below: cold fuzz seed 85
+@@ -484,6 +490,7 @@ public final class ConservativeTransport {
+             energy[node]-=released.energyJoule();externalEnergy-=released.energyJoule();
+             boundaries.add(new BoundaryTransfer(graph.reservoirs().get(node).id(),moved,-released.energyJoule(),released.solids(),released.solids().empty()?0:-1,kind));
+         }
++        for(int node=0;node<nodes;node++)if(ventedEmpty[node]){double ambient=-energy[node];energy[node]=0;externalEnergy+=ambient;boundaries.add(new BoundaryTransfer(graph.reservoirs().get(node).id(),new double[components],ambient));}
+         var filters=new HashMap<Long,InlineFilter>();
+         // A frozen booking tallies what each junction gains and loses over its connections, to form its pseudo-boundary
+         // below, solids included.
+diff --git a/src/main/java/com/wormzjl/icheme/science/fluid/network/OpenVessel.java b/src/main/java/com/wormzjl/icheme/science/fluid/network/OpenVessel.java
+index 3ed4d9d..2887f07 100644
+--- a/src/main/java/com/wormzjl/icheme/science/fluid/network/OpenVessel.java
++++ b/src/main/java/com/wormzjl/icheme/science/fluid/network/OpenVessel.java
+@@ -15,8 +15,9 @@ import static com.wormzjl.icheme.science.fluid.thermo.FluidThermodynamics.WATER;
+  * <ul>
+  * <li><b>Vent.</b> The gas a step starts with leaves over that step at its start composition and enthalpy, as
+  * a phase drawn at its capacity is drawn (decision D11): constant terms in the vessel's balance rows, no unknown. Gas
+- * that forms within the step leaves in the next one. A vessel that starts a step with gas and no liquid vents nothing in
+- * the step; the accepted step's flush empties it ({@code PassiveIntervalSolver.flushTraces}).</li>
++ * that forms within the step leaves in the next one. A vessel that holds only gas vents it the same way and keeps
++ * what arrives (owner rule of 2026-10-21, seed 895); one whose releases take all it holds and that nothing reaches ends
++ * the step empty ({@code ConservativeTransport.reconstruct}, decision D54).</li>
+  * <li><b>Overflow.</b> The liquid held above the vessel's volume (its fill height) up to the shell top is what an
+  * {@link PassiveNetwork.PhasePort#OVERFLOW} port can draw over the step, lighter liquid first.</li>
+  * <li><b>Spill.</b> The liquid above the shell top, {@link #FREEBOARD} over the fill height, leaves over the step like
+@@ -67,6 +68,15 @@ public final class OpenVessel {
+         return FluidThermodynamics.holdsPhase(node.state(),GAS)||overflows(node);
+     }
+ 
++    /** Whether {@code released}, {@code node}'s releases over a step, take all it holds: it has no solids and its vent and
++     * spill book out every amount it holds (they are clamped to it, so the test is exact). */
++    static boolean releasesAll(PassiveNetwork.Reservoir node,Releases released) {
++        if(released==null||!node.inventory().solids().empty())return false;
++        var left=node.inventory().moles();
++        for(var release:released.each()){var n=release.moles();for(int c=0;c<n.length;c++)left[c]-=n[c];}
++        for(double n:left)if(n!=0)return false;
++        return true;
++    }
+     /**
+      * The volume of each phase (by phase id, gas none) the stratified liquids of {@code state} hold between the heights
+      * whose volumes from the bottom are {@code lower} and {@code upper}, m3: the heavier liquid fills from the bottom, the
+@@ -102,7 +112,6 @@ public final class OpenVessel {
+     static Releases releases(FluidThermodynamics model,PassiveNetwork.Reservoir node) {
+         if(node.kind()!=PassiveNetwork.NodeKind.RESERVOIR||!node.inventory().open()||node.empty()||PassiveStepSolver.holdsNoFluid(node))return null;
+         var state=node.state();var held=node.inventory().moles();
+-        if(!FluidThermodynamics.holdsLiquid(state))return null;
+         Release vent=null,spill=null;
+         if(FluidThermodynamics.holdsPhase(state,GAS)) {
+             var n=FluidThermodynamics.phaseMoles(state,GAS);
+diff --git a/src/main/java/com/wormzjl/icheme/science/fluid/network/PassiveIntervalSolver.java b/src/main/java/com/wormzjl/icheme/science/fluid/network/PassiveIntervalSolver.java
+index ff28258..d85b3b0 100644
+--- a/src/main/java/com/wormzjl/icheme/science/fluid/network/PassiveIntervalSolver.java
++++ b/src/main/java/com/wormzjl/icheme/science/fluid/network/PassiveIntervalSolver.java
+@@ -321,21 +321,11 @@ public final class PassiveIntervalSolver {
+      * owner decision D37). The interval's ledger therefore closes by construction and a checkpoint sees the flush as any
+      * other boundary transfer; a certificate is not issued on an interval that contains one, since a one-time removal
+      * is not a rate. Returns null when nothing was flushed.
+-     *
+-     * <p>An open vessel ({@link OpenVessel}) that holds gas and no liquid is emptied here, its gas booked as a flush at it
+-     * (energy {@code -U}, its whole change): a step vents only the gas of a vessel that also holds liquid, whose balance
+-     * then keeps a positive mass.</p>
+      */
+     private Flush flushTraces(PassiveNetwork graph,Runnable checkpoint) {
+         List<PassiveNetwork.Reservoir> nodes=null;List<ConservativeTransport.BoundaryTransfer> booked=null;
+         for(int i=0;i<graph.reservoirs().size();i++) {
+             var node=graph.reservoirs().get(i);if(node.fixed())continue;
+-            var vented=ventOpen(node,checkpoint);
+-            if(vented!=null) {
+-                if(nodes==null){nodes=new ArrayList<>(graph.reservoirs());booked=new ArrayList<>();}
+-                nodes.set(i,vented.node());booked.add(vented.booked());node=vented.node();
+-                if(node.empty())continue;
+-            }
+             var held=node.inventory().moles();double total=0;for(double amount:held)total+=amount;
+             double[] kept=null;
+             for(int c=0;c<held.length;c++)if(held[c]>0&&held[c]<TRACE_FLUSH_FRACTION*total){if(kept==null)kept=held.clone();kept[c]=0;}
+@@ -353,26 +343,6 @@ public final class PassiveIntervalSolver {
+         }
+         return nodes==null?null:new Flush(new PassiveNetwork(nodes,graph.pipes(),graph.scheduledTransfers()),booked);
+     }
+-    private record Vented(PassiveNetwork.Reservoir node,ConservativeTransport.BoundaryTransfer booked) {}
+-    /** The open vessel {@code node} that holds gas and no liquid, emptied after an accepted step ({@link #flushTraces}),
+-     * and the removal's booking; null when nothing is removed. */
+-    private Vented ventOpen(PassiveNetwork.Reservoir node,Runnable checkpoint) {
+-        if(node.kind()!=PassiveNetwork.NodeKind.RESERVOIR||!node.inventory().open()||node.empty())return null;
+-        var old=node.state();var inventory=node.inventory();
+-        if(!FluidThermodynamics.holdsPhase(old,FluidThermodynamics.GAS)||FluidThermodynamics.holdsLiquid(old))return null;
+-        checkpoint.run();
+-        var removed=inventory.moles();for(int c=0;c<removed.length;c++)removed[c]=-removed[c];
+-        // What stays is nothing (an empty vessel, decision D54: the ambient as its state), its solids kept as a dry-solids
+-        // vessel's.
+-        PassiveNetwork.Reservoir after;
+-        if(inventory.solids().empty())after=PassiveNetwork.emptyVessel(node.id(),node.elevation(),inventory.volume(),inventory.levelHeight(),true,model);
+-        else {
+-            var state=model.solidState(old.temperature(),PhaseLayout.AMBIENT_PRESSURE,inventory.solids());
+-            after=new PassiveNetwork.Reservoir(node.id(),node.elevation(),state,node.kind(),inventory.with(new double[removed.length],state.internalEnergy(),inventory.solids()));
+-        }
+-        double energy=after.inventory().internalEnergy()-inventory.internalEnergy();
+-        return new Vented(after,new ConservativeTransport.BoundaryTransfer(node.id(),removed,energy,com.wormzjl.icheme.science.fluid.state.SolidInventory.EMPTY,0,ConservativeTransport.BoundaryTransfer.Kind.FLUSH));
+-    }
+     private static void count(Map<String,Integer> reasons,String reason) {
+         if(reasons.size()<8||reasons.containsKey(reason))reasons.merge(reason,1,Integer::sum);else reasons.merge("Other",1,Integer::sum);
+     }
+diff --git a/src/main/java/com/wormzjl/icheme/science/fluid/network/PassiveStepSolver.java b/src/main/java/com/wormzjl/icheme/science/fluid/network/PassiveStepSolver.java
+index 44f7d67..4a227b8 100644
+--- a/src/main/java/com/wormzjl/icheme/science/fluid/network/PassiveStepSolver.java
++++ b/src/main/java/com/wormzjl/icheme/science/fluid/network/PassiveStepSolver.java
+@@ -613,7 +613,7 @@ public final class PassiveStepSolver {
+             lastSolve=new LastSolve(equations,x);
+             // A vessel that ran dry within the step holds nothing at its end and shows the ambient (decision D54).
+             var endStates=projection.states();
+-            if(emptying!=null){var ambient=NetworkReduction.ambient(model);endStates=new ArrayList<>(endStates);for(int i=0;i<emptying.length;i++)if(emptying[i])endStates.set(i,ambient);}
++            {List<FluidThermodynamics.State> shown=null;for(int i=0;i<endStates.size();i++){var node=original.reservoirs().get(i);if(!(emptying!=null&&emptying[i]||node.kind()==PassiveNetwork.NodeKind.RESERVOIR&&!projection.inventories().get(i).equals(node.inventory())&&new PassiveNetwork.Reservoir(node.id(),node.elevation(),endStates.get(i),node.kind(),projection.inventories().get(i)).empty()))continue;if(shown==null)shown=new ArrayList<>(endStates);shown.set(i,NetworkReduction.ambient(model));}if(shown!=null)endStates=shown;}
+             var accepted=new Result(endStates,flows,dt,numerical,acceptedModes,heads,projection.pumpWork(),projection.externalMoles(),projection.externalEnergy(),projection.inventories(),projection.boundaries(),PipeTransfer.sample(model,graph,projection.states(),flows,dt,draws),projection.filters());
+             // The retained last solve keeps its equations and point, not their per-node decode caches (states, transport
+             // rows, prepared temperature workspaces): a later reader re-decodes (review 8.7 (c) E2).

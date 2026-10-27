@@ -1,0 +1,319 @@
+sweep d 0.5 n 1 kettle REFUSED the feed nozzle has no free row by its tray on any side of a 3-tray column
+sweep d 0.5 n 1 steam+draw REFUSED the feed nozzle has no free row by its tray on any side of a 3-tray column
+sweep d 0.5 n 1 full REFUSED the feed nozzle has no free row by its tray on any side of a 3-tray column
+sweep d 0.5 n 3 kettle REFUSED the feed nozzle has no free row by its tray on any side of a 5-tray column
+sweep d 0.5 n 3 kettle+steam+draw+PA REFUSED the feed nozzle has no free row by its tray on any side of a 5-tray column
+sweep d 0.5 n 3 steam+draw REFUSED the feed nozzle has no free row by its tray on any side of a 5-tray column
+sweep d 0.5 n 3 full REFUSED the feed nozzle has no free row by its tray on any side of a 5-tray column
+sweep d 0.5 n 5 kettle REFUSED the reboiler's vapour return has no free row by its tray on any side of a 7-tray column
+sweep d 0.5 n 5 kettle+steam+draw+PA REFUSED pumparound 1's draw has no free row by its tray on any side of a 7-tray column
+sweep d 0.5 n 5 steam+draw REFUSED side draw 1 has no free row by its tray on any side of a 7-tray column
+sweep d 0.5 n 5 full REFUSED the feed nozzle has no free row by its tray on any side of a 7-tray column
+sweep d 0.5 n 10 kettle VAPOUR_OUTLET@2.50,10.97,2.50/1+ REFLUX@2.50,9.50,2.53/2- FEED@2.50,6.50,2.53/2- VAPOUR_RETURN@2.50,3.50,2.53/2- BOTTOMS@2.50,0.50,1.70/2-
+sweep d 0.5 n 10 kettle+steam+draw+PA REFUSED pumparound 1's draw has no free row by its tray on any side of a 12-tray column
+sweep d 0.5 n 10 steam+draw REFUSED side draw 1 has no free row by its tray on any side of a 12-tray column
+sweep d 0.5 n 10 full REFUSED pumparound 1's draw has no free row by its tray on any side of a 12-tray column
+sweep d 0.5 n 15 kettle VAPOUR_OUTLET@2.50,13.97,2.50/1+ REFLUX@2.50,12.50,2.53/2- FEED@2.50,7.50,2.53/2- VAPOUR_RETURN@2.50,3.50,2.53/2- BOTTOMS@2.50,0.50,1.70/2-
+sweep d 0.5 n 15 kettle+steam+draw+PA REFUSED pumparound 1's return has no free row by its tray on any side of a 17-tray column
+sweep d 0.5 n 15 steam+draw VAPOUR_OUTLET@2.50,13.97,2.50/1+ REFLUX@2.50,12.50,2.53/2- FEED@2.50,7.50,2.53/2- DRAW@2.47,9.50,2.50/0+ STEAM@2.50,3.50,2.53/2- BOTTOMS@2.50,0.50,1.70/2-
+sweep d 0.5 n 15 full REFUSED pumparound 1's draw has no free row by its tray on any side of a 17-tray column
+sweep d 0.5 n 20 kettle VAPOUR_OUTLET@2.50,16.97,2.50/1+ REFLUX@2.50,15.50,2.53/2- FEED@2.50,9.50,2.53/2- VAPOUR_RETURN@2.50,3.50,2.53/2- BOTTOMS@2.50,0.50,1.70/2-
+sweep d 0.5 n 20 kettle+steam+draw+PA REFUSED side draw 1 has no free row by its tray on any side of a 22-tray column
+sweep d 0.5 n 20 steam+draw REFUSED side draw 1 has no free row by its tray on any side of a 22-tray column
+sweep d 0.5 n 20 full REFUSED pumparound 1's return has no free row by its tray on any side of a 22-tray column
+sweep d 0.5 n 30 kettle VAPOUR_OUTLET@2.50,22.97,2.50/1+ REFLUX@2.53,21.50,2.50/0- FEED@2.50,12.50,2.53/2- VAPOUR_RETURN@2.50,3.50,2.53/2- BOTTOMS@2.50,0.50,1.70/2-
+sweep d 0.5 n 30 kettle+steam+draw+PA REFUSED side draw 1 has no free row by its tray on any side of a 32-tray column
+sweep d 0.5 n 30 steam+draw REFUSED side draw 1 has no free row by its tray on any side of a 32-tray column
+sweep d 0.5 n 30 full REFUSED pumparound 2's return has no free row by its tray on any side of a 32-tray column
+sweep d 0.5 n 40 kettle VAPOUR_OUTLET@2.50,28.97,2.50/1+ REFLUX@2.50,27.50,2.53/2- FEED@2.50,15.50,2.53/2- VAPOUR_RETURN@2.50,3.50,2.53/2- BOTTOMS@2.50,0.50,1.70/2-
+sweep d 0.5 n 40 kettle+steam+draw+PA REFUSED side draw 1 has no free row by its tray on any side of a 42-tray column
+sweep d 0.5 n 40 steam+draw REFUSED side draw 1 has no free row by its tray on any side of a 42-tray column
+sweep d 0.5 n 40 full REFUSED pumparound 2's return has no free row by its tray on any side of a 42-tray column
+sweep d 0.5 n 64 kettle VAPOUR_OUTLET@2.50,42.97,2.50/1+ REFLUX@2.50,42.50,2.53/2- FEED@2.50,22.50,2.53/2- VAPOUR_RETURN@2.50,3.50,2.53/2- BOTTOMS@2.50,0.50,1.70/2-
+sweep d 0.5 n 64 kettle+steam+draw+PA REFUSED side draw 1 has no free row by its tray on any side of a 66-tray column
+sweep d 0.5 n 64 steam+draw REFUSED side draw 1 has no free row by its tray on any side of a 66-tray column
+sweep d 0.5 n 64 full REFUSED side draw 1 has no free row by its tray on any side of a 66-tray column
+sweep d 1.0 n 1 kettle VAPOUR_OUTLET@2.50,6.23,2.50/1+ REFLUX@2.50,4.50,2.10/2- FEED@2.90,3.50,2.50/0+ VAPOUR_RETURN@2.10,3.50,2.50/0- BOTTOMS@2.50,0.50,1.70/2-
+sweep d 1.0 n 1 steam+draw REFUSED steam feed 1 has no free row by its tray on any side of a 3-tray column
+sweep d 1.0 n 1 full REFUSED pumparound 2's draw has no free row by its tray on any side of a 3-tray column
+sweep d 1.0 n 3 kettle REFUSED the reboiler's vapour return has no free row by its tray on any side of a 5-tray column
+sweep d 1.0 n 3 kettle+steam+draw+PA REFUSED the reboiler's vapour return has no free row by its tray on any side of a 5-tray column
+sweep d 1.0 n 3 steam+draw REFUSED steam feed 1 has no free row by its tray on any side of a 5-tray column
+sweep d 1.0 n 3 full REFUSED pumparound 2's draw has no free row by its tray on any side of a 5-tray column
+sweep d 1.0 n 5 kettle REFUSED the reboiler's vapour return has no free row by its tray on any side of a 7-tray column
+sweep d 1.0 n 5 kettle+steam+draw+PA REFUSED the reboiler's vapour return has no free row by its tray on any side of a 7-tray column
+sweep d 1.0 n 5 steam+draw REFUSED steam feed 1 has no free row by its tray on any side of a 7-tray column
+sweep d 1.0 n 5 full REFUSED pumparound 2's return has no free row by its tray on any side of a 7-tray column
+sweep d 1.0 n 10 kettle VAPOUR_OUTLET@2.50,11.23,2.50/1+ REFLUX@2.50,9.50,2.10/2- FEED@2.50,6.50,2.10/2- VAPOUR_RETURN@2.50,3.50,2.10/2- BOTTOMS@2.50,0.50,1.70/2- GATE 1
+sweep d 1.0 n 10 kettle+steam+draw+PA REFUSED steam feed 1 has no free row by its tray on any side of a 12-tray column
+sweep d 1.0 n 10 steam+draw VAPOUR_OUTLET@2.50,11.23,2.50/1+ REFLUX@2.50,9.50,2.10/2- FEED@2.50,6.50,2.10/2- DRAW@2.90,7.50,2.50/0+ STEAM@2.50,3.50,2.10/2- BOTTOMS@2.50,0.50,1.70/2- GATE 1
+sweep d 1.0 n 10 full REFUSED pumparound 2's draw has no free row by its tray on any side of a 12-tray column
+sweep d 1.0 n 15 kettle VAPOUR_OUTLET@2.50,14.23,2.50/1+ REFLUX@2.50,12.50,2.10/2- FEED@2.50,7.50,2.10/2- VAPOUR_RETURN@2.50,3.50,2.10/2- BOTTOMS@2.50,0.50,1.70/2- GATE 1
+sweep d 1.0 n 15 kettle+steam+draw+PA REFUSED steam feed 1 has no free row by its tray on any side of a 17-tray column
+sweep d 1.0 n 15 steam+draw VAPOUR_OUTLET@2.50,14.23,2.50/1+ REFLUX@2.50,12.50,2.10/2- FEED@2.50,7.50,2.10/2- DRAW@2.90,9.50,2.50/0+ STEAM@2.50,3.50,2.10/2- BOTTOMS@2.50,0.50,1.70/2- GATE 1
+sweep d 1.0 n 15 full REFUSED pumparound 2's return has no free row by its tray on any side of a 17-tray column
+sweep d 1.0 n 20 kettle VAPOUR_OUTLET@2.50,17.23,2.50/1+ REFLUX@2.50,15.50,2.10/2- FEED@2.50,9.50,2.10/2- VAPOUR_RETURN@2.50,3.50,2.10/2- BOTTOMS@2.50,0.50,1.70/2- GATE 1
+sweep d 1.0 n 20 kettle+steam+draw+PA REFUSED steam feed 1 has no free row by its tray on any side of a 22-tray column
+sweep d 1.0 n 20 steam+draw VAPOUR_OUTLET@2.50,17.23,2.50/1+ REFLUX@2.50,15.50,2.10/2- FEED@2.50,9.50,2.10/2- DRAW@2.90,10.50,2.50/0+ STEAM@2.50,3.50,2.10/2- BOTTOMS@2.50,0.50,1.70/2- GATE 1
+sweep d 1.0 n 20 full REFUSED pumparound 2's return has no free row by its tray on any side of a 22-tray column
+sweep d 1.0 n 30 kettle VAPOUR_OUTLET@2.50,23.23,2.50/1+ REFLUX@2.10,21.50,2.50/0- FEED@2.50,12.50,2.10/2- VAPOUR_RETURN@2.50,3.50,2.10/2- BOTTOMS@2.50,0.50,1.70/2- GATE 1
+sweep d 1.0 n 30 kettle+steam+draw+PA REFUSED steam feed 1 has no free row by its tray on any side of a 32-tray column
+sweep d 1.0 n 30 steam+draw VAPOUR_OUTLET@2.50,23.23,2.50/1+ REFLUX@2.10,21.50,2.50/0- FEED@2.50,12.50,2.10/2- DRAW@2.90,13.50,2.50/0+ STEAM@2.50,3.50,2.10/2- BOTTOMS@2.50,0.50,1.70/2- GATE 1
+sweep d 1.0 n 30 full REFUSED pumparound 2's return has no free row by its tray on any side of a 32-tray column
+sweep d 1.0 n 40 kettle VAPOUR_OUTLET@2.50,29.23,2.50/1+ REFLUX@2.50,27.50,2.10/2- FEED@2.50,15.50,2.10/2- VAPOUR_RETURN@2.50,3.50,2.10/2- BOTTOMS@2.50,0.50,1.70/2- GATE 1
+sweep d 1.0 n 40 kettle+steam+draw+PA REFUSED steam feed 1 has no free row by its tray on any side of a 42-tray column
+sweep d 1.0 n 40 steam+draw VAPOUR_OUTLET@2.50,29.23,2.50/1+ REFLUX@2.50,27.50,2.10/2- FEED@2.50,15.50,2.10/2- DRAW@2.10,16.50,2.50/0- STEAM@2.50,3.50,2.10/2- BOTTOMS@2.50,0.50,1.70/2- GATE 1
+sweep d 1.0 n 40 full REFUSED side draw 1 has no free row by its tray on any side of a 42-tray column
+sweep d 1.0 n 64 kettle VAPOUR_OUTLET@2.50,43.23,2.50/1+ REFLUX@2.50,42.50,2.10/2- FEED@2.50,22.50,2.10/2- VAPOUR_RETURN@2.50,3.50,2.10/2- BOTTOMS@2.50,0.50,1.70/2- GATE 1
+sweep d 1.0 n 64 kettle+steam+draw+PA REFUSED steam feed 1 has no free row by its tray on any side of a 66-tray column
+sweep d 1.0 n 64 steam+draw VAPOUR_OUTLET@2.50,43.23,2.50/1+ REFLUX@2.50,42.50,2.10/2- FEED@2.50,22.50,2.10/2- DRAW@2.90,23.50,2.50/0+ STEAM@2.50,3.50,2.10/2- BOTTOMS@2.50,0.50,1.70/2- GATE 1
+sweep d 1.0 n 64 full REFUSED side draw 2 has no free row by its tray on any side of a 66-tray column
+sweep d 1.5 n 1 kettle VAPOUR_OUTLET@2.50,6.39,2.50/1+ REFLUX@1.79,4.50,2.50/0- FEED@2.50,3.50,1.79/2- VAPOUR_RETURN@3.21,3.50,2.50/0+ BOTTOMS@2.50,0.50,1.70/2-
+sweep d 1.5 n 1 steam+draw REFUSED steam feed 1 has no free row by its tray on any side of a 3-tray column
+sweep d 1.5 n 1 full REFUSED pumparound 2's draw has no free row by its tray on any side of a 3-tray column
+sweep d 1.5 n 3 kettle VAPOUR_OUTLET@2.50,7.39,2.50/1+ REFLUX@1.79,5.50,2.50/0- FEED@2.50,4.50,1.79/2- VAPOUR_RETURN@3.21,3.50,2.50/0+ BOTTOMS@2.50,0.50,1.70/2- GATE 1
+sweep d 1.5 n 3 kettle+steam+draw+PA REFUSED side draw 1 has no free row by its tray on any side of a 5-tray column
+sweep d 1.5 n 3 steam+draw VAPOUR_OUTLET@2.50,7.39,2.50/1+ REFLUX@1.79,5.50,2.50/0- FEED@2.50,4.50,1.79/2- DRAW@3.21,4.50,2.50/0+ STEAM@1.79,3.50,2.50/0- BOTTOMS@2.50,0.50,1.70/2- GATE 1
+sweep d 1.5 n 3 full REFUSED pumparound 2's draw has no free row by its tray on any side of a 5-tray column
+sweep d 1.5 n 5 kettle VAPOUR_OUTLET@2.50,8.39,2.50/1+ REFLUX@1.79,6.50,2.50/0- FEED@2.50,4.50,1.79/2- VAPOUR_RETURN@3.21,3.50,2.50/0+ BOTTOMS@2.50,0.50,1.70/2- GATE 1
+sweep d 1.5 n 5 kettle+steam+draw+PA REFUSED side draw 1 has no free row by its tray on any side of a 7-tray column
+sweep d 1.5 n 5 steam+draw VAPOUR_OUTLET@2.50,8.39,2.50/1+ REFLUX@1.79,6.50,2.50/0- FEED@2.50,4.50,1.79/2- DRAW@3.21,6.50,2.50/0+ STEAM@3.21,3.50,2.50/0+ BOTTOMS@2.50,0.50,1.70/2- GATE 1
+sweep d 1.5 n 5 full REFUSED pumparound 2's return has no free row by its tray on any side of a 7-tray column
+sweep d 1.5 n 10 kettle VAPOUR_OUTLET@2.50,11.39,2.50/1+ REFLUX@1.79,9.50,2.50/0- FEED@2.50,6.50,1.79/2- VAPOUR_RETURN@3.21,3.50,2.50/0+ BOTTOMS@2.50,0.50,1.70/2- GATE 1
+sweep d 1.5 n 10 kettle+steam+draw+PA VAPOUR_OUTLET@2.50,11.39,2.50/1+ REFLUX@1.79,9.50,2.50/0- FEED@2.50,6.50,1.79/2- PUMPAROUND_DRAW@1.79,7.50,2.50/0- RETURN@2.50,9.50,1.79/2- VAPOUR_RETURN@3.21,3.50,2.50/0+ DRAW@3.21,7.50,2.50/0+ STEAM@2.50,3.50,1.79/2- BOTTOMS@2.50,0.50,1.70/2- GATE 1
+sweep d 1.5 n 10 steam+draw VAPOUR_OUTLET@2.50,11.39,2.50/1+ REFLUX@1.79,9.50,2.50/0- FEED@2.50,6.50,1.79/2- DRAW@3.21,7.50,2.50/0+ STEAM@3.21,3.50,2.50/0+ BOTTOMS@2.50,0.50,1.70/2- GATE 1
+sweep d 1.5 n 10 full REFUSED side draw 1 has no free row by its tray on any side of a 12-tray column
+sweep d 1.5 n 15 kettle VAPOUR_OUTLET@2.50,14.39,2.50/1+ REFLUX@1.79,12.50,2.50/0- FEED@2.50,7.50,1.79/2- VAPOUR_RETURN@3.21,3.50,2.50/0+ BOTTOMS@2.50,0.50,1.70/2- GATE 1
+sweep d 1.5 n 15 kettle+steam+draw+PA VAPOUR_OUTLET@2.50,14.39,2.50/1+ REFLUX@1.79,12.50,2.50/0- FEED@2.50,7.50,1.79/2- PUMPAROUND_DRAW@1.79,9.50,2.50/0- RETURN@2.50,10.50,1.79/2- VAPOUR_RETURN@3.21,3.50,2.50/0+ DRAW@3.21,9.50,2.50/0+ STEAM@2.50,3.50,1.79/2- BOTTOMS@2.50,0.50,1.70/2- GATE 1
+sweep d 1.5 n 15 steam+draw VAPOUR_OUTLET@2.50,14.39,2.50/1+ REFLUX@1.79,12.50,2.50/0- FEED@2.50,7.50,1.79/2- DRAW@3.21,9.50,2.50/0+ STEAM@3.21,3.50,2.50/0+ BOTTOMS@2.50,0.50,1.70/2- GATE 1
+sweep d 1.5 n 15 full REFUSED side draw 2 has no free row by its tray on any side of a 17-tray column
+sweep d 1.5 n 20 kettle VAPOUR_OUTLET@2.50,17.39,2.50/1+ REFLUX@1.79,15.50,2.50/0- FEED@2.50,9.50,1.79/2- VAPOUR_RETURN@3.21,3.50,2.50/0+ BOTTOMS@2.50,0.50,1.70/2- GATE 1
+sweep d 1.5 n 20 kettle+steam+draw+PA VAPOUR_OUTLET@2.50,17.39,2.50/1+ REFLUX@1.79,15.50,2.50/0- FEED@2.50,9.50,1.79/2- PUMPAROUND_DRAW@1.79,11.50,2.50/0- RETURN@1.79,13.50,2.50/0- VAPOUR_RETURN@3.21,3.50,2.50/0+ DRAW@3.21,10.50,2.50/0+ STEAM@2.50,3.50,1.79/2- BOTTOMS@2.50,0.50,1.70/2- GATE 1
+sweep d 1.5 n 20 steam+draw VAPOUR_OUTLET@2.50,17.39,2.50/1+ REFLUX@1.79,15.50,2.50/0- FEED@2.50,9.50,1.79/2- DRAW@3.21,10.50,2.50/0+ STEAM@3.21,3.50,2.50/0+ BOTTOMS@2.50,0.50,1.70/2- GATE 1
+sweep d 1.5 n 20 full VAPOUR_OUTLET@2.50,17.39,2.50/1+ REFLUX@1.79,15.50,2.50/0- FEED@2.50,9.50,1.79/2- PUMPAROUND_DRAW@1.79,12.50,2.50/0- RETURN@2.50,13.50,1.79/2- PUMPAROUND_DRAW@1.79,7.50,2.50/0- RETURN@1.79,9.50,2.50/0- VAPOUR_RETURN@3.21,3.50,2.50/0+ DRAW@3.21,12.50,2.50/0+ DRAW@3.21,9.50,2.50/0+ DRAW@3.21,6.50,2.50/0+ STEAM@2.50,3.50,1.79/2- BOTTOMS@2.50,0.50,1.70/2- GATE 1
+sweep d 1.5 n 30 kettle VAPOUR_OUTLET@2.50,23.39,2.50/1+ REFLUX@1.79,21.50,2.50/0- FEED@2.50,12.50,1.79/2- VAPOUR_RETURN@3.21,3.50,2.50/0+ BOTTOMS@2.50,0.50,1.70/2- GATE 1
+sweep d 1.5 n 30 kettle+steam+draw+PA VAPOUR_OUTLET@2.50,23.39,2.50/1+ REFLUX@1.79,21.50,2.50/0- FEED@2.50,12.50,1.79/2- PUMPAROUND_DRAW@1.79,15.50,2.50/0- RETURN@2.50,16.50,1.79/2- VAPOUR_RETURN@3.21,3.50,2.50/0+ DRAW@3.21,13.50,2.50/0+ STEAM@2.50,3.50,1.79/2- BOTTOMS@2.50,0.50,1.70/2- GATE 1
+sweep d 1.5 n 30 steam+draw VAPOUR_OUTLET@2.50,23.39,2.50/1+ REFLUX@1.79,21.50,2.50/0- FEED@2.50,12.50,1.79/2- DRAW@3.21,13.50,2.50/0+ STEAM@3.21,3.50,2.50/0+ BOTTOMS@2.50,0.50,1.70/2- GATE 1
+sweep d 1.5 n 30 full VAPOUR_OUTLET@2.50,23.39,2.50/1+ REFLUX@1.79,21.50,2.50/0- FEED@2.50,12.50,1.79/2- PUMPAROUND_DRAW@1.79,15.50,2.50/0- RETURN@1.79,17.50,2.50/0- PUMPAROUND_DRAW@1.79,9.50,2.50/0- RETURN@1.79,11.50,2.50/0- VAPOUR_RETURN@3.21,3.50,2.50/0+ DRAW@3.21,17.50,2.50/0+ DRAW@3.21,12.50,2.50/0+ DRAW@3.21,8.50,2.50/0+ STEAM@2.50,3.50,1.79/2- BOTTOMS@2.50,0.50,1.70/2- GATE 1
+sweep d 1.5 n 40 kettle VAPOUR_OUTLET@2.50,29.39,2.50/1+ REFLUX@1.79,27.50,2.50/0- FEED@2.50,15.50,1.79/2- VAPOUR_RETURN@3.21,3.50,2.50/0+ BOTTOMS@2.50,0.50,1.70/2- GATE 1
+sweep d 1.5 n 40 kettle+steam+draw+PA VAPOUR_OUTLET@2.50,29.39,2.50/1+ REFLUX@1.79,27.50,2.50/0- FEED@2.50,15.50,1.79/2- PUMPAROUND_DRAW@1.79,19.50,2.50/0- RETURN@1.79,21.50,2.50/0- VAPOUR_RETURN@3.21,3.50,2.50/0+ DRAW@3.21,16.50,2.50/0+ STEAM@2.50,3.50,1.79/2- BOTTOMS@2.50,0.50,1.70/2- GATE 1
+sweep d 1.5 n 40 steam+draw VAPOUR_OUTLET@2.50,29.39,2.50/1+ REFLUX@1.79,27.50,2.50/0- FEED@2.50,15.50,1.79/2- DRAW@3.21,16.50,2.50/0+ STEAM@3.21,3.50,2.50/0+ BOTTOMS@2.50,0.50,1.70/2- GATE 1
+sweep d 1.5 n 40 full VAPOUR_OUTLET@2.50,29.39,2.50/1+ REFLUX@1.79,27.50,2.50/0- FEED@2.50,15.50,1.79/2- PUMPAROUND_DRAW@1.79,19.50,2.50/0- RETURN@1.79,21.50,2.50/0- PUMPAROUND_DRAW@1.79,12.50,2.50/0- RETURN@2.50,13.50,1.79/2- VAPOUR_RETURN@3.21,3.50,2.50/0+ DRAW@3.21,21.50,2.50/0+ DRAW@3.21,15.50,2.50/0+ DRAW@3.21,9.50,2.50/0+ STEAM@2.50,3.50,1.79/2- BOTTOMS@2.50,0.50,1.70/2- GATE 1
+sweep d 1.5 n 64 kettle VAPOUR_OUTLET@2.50,43.39,2.50/1+ REFLUX@1.79,42.50,2.50/0- FEED@2.50,22.50,1.79/2- VAPOUR_RETURN@3.21,3.50,2.50/0+ BOTTOMS@2.50,0.50,1.70/2- GATE 1
+sweep d 1.5 n 64 kettle+steam+draw+PA VAPOUR_OUTLET@2.50,43.39,2.50/1+ REFLUX@1.79,42.50,2.50/0- FEED@2.50,22.50,1.79/2- PUMPAROUND_DRAW@1.79,28.50,2.50/0- RETURN@1.79,30.50,2.50/0- VAPOUR_RETURN@3.21,3.50,2.50/0+ DRAW@3.21,23.50,2.50/0+ STEAM@2.50,3.50,1.79/2- BOTTOMS@2.50,0.50,1.70/2- GATE 1
+sweep d 1.5 n 64 steam+draw VAPOUR_OUTLET@2.50,43.39,2.50/1+ REFLUX@1.79,42.50,2.50/0- FEED@2.50,22.50,1.79/2- DRAW@3.21,23.50,2.50/0+ STEAM@3.21,3.50,2.50/0+ BOTTOMS@2.50,0.50,1.70/2- GATE 1
+sweep d 1.5 n 64 full VAPOUR_OUTLET@2.50,43.39,2.50/1+ REFLUX@1.79,42.50,2.50/0- FEED@2.50,22.50,1.79/2- PUMPAROUND_DRAW@1.79,29.50,2.50/0- RETURN@1.79,31.50,2.50/0- PUMPAROUND_DRAW@1.79,16.50,2.50/0- RETURN@1.79,18.50,2.50/0- VAPOUR_RETURN@3.21,3.50,2.50/0+ DRAW@3.21,32.50,2.50/0+ DRAW@3.21,22.50,2.50/0+ DRAW@3.21,13.50,2.50/0+ STEAM@2.50,3.50,1.79/2- BOTTOMS@2.50,0.50,1.70/2- GATE 1
+sweep d 2.0 n 1 kettle VAPOUR_OUTLET@3.50,6.53,3.50/1+ REFLUX@2.51,4.50,3.50/0- FEED@3.50,3.50,2.51/2- VAPOUR_RETURN@4.49,3.50,3.50/0+ BOTTOMS@3.50,0.50,2.70/2-
+sweep d 2.0 n 1 steam+draw REFUSED steam feed 1 has no free row by its tray on any side of a 3-tray column
+sweep d 2.0 n 1 full REFUSED pumparound 2's draw has no free row by its tray on any side of a 3-tray column
+sweep d 2.0 n 3 kettle VAPOUR_OUTLET@3.50,7.53,3.50/1+ REFLUX@2.51,5.50,3.50/0- FEED@3.50,4.50,2.51/2- VAPOUR_RETURN@4.49,3.50,3.50/0+ BOTTOMS@3.50,0.50,2.70/2- GATE 1
+sweep d 2.0 n 3 kettle+steam+draw+PA REFUSED side draw 1 has no free row by its tray on any side of a 5-tray column
+sweep d 2.0 n 3 steam+draw VAPOUR_OUTLET@3.50,7.53,3.50/1+ REFLUX@2.51,5.50,3.50/0- FEED@3.50,4.50,2.51/2- DRAW@4.49,4.50,3.50/0+ STEAM@2.51,3.50,3.50/0- BOTTOMS@3.50,0.50,2.70/2- GATE 1
+sweep d 2.0 n 3 full REFUSED pumparound 2's draw has no free row by its tray on any side of a 5-tray column
+sweep d 2.0 n 5 kettle VAPOUR_OUTLET@3.50,8.53,3.50/1+ REFLUX@2.51,6.50,3.50/0- FEED@3.50,4.50,2.51/2- VAPOUR_RETURN@4.49,3.50,3.50/0+ BOTTOMS@3.50,0.50,2.70/2- GATE 1
+sweep d 2.0 n 5 kettle+steam+draw+PA REFUSED side draw 1 has no free row by its tray on any side of a 7-tray column
+sweep d 2.0 n 5 steam+draw VAPOUR_OUTLET@3.50,8.53,3.50/1+ REFLUX@2.51,6.50,3.50/0- FEED@3.50,4.50,2.51/2- DRAW@4.49,6.50,3.50/0+ STEAM@4.49,3.50,3.50/0+ BOTTOMS@3.50,0.50,2.70/2- GATE 1
+sweep d 2.0 n 5 full REFUSED pumparound 2's return has no free row by its tray on any side of a 7-tray column
+sweep d 2.0 n 10 kettle VAPOUR_OUTLET@3.50,11.53,3.50/1+ REFLUX@2.51,9.50,3.50/0- FEED@3.50,6.50,2.51/2- VAPOUR_RETURN@4.49,3.50,3.50/0+ BOTTOMS@3.50,0.50,2.70/2- GATE 1
+sweep d 2.0 n 10 kettle+steam+draw+PA VAPOUR_OUTLET@3.50,11.53,3.50/1+ REFLUX@2.51,9.50,3.50/0- FEED@3.50,6.50,2.51/2- PUMPAROUND_DRAW@2.51,7.50,3.50/0- RETURN@3.50,9.50,2.51/2- VAPOUR_RETURN@4.49,3.50,3.50/0+ DRAW@4.49,7.50,3.50/0+ STEAM@3.50,3.50,2.51/2- BOTTOMS@3.50,0.50,2.70/2- GATE 1
+sweep d 2.0 n 10 steam+draw VAPOUR_OUTLET@3.50,11.53,3.50/1+ REFLUX@2.51,9.50,3.50/0- FEED@3.50,6.50,2.51/2- DRAW@4.49,7.50,3.50/0+ STEAM@4.49,3.50,3.50/0+ BOTTOMS@3.50,0.50,2.70/2- GATE 1
+sweep d 2.0 n 10 full REFUSED side draw 1 has no free row by its tray on any side of a 12-tray column
+sweep d 2.0 n 15 kettle VAPOUR_OUTLET@3.50,14.53,3.50/1+ REFLUX@2.51,12.50,3.50/0- FEED@3.50,7.50,2.51/2- VAPOUR_RETURN@4.49,3.50,3.50/0+ BOTTOMS@3.50,0.50,2.70/2- GATE 1
+sweep d 2.0 n 15 kettle+steam+draw+PA VAPOUR_OUTLET@3.50,14.53,3.50/1+ REFLUX@2.51,12.50,3.50/0- FEED@3.50,7.50,2.51/2- PUMPAROUND_DRAW@2.51,9.50,3.50/0- RETURN@3.50,10.50,2.51/2- VAPOUR_RETURN@4.49,3.50,3.50/0+ DRAW@4.49,9.50,3.50/0+ STEAM@3.50,3.50,2.51/2- BOTTOMS@3.50,0.50,2.70/2- GATE 1
+sweep d 2.0 n 15 steam+draw VAPOUR_OUTLET@3.50,14.53,3.50/1+ REFLUX@2.51,12.50,3.50/0- FEED@3.50,7.50,2.51/2- DRAW@4.49,9.50,3.50/0+ STEAM@4.49,3.50,3.50/0+ BOTTOMS@3.50,0.50,2.70/2- GATE 1
+sweep d 2.0 n 15 full REFUSED side draw 2 has no free row by its tray on any side of a 17-tray column
+sweep d 2.0 n 20 kettle VAPOUR_OUTLET@3.50,17.53,3.50/1+ REFLUX@2.51,15.50,3.50/0- FEED@3.50,9.50,2.51/2- VAPOUR_RETURN@4.49,3.50,3.50/0+ BOTTOMS@3.50,0.50,2.70/2- GATE 1
+sweep d 2.0 n 20 kettle+steam+draw+PA VAPOUR_OUTLET@3.50,17.53,3.50/1+ REFLUX@2.51,15.50,3.50/0- FEED@3.50,9.50,2.51/2- PUMPAROUND_DRAW@2.51,11.50,3.50/0- RETURN@2.51,13.50,3.50/0- VAPOUR_RETURN@4.49,3.50,3.50/0+ DRAW@4.49,10.50,3.50/0+ STEAM@3.50,3.50,2.51/2- BOTTOMS@3.50,0.50,2.70/2- GATE 1
+sweep d 2.0 n 20 steam+draw VAPOUR_OUTLET@3.50,17.53,3.50/1+ REFLUX@2.51,15.50,3.50/0- FEED@3.50,9.50,2.51/2- DRAW@4.49,10.50,3.50/0+ STEAM@4.49,3.50,3.50/0+ BOTTOMS@3.50,0.50,2.70/2- GATE 1
+sweep d 2.0 n 20 full VAPOUR_OUTLET@3.50,17.53,3.50/1+ REFLUX@2.51,15.50,3.50/0- FEED@3.50,9.50,2.51/2- PUMPAROUND_DRAW@2.51,12.50,3.50/0- RETURN@3.50,13.50,2.51/2- PUMPAROUND_DRAW@2.51,7.50,3.50/0- RETURN@2.51,9.50,3.50/0- VAPOUR_RETURN@4.49,3.50,3.50/0+ DRAW@4.49,12.50,3.50/0+ DRAW@4.49,9.50,3.50/0+ DRAW@4.49,6.50,3.50/0+ STEAM@3.50,3.50,2.51/2- BOTTOMS@3.50,0.50,2.70/2- GATE 1
+sweep d 2.0 n 30 kettle VAPOUR_OUTLET@3.50,23.53,3.50/1+ REFLUX@2.51,21.50,3.50/0- FEED@3.50,12.50,2.51/2- VAPOUR_RETURN@4.49,3.50,3.50/0+ BOTTOMS@3.50,0.50,2.70/2- GATE 1
+sweep d 2.0 n 30 kettle+steam+draw+PA VAPOUR_OUTLET@3.50,23.53,3.50/1+ REFLUX@2.51,21.50,3.50/0- FEED@3.50,12.50,2.51/2- PUMPAROUND_DRAW@2.51,15.50,3.50/0- RETURN@3.50,16.50,2.51/2- VAPOUR_RETURN@4.49,3.50,3.50/0+ DRAW@4.49,13.50,3.50/0+ STEAM@3.50,3.50,2.51/2- BOTTOMS@3.50,0.50,2.70/2- GATE 1
+sweep d 2.0 n 30 steam+draw VAPOUR_OUTLET@3.50,23.53,3.50/1+ REFLUX@2.51,21.50,3.50/0- FEED@3.50,12.50,2.51/2- DRAW@4.49,13.50,3.50/0+ STEAM@4.49,3.50,3.50/0+ BOTTOMS@3.50,0.50,2.70/2- GATE 1
+sweep d 2.0 n 30 full VAPOUR_OUTLET@3.50,23.53,3.50/1+ REFLUX@2.51,21.50,3.50/0- FEED@3.50,12.50,2.51/2- PUMPAROUND_DRAW@2.51,15.50,3.50/0- RETURN@2.51,17.50,3.50/0- PUMPAROUND_DRAW@2.51,9.50,3.50/0- RETURN@2.51,11.50,3.50/0- VAPOUR_RETURN@4.49,3.50,3.50/0+ DRAW@4.49,17.50,3.50/0+ DRAW@4.49,12.50,3.50/0+ DRAW@4.49,8.50,3.50/0+ STEAM@3.50,3.50,2.51/2- BOTTOMS@3.50,0.50,2.70/2- GATE 1
+sweep d 2.0 n 40 kettle VAPOUR_OUTLET@3.50,29.53,3.50/1+ REFLUX@2.51,27.50,3.50/0- FEED@3.50,15.50,2.51/2- VAPOUR_RETURN@4.49,3.50,3.50/0+ BOTTOMS@3.50,0.50,2.70/2- GATE 1
+sweep d 2.0 n 40 kettle+steam+draw+PA VAPOUR_OUTLET@3.50,29.53,3.50/1+ REFLUX@2.51,27.50,3.50/0- FEED@3.50,15.50,2.51/2- PUMPAROUND_DRAW@2.51,19.50,3.50/0- RETURN@2.51,21.50,3.50/0- VAPOUR_RETURN@4.49,3.50,3.50/0+ DRAW@4.49,16.50,3.50/0+ STEAM@3.50,3.50,2.51/2- BOTTOMS@3.50,0.50,2.70/2- GATE 1
+sweep d 2.0 n 40 steam+draw VAPOUR_OUTLET@3.50,29.53,3.50/1+ REFLUX@2.51,27.50,3.50/0- FEED@3.50,15.50,2.51/2- DRAW@4.49,16.50,3.50/0+ STEAM@4.49,3.50,3.50/0+ BOTTOMS@3.50,0.50,2.70/2- GATE 1
+sweep d 2.0 n 40 full VAPOUR_OUTLET@3.50,29.53,3.50/1+ REFLUX@2.51,27.50,3.50/0- FEED@3.50,15.50,2.51/2- PUMPAROUND_DRAW@2.51,19.50,3.50/0- RETURN@2.51,21.50,3.50/0- PUMPAROUND_DRAW@2.51,12.50,3.50/0- RETURN@3.50,13.50,2.51/2- VAPOUR_RETURN@4.49,3.50,3.50/0+ DRAW@4.49,21.50,3.50/0+ DRAW@4.49,15.50,3.50/0+ DRAW@4.49,9.50,3.50/0+ STEAM@3.50,3.50,2.51/2- BOTTOMS@3.50,0.50,2.70/2- GATE 1
+sweep d 2.0 n 64 kettle VAPOUR_OUTLET@3.50,43.53,3.50/1+ REFLUX@2.51,42.50,3.50/0- FEED@3.50,22.50,2.51/2- VAPOUR_RETURN@4.49,3.50,3.50/0+ BOTTOMS@3.50,0.50,2.70/2- GATE 1
+sweep d 2.0 n 64 kettle+steam+draw+PA VAPOUR_OUTLET@3.50,43.53,3.50/1+ REFLUX@2.51,42.50,3.50/0- FEED@3.50,22.50,2.51/2- PUMPAROUND_DRAW@2.51,28.50,3.50/0- RETURN@2.51,30.50,3.50/0- VAPOUR_RETURN@4.49,3.50,3.50/0+ DRAW@4.49,23.50,3.50/0+ STEAM@3.50,3.50,2.51/2- BOTTOMS@3.50,0.50,2.70/2- GATE 1
+sweep d 2.0 n 64 steam+draw VAPOUR_OUTLET@3.50,43.53,3.50/1+ REFLUX@2.51,42.50,3.50/0- FEED@3.50,22.50,2.51/2- DRAW@4.49,23.50,3.50/0+ STEAM@4.49,3.50,3.50/0+ BOTTOMS@3.50,0.50,2.70/2- GATE 1
+sweep d 2.0 n 64 full VAPOUR_OUTLET@3.50,43.53,3.50/1+ REFLUX@2.51,42.50,3.50/0- FEED@3.50,22.50,2.51/2- PUMPAROUND_DRAW@2.51,29.50,3.50/0- RETURN@2.51,31.50,3.50/0- PUMPAROUND_DRAW@2.51,16.50,3.50/0- RETURN@2.51,18.50,3.50/0- VAPOUR_RETURN@4.49,3.50,3.50/0+ DRAW@4.49,32.50,3.50/0+ DRAW@4.49,22.50,3.50/0+ DRAW@4.49,13.50,3.50/0+ STEAM@3.50,3.50,2.51/2- BOTTOMS@3.50,0.50,2.70/2- GATE 1
+sweep d 3.0 n 1 kettle VAPOUR_OUTLET@3.50,7.79,3.50/1+ REFLUX@1.99,5.50,3.50/0- FEED@3.50,4.50,1.99/2- VAPOUR_RETURN@5.01,4.50,3.50/0+ BOTTOMS@3.50,0.50,2.70/2-
+sweep d 3.0 n 1 steam+draw REFUSED steam feed 1 has no free row by its tray on any side of a 3-tray column
+sweep d 3.0 n 1 full REFUSED pumparound 2's draw has no free row by its tray on any side of a 3-tray column
+sweep d 3.0 n 3 kettle VAPOUR_OUTLET@3.50,8.79,3.50/1+ REFLUX@1.99,6.50,3.50/0- FEED@3.50,5.50,1.99/2- VAPOUR_RETURN@5.01,4.50,3.50/0+ BOTTOMS@3.50,0.50,2.70/2- GATE 1
+sweep d 3.0 n 3 kettle+steam+draw+PA REFUSED side draw 1 has no free row by its tray on any side of a 5-tray column
+sweep d 3.0 n 3 steam+draw VAPOUR_OUTLET@3.50,8.79,3.50/1+ REFLUX@1.99,6.50,3.50/0- FEED@3.50,5.50,1.99/2- DRAW@5.01,5.50,3.50/0+ STEAM@1.99,4.50,3.50/0- BOTTOMS@3.50,0.50,2.70/2- GATE 1
+sweep d 3.0 n 3 full REFUSED pumparound 2's draw has no free row by its tray on any side of a 5-tray column
+sweep d 3.0 n 5 kettle VAPOUR_OUTLET@3.50,9.79,3.50/1+ REFLUX@1.99,7.50,3.50/0- FEED@3.50,5.50,1.99/2- VAPOUR_RETURN@5.01,4.50,3.50/0+ BOTTOMS@3.50,0.50,2.70/2- GATE 1
+sweep d 3.0 n 5 kettle+steam+draw+PA REFUSED side draw 1 has no free row by its tray on any side of a 7-tray column
+sweep d 3.0 n 5 steam+draw VAPOUR_OUTLET@3.50,9.79,3.50/1+ REFLUX@1.99,7.50,3.50/0- FEED@3.50,5.50,1.99/2- DRAW@5.01,7.50,3.50/0+ STEAM@5.01,4.50,3.50/0+ BOTTOMS@3.50,0.50,2.70/2- GATE 1
+sweep d 3.0 n 5 full REFUSED pumparound 2's return has no free row by its tray on any side of a 7-tray column
+sweep d 3.0 n 10 kettle VAPOUR_OUTLET@3.50,12.79,3.50/1+ REFLUX@1.99,10.50,3.50/0- FEED@3.50,7.50,1.99/2- VAPOUR_RETURN@5.01,4.50,3.50/0+ BOTTOMS@3.50,0.50,2.70/2- GATE 1
+sweep d 3.0 n 10 kettle+steam+draw+PA VAPOUR_OUTLET@3.50,12.79,3.50/1+ REFLUX@1.99,10.50,3.50/0- FEED@3.50,7.50,1.99/2- PUMPAROUND_DRAW@1.99,8.50,3.50/0- RETURN@3.50,10.50,1.99/2- VAPOUR_RETURN@5.01,4.50,3.50/0+ DRAW@5.01,8.50,3.50/0+ STEAM@3.50,4.50,1.99/2- BOTTOMS@3.50,0.50,2.70/2-
+sweep d 3.0 n 10 steam+draw VAPOUR_OUTLET@3.50,12.79,3.50/1+ REFLUX@1.99,10.50,3.50/0- FEED@3.50,7.50,1.99/2- DRAW@5.01,8.50,3.50/0+ STEAM@5.01,4.50,3.50/0+ BOTTOMS@3.50,0.50,2.70/2- GATE 1
+sweep d 3.0 n 10 full REFUSED side draw 1 has no free row by its tray on any side of a 12-tray column
+sweep d 3.0 n 15 kettle VAPOUR_OUTLET@3.50,15.79,3.50/1+ REFLUX@1.99,13.50,3.50/0- FEED@3.50,8.50,1.99/2- VAPOUR_RETURN@5.01,4.50,3.50/0+ BOTTOMS@3.50,0.50,2.70/2- GATE 1
+sweep d 3.0 n 15 kettle+steam+draw+PA VAPOUR_OUTLET@3.50,15.79,3.50/1+ REFLUX@1.99,13.50,3.50/0- FEED@3.50,8.50,1.99/2- PUMPAROUND_DRAW@1.99,10.50,3.50/0- RETURN@3.50,11.50,1.99/2- VAPOUR_RETURN@5.01,4.50,3.50/0+ DRAW@5.01,10.50,3.50/0+ STEAM@3.50,4.50,1.99/2- BOTTOMS@3.50,0.50,2.70/2- GATE 1
+sweep d 3.0 n 15 steam+draw VAPOUR_OUTLET@3.50,15.79,3.50/1+ REFLUX@1.99,13.50,3.50/0- FEED@3.50,8.50,1.99/2- DRAW@5.01,10.50,3.50/0+ STEAM@5.01,4.50,3.50/0+ BOTTOMS@3.50,0.50,2.70/2- GATE 1
+sweep d 3.0 n 15 full REFUSED side draw 2 has no free row by its tray on any side of a 17-tray column
+sweep d 3.0 n 20 kettle VAPOUR_OUTLET@3.50,18.79,3.50/1+ REFLUX@1.99,16.50,3.50/0- FEED@3.50,10.50,1.99/2- VAPOUR_RETURN@5.01,4.50,3.50/0+ BOTTOMS@3.50,0.50,2.70/2- GATE 1
+sweep d 3.0 n 20 kettle+steam+draw+PA VAPOUR_OUTLET@3.50,18.79,3.50/1+ REFLUX@1.99,16.50,3.50/0- FEED@3.50,10.50,1.99/2- PUMPAROUND_DRAW@1.99,12.50,3.50/0- RETURN@1.99,14.50,3.50/0- VAPOUR_RETURN@5.01,4.50,3.50/0+ DRAW@5.01,11.50,3.50/0+ STEAM@3.50,4.50,1.99/2- BOTTOMS@3.50,0.50,2.70/2- GATE 1
+sweep d 3.0 n 20 steam+draw VAPOUR_OUTLET@3.50,18.79,3.50/1+ REFLUX@1.99,16.50,3.50/0- FEED@3.50,10.50,1.99/2- DRAW@5.01,11.50,3.50/0+ STEAM@5.01,4.50,3.50/0+ BOTTOMS@3.50,0.50,2.70/2- GATE 1
+sweep d 3.0 n 20 full VAPOUR_OUTLET@3.50,18.79,3.50/1+ REFLUX@1.99,16.50,3.50/0- FEED@3.50,10.50,1.99/2- PUMPAROUND_DRAW@1.99,13.50,3.50/0- RETURN@3.50,14.50,1.99/2- PUMPAROUND_DRAW@1.99,8.50,3.50/0- RETURN@1.99,10.50,3.50/0- VAPOUR_RETURN@5.01,4.50,3.50/0+ DRAW@5.01,13.50,3.50/0+ DRAW@5.01,10.50,3.50/0+ DRAW@5.01,7.50,3.50/0+ STEAM@3.50,4.50,1.99/2- BOTTOMS@3.50,0.50,2.70/2- GATE 1
+sweep d 3.0 n 30 kettle VAPOUR_OUTLET@3.50,24.79,3.50/1+ REFLUX@1.99,22.50,3.50/0- FEED@3.50,13.50,1.99/2- VAPOUR_RETURN@5.01,4.50,3.50/0+ BOTTOMS@3.50,0.50,2.70/2- GATE 1
+sweep d 3.0 n 30 kettle+steam+draw+PA VAPOUR_OUTLET@3.50,24.79,3.50/1+ REFLUX@1.99,22.50,3.50/0- FEED@3.50,13.50,1.99/2- PUMPAROUND_DRAW@1.99,16.50,3.50/0- RETURN@3.50,17.50,1.99/2- VAPOUR_RETURN@5.01,4.50,3.50/0+ DRAW@5.01,14.50,3.50/0+ STEAM@3.50,4.50,1.99/2- BOTTOMS@3.50,0.50,2.70/2- GATE 1
+sweep d 3.0 n 30 steam+draw VAPOUR_OUTLET@3.50,24.79,3.50/1+ REFLUX@1.99,22.50,3.50/0- FEED@3.50,13.50,1.99/2- DRAW@5.01,14.50,3.50/0+ STEAM@5.01,4.50,3.50/0+ BOTTOMS@3.50,0.50,2.70/2- GATE 1
+sweep d 3.0 n 30 full VAPOUR_OUTLET@3.50,24.79,3.50/1+ REFLUX@1.99,22.50,3.50/0- FEED@3.50,13.50,1.99/2- PUMPAROUND_DRAW@1.99,16.50,3.50/0- RETURN@1.99,18.50,3.50/0- PUMPAROUND_DRAW@1.99,10.50,3.50/0- RETURN@1.99,12.50,3.50/0- VAPOUR_RETURN@5.01,4.50,3.50/0+ DRAW@5.01,18.50,3.50/0+ DRAW@5.01,13.50,3.50/0+ DRAW@5.01,9.50,3.50/0+ STEAM@3.50,4.50,1.99/2- BOTTOMS@3.50,0.50,2.70/2- GATE 1
+sweep d 3.0 n 40 kettle VAPOUR_OUTLET@3.50,30.79,3.50/1+ REFLUX@1.99,28.50,3.50/0- FEED@3.50,16.50,1.99/2- VAPOUR_RETURN@5.01,4.50,3.50/0+ BOTTOMS@3.50,0.50,2.70/2- GATE 1
+sweep d 3.0 n 40 kettle+steam+draw+PA VAPOUR_OUTLET@3.50,30.79,3.50/1+ REFLUX@1.99,28.50,3.50/0- FEED@3.50,16.50,1.99/2- PUMPAROUND_DRAW@1.99,20.50,3.50/0- RETURN@1.99,22.50,3.50/0- VAPOUR_RETURN@5.01,4.50,3.50/0+ DRAW@5.01,17.50,3.50/0+ STEAM@3.50,4.50,1.99/2- BOTTOMS@3.50,0.50,2.70/2- GATE 1
+sweep d 3.0 n 40 steam+draw VAPOUR_OUTLET@3.50,30.79,3.50/1+ REFLUX@1.99,28.50,3.50/0- FEED@3.50,16.50,1.99/2- DRAW@5.01,17.50,3.50/0+ STEAM@5.01,4.50,3.50/0+ BOTTOMS@3.50,0.50,2.70/2- GATE 1
+sweep d 3.0 n 40 full VAPOUR_OUTLET@3.50,30.79,3.50/1+ REFLUX@1.99,28.50,3.50/0- FEED@3.50,16.50,1.99/2- PUMPAROUND_DRAW@1.99,20.50,3.50/0- RETURN@1.99,22.50,3.50/0- PUMPAROUND_DRAW@1.99,13.50,3.50/0- RETURN@3.50,14.50,1.99/2- VAPOUR_RETURN@5.01,4.50,3.50/0+ DRAW@5.01,22.50,3.50/0+ DRAW@5.01,16.50,3.50/0+ DRAW@5.01,10.50,3.50/0+ STEAM@3.50,4.50,1.99/2- BOTTOMS@3.50,0.50,2.70/2- GATE 1
+sweep d 3.0 n 64 kettle VAPOUR_OUTLET@3.50,44.79,3.50/1+ REFLUX@1.99,43.50,3.50/0- FEED@3.50,23.50,1.99/2- VAPOUR_RETURN@5.01,4.50,3.50/0+ BOTTOMS@3.50,0.50,2.70/2- GATE 1
+sweep d 3.0 n 64 kettle+steam+draw+PA VAPOUR_OUTLET@3.50,44.79,3.50/1+ REFLUX@1.99,43.50,3.50/0- FEED@3.50,23.50,1.99/2- PUMPAROUND_DRAW@1.99,29.50,3.50/0- RETURN@1.99,31.50,3.50/0- VAPOUR_RETURN@5.01,4.50,3.50/0+ DRAW@5.01,24.50,3.50/0+ STEAM@3.50,4.50,1.99/2- BOTTOMS@3.50,0.50,2.70/2- GATE 1
+sweep d 3.0 n 64 steam+draw VAPOUR_OUTLET@3.50,44.79,3.50/1+ REFLUX@1.99,43.50,3.50/0- FEED@3.50,23.50,1.99/2- DRAW@5.01,24.50,3.50/0+ STEAM@5.01,4.50,3.50/0+ BOTTOMS@3.50,0.50,2.70/2- GATE 1
+sweep d 3.0 n 64 full VAPOUR_OUTLET@3.50,44.79,3.50/1+ REFLUX@1.99,43.50,3.50/0- FEED@3.50,23.50,1.99/2- PUMPAROUND_DRAW@1.99,30.50,3.50/0- RETURN@1.99,32.50,3.50/0- PUMPAROUND_DRAW@1.99,17.50,3.50/0- RETURN@1.99,19.50,3.50/0- VAPOUR_RETURN@5.01,4.50,3.50/0+ DRAW@5.01,33.50,3.50/0+ DRAW@5.01,23.50,3.50/0+ DRAW@5.01,14.50,3.50/0+ STEAM@3.50,4.50,1.99/2- BOTTOMS@3.50,0.50,2.70/2- GATE 1
+sweep d 4.0 n 1 kettle VAPOUR_OUTLET@4.50,8.05,4.50/1+ REFLUX@2.47,5.50,4.50/0- FEED@4.50,4.50,2.47/2- VAPOUR_RETURN@6.53,4.50,4.50/0+ BOTTOMS@4.50,0.50,3.70/2-
+sweep d 4.0 n 1 steam+draw REFUSED steam feed 1 has no free row by its tray on any side of a 3-tray column
+sweep d 4.0 n 1 full REFUSED pumparound 2's draw has no free row by its tray on any side of a 3-tray column
+sweep d 4.0 n 3 kettle VAPOUR_OUTLET@4.50,9.05,4.50/1+ REFLUX@2.47,6.50,4.50/0- FEED@4.50,5.50,2.47/2- VAPOUR_RETURN@6.53,4.50,4.50/0+ BOTTOMS@4.50,0.50,3.70/2-
+sweep d 4.0 n 3 kettle+steam+draw+PA REFUSED side draw 1 has no free row by its tray on any side of a 5-tray column
+sweep d 4.0 n 3 steam+draw VAPOUR_OUTLET@4.50,9.05,4.50/1+ REFLUX@2.47,6.50,4.50/0- FEED@4.50,5.50,2.47/2- DRAW@6.53,5.50,4.50/0+ STEAM@2.47,4.50,4.50/0- BOTTOMS@4.50,0.50,3.70/2-
+sweep d 4.0 n 3 full REFUSED pumparound 2's draw has no free row by its tray on any side of a 5-tray column
+sweep d 4.0 n 5 kettle VAPOUR_OUTLET@4.50,10.05,4.50/1+ REFLUX@2.47,7.50,4.50/0- FEED@4.50,5.50,2.47/2- VAPOUR_RETURN@6.53,4.50,4.50/0+ BOTTOMS@4.50,0.50,3.70/2-
+sweep d 4.0 n 5 kettle+steam+draw+PA REFUSED side draw 1 has no free row by its tray on any side of a 7-tray column
+sweep d 4.0 n 5 steam+draw VAPOUR_OUTLET@4.50,10.05,4.50/1+ REFLUX@2.47,7.50,4.50/0- FEED@4.50,5.50,2.47/2- DRAW@6.53,7.50,4.50/0+ STEAM@6.53,4.50,4.50/0+ BOTTOMS@4.50,0.50,3.70/2-
+sweep d 4.0 n 5 full REFUSED pumparound 2's return has no free row by its tray on any side of a 7-tray column
+sweep d 4.0 n 10 kettle VAPOUR_OUTLET@4.50,13.05,4.50/1+ REFLUX@2.47,10.50,4.50/0- FEED@4.50,7.50,2.47/2- VAPOUR_RETURN@6.53,4.50,4.50/0+ BOTTOMS@4.50,0.50,3.70/2-
+sweep d 4.0 n 10 kettle+steam+draw+PA VAPOUR_OUTLET@4.50,13.05,4.50/1+ REFLUX@2.47,10.50,4.50/0- FEED@4.50,7.50,2.47/2- PUMPAROUND_DRAW@2.47,8.50,4.50/0- RETURN@4.50,10.50,2.47/2- VAPOUR_RETURN@6.53,4.50,4.50/0+ DRAW@6.53,8.50,4.50/0+ STEAM@4.50,4.50,2.47/2- BOTTOMS@4.50,0.50,3.70/2-
+sweep d 4.0 n 10 steam+draw VAPOUR_OUTLET@4.50,13.05,4.50/1+ REFLUX@2.47,10.50,4.50/0- FEED@4.50,7.50,2.47/2- DRAW@6.53,8.50,4.50/0+ STEAM@6.53,4.50,4.50/0+ BOTTOMS@4.50,0.50,3.70/2-
+sweep d 4.0 n 10 full REFUSED side draw 1 has no free row by its tray on any side of a 12-tray column
+sweep d 4.0 n 15 kettle VAPOUR_OUTLET@4.50,16.05,4.50/1+ REFLUX@2.47,13.50,4.50/0- FEED@4.50,8.50,2.47/2- VAPOUR_RETURN@6.53,4.50,4.50/0+ BOTTOMS@4.50,0.50,3.70/2-
+sweep d 4.0 n 15 kettle+steam+draw+PA VAPOUR_OUTLET@4.50,16.05,4.50/1+ REFLUX@2.47,13.50,4.50/0- FEED@4.50,8.50,2.47/2- PUMPAROUND_DRAW@2.47,10.50,4.50/0- RETURN@4.50,11.50,2.47/2- VAPOUR_RETURN@6.53,4.50,4.50/0+ DRAW@6.53,10.50,4.50/0+ STEAM@4.50,4.50,2.47/2- BOTTOMS@4.50,0.50,3.70/2-
+sweep d 4.0 n 15 steam+draw VAPOUR_OUTLET@4.50,16.05,4.50/1+ REFLUX@2.47,13.50,4.50/0- FEED@4.50,8.50,2.47/2- DRAW@6.53,10.50,4.50/0+ STEAM@6.53,4.50,4.50/0+ BOTTOMS@4.50,0.50,3.70/2-
+sweep d 4.0 n 15 full REFUSED side draw 2 has no free row by its tray on any side of a 17-tray column
+sweep d 4.0 n 20 kettle VAPOUR_OUTLET@4.50,19.05,4.50/1+ REFLUX@2.47,16.50,4.50/0- FEED@4.50,10.50,2.47/2- VAPOUR_RETURN@6.53,4.50,4.50/0+ BOTTOMS@4.50,0.50,3.70/2-
+sweep d 4.0 n 20 kettle+steam+draw+PA VAPOUR_OUTLET@4.50,19.05,4.50/1+ REFLUX@2.47,16.50,4.50/0- FEED@4.50,10.50,2.47/2- PUMPAROUND_DRAW@2.47,12.50,4.50/0- RETURN@2.47,14.50,4.50/0- VAPOUR_RETURN@6.53,4.50,4.50/0+ DRAW@6.53,11.50,4.50/0+ STEAM@4.50,4.50,2.47/2- BOTTOMS@4.50,0.50,3.70/2-
+sweep d 4.0 n 20 steam+draw VAPOUR_OUTLET@4.50,19.05,4.50/1+ REFLUX@2.47,16.50,4.50/0- FEED@4.50,10.50,2.47/2- DRAW@6.53,11.50,4.50/0+ STEAM@6.53,4.50,4.50/0+ BOTTOMS@4.50,0.50,3.70/2-
+sweep d 4.0 n 20 full VAPOUR_OUTLET@4.50,19.05,4.50/1+ REFLUX@2.47,16.50,4.50/0- FEED@4.50,10.50,2.47/2- PUMPAROUND_DRAW@2.47,13.50,4.50/0- RETURN@4.50,14.50,2.47/2- PUMPAROUND_DRAW@2.47,8.50,4.50/0- RETURN@2.47,10.50,4.50/0- VAPOUR_RETURN@6.53,4.50,4.50/0+ DRAW@6.53,13.50,4.50/0+ DRAW@6.53,10.50,4.50/0+ DRAW@6.53,7.50,4.50/0+ STEAM@4.50,4.50,2.47/2- BOTTOMS@4.50,0.50,3.70/2-
+sweep d 4.0 n 30 kettle VAPOUR_OUTLET@4.50,25.05,4.50/1+ REFLUX@2.47,22.50,4.50/0- FEED@4.50,13.50,2.47/2- VAPOUR_RETURN@6.53,4.50,4.50/0+ BOTTOMS@4.50,0.50,3.70/2-
+sweep d 4.0 n 30 kettle+steam+draw+PA VAPOUR_OUTLET@4.50,25.05,4.50/1+ REFLUX@2.47,22.50,4.50/0- FEED@4.50,13.50,2.47/2- PUMPAROUND_DRAW@2.47,16.50,4.50/0- RETURN@4.50,17.50,2.47/2- VAPOUR_RETURN@6.53,4.50,4.50/0+ DRAW@6.53,14.50,4.50/0+ STEAM@4.50,4.50,2.47/2- BOTTOMS@4.50,0.50,3.70/2-
+sweep d 4.0 n 30 steam+draw VAPOUR_OUTLET@4.50,25.05,4.50/1+ REFLUX@2.47,22.50,4.50/0- FEED@4.50,13.50,2.47/2- DRAW@6.53,14.50,4.50/0+ STEAM@6.53,4.50,4.50/0+ BOTTOMS@4.50,0.50,3.70/2-
+sweep d 4.0 n 30 full VAPOUR_OUTLET@4.50,25.05,4.50/1+ REFLUX@2.47,22.50,4.50/0- FEED@4.50,13.50,2.47/2- PUMPAROUND_DRAW@2.47,16.50,4.50/0- RETURN@2.47,18.50,4.50/0- PUMPAROUND_DRAW@2.47,10.50,4.50/0- RETURN@2.47,12.50,4.50/0- VAPOUR_RETURN@6.53,4.50,4.50/0+ DRAW@6.53,18.50,4.50/0+ DRAW@6.53,13.50,4.50/0+ DRAW@6.53,9.50,4.50/0+ STEAM@4.50,4.50,2.47/2- BOTTOMS@4.50,0.50,3.70/2-
+sweep d 4.0 n 40 kettle VAPOUR_OUTLET@4.50,31.05,4.50/1+ REFLUX@2.47,28.50,4.50/0- FEED@4.50,16.50,2.47/2- VAPOUR_RETURN@6.53,4.50,4.50/0+ BOTTOMS@4.50,0.50,3.70/2-
+sweep d 4.0 n 40 kettle+steam+draw+PA VAPOUR_OUTLET@4.50,31.05,4.50/1+ REFLUX@2.47,28.50,4.50/0- FEED@4.50,16.50,2.47/2- PUMPAROUND_DRAW@2.47,20.50,4.50/0- RETURN@2.47,22.50,4.50/0- VAPOUR_RETURN@6.53,4.50,4.50/0+ DRAW@6.53,17.50,4.50/0+ STEAM@4.50,4.50,2.47/2- BOTTOMS@4.50,0.50,3.70/2-
+sweep d 4.0 n 40 steam+draw VAPOUR_OUTLET@4.50,31.05,4.50/1+ REFLUX@2.47,28.50,4.50/0- FEED@4.50,16.50,2.47/2- DRAW@6.53,17.50,4.50/0+ STEAM@6.53,4.50,4.50/0+ BOTTOMS@4.50,0.50,3.70/2-
+sweep d 4.0 n 40 full VAPOUR_OUTLET@4.50,31.05,4.50/1+ REFLUX@2.47,28.50,4.50/0- FEED@4.50,16.50,2.47/2- PUMPAROUND_DRAW@2.47,20.50,4.50/0- RETURN@2.47,22.50,4.50/0- PUMPAROUND_DRAW@2.47,13.50,4.50/0- RETURN@4.50,14.50,2.47/2- VAPOUR_RETURN@6.53,4.50,4.50/0+ DRAW@6.53,22.50,4.50/0+ DRAW@6.53,16.50,4.50/0+ DRAW@6.53,10.50,4.50/0+ STEAM@4.50,4.50,2.47/2- BOTTOMS@4.50,0.50,3.70/2-
+sweep d 4.0 n 64 kettle VAPOUR_OUTLET@4.50,45.05,4.50/1+ REFLUX@2.47,43.50,4.50/0- FEED@4.50,23.50,2.47/2- VAPOUR_RETURN@6.53,4.50,4.50/0+ BOTTOMS@4.50,0.50,3.70/2-
+sweep d 4.0 n 64 kettle+steam+draw+PA VAPOUR_OUTLET@4.50,45.05,4.50/1+ REFLUX@2.47,43.50,4.50/0- FEED@4.50,23.50,2.47/2- PUMPAROUND_DRAW@2.47,29.50,4.50/0- RETURN@2.47,31.50,4.50/0- VAPOUR_RETURN@6.53,4.50,4.50/0+ DRAW@6.53,24.50,4.50/0+ STEAM@4.50,4.50,2.47/2- BOTTOMS@4.50,0.50,3.70/2-
+sweep d 4.0 n 64 steam+draw VAPOUR_OUTLET@4.50,45.05,4.50/1+ REFLUX@2.47,43.50,4.50/0- FEED@4.50,23.50,2.47/2- DRAW@6.53,24.50,4.50/0+ STEAM@6.53,4.50,4.50/0+ BOTTOMS@4.50,0.50,3.70/2-
+sweep d 4.0 n 64 full VAPOUR_OUTLET@4.50,45.05,4.50/1+ REFLUX@2.47,43.50,4.50/0- FEED@4.50,23.50,2.47/2- PUMPAROUND_DRAW@2.47,30.50,4.50/0- RETURN@2.47,32.50,4.50/0- PUMPAROUND_DRAW@2.47,17.50,4.50/0- RETURN@2.47,19.50,4.50/0- VAPOUR_RETURN@6.53,4.50,4.50/0+ DRAW@6.53,33.50,4.50/0+ DRAW@6.53,23.50,4.50/0+ DRAW@6.53,14.50,4.50/0+ STEAM@4.50,4.50,2.47/2- BOTTOMS@4.50,0.50,3.70/2-
+sweep d 6.0 n 1 kettle VAPOUR_OUTLET@5.50,9.56,5.50/1+ REFLUX@2.46,6.50,5.50/0- FEED@5.50,5.50,2.46/2- VAPOUR_RETURN@8.54,5.50,5.50/0+ BOTTOMS@5.50,0.50,4.70/2-
+sweep d 6.0 n 1 steam+draw VAPOUR_OUTLET@5.50,9.56,5.50/1+ REFLUX@2.46,6.50,5.50/0- FEED@5.50,5.50,2.46/2- DRAW@8.54,5.50,5.50/0+ STEAM@5.50,4.50,8.54/2+ BOTTOMS@5.50,0.50,4.70/2-
+sweep d 6.0 n 1 full REFUSED pumparound 2's return has no free row by its tray on any side of a 3-tray column
+sweep d 6.0 n 3 kettle VAPOUR_OUTLET@5.50,10.56,5.50/1+ REFLUX@2.46,7.50,5.50/0- FEED@5.50,6.50,2.46/2- VAPOUR_RETURN@8.54,5.50,5.50/0+ BOTTOMS@5.50,0.50,4.70/2-
+sweep d 6.0 n 3 kettle+steam+draw+PA REFUSED side draw 1 has no free row by its tray on any side of a 5-tray column
+sweep d 6.0 n 3 steam+draw VAPOUR_OUTLET@5.50,10.56,5.50/1+ REFLUX@2.46,7.50,5.50/0- FEED@5.50,6.50,2.46/2- DRAW@8.54,6.50,5.50/0+ STEAM@2.46,5.50,5.50/0- BOTTOMS@5.50,0.50,4.70/2-
+sweep d 6.0 n 3 full REFUSED pumparound 2's draw has no free row by its tray on any side of a 5-tray column
+sweep d 6.0 n 5 kettle VAPOUR_OUTLET@5.50,11.56,5.50/1+ REFLUX@2.46,8.50,5.50/0- FEED@5.50,6.50,2.46/2- VAPOUR_RETURN@8.54,5.50,5.50/0+ BOTTOMS@5.50,0.50,4.70/2-
+sweep d 6.0 n 5 kettle+steam+draw+PA REFUSED side draw 1 has no free row by its tray on any side of a 7-tray column
+sweep d 6.0 n 5 steam+draw VAPOUR_OUTLET@5.50,11.56,5.50/1+ REFLUX@2.46,8.50,5.50/0- FEED@5.50,6.50,2.46/2- DRAW@8.54,8.50,5.50/0+ STEAM@8.54,5.50,5.50/0+ BOTTOMS@5.50,0.50,4.70/2-
+sweep d 6.0 n 5 full REFUSED pumparound 2's return has no free row by its tray on any side of a 7-tray column
+sweep d 6.0 n 10 kettle VAPOUR_OUTLET@5.50,14.56,5.50/1+ REFLUX@2.46,11.50,5.50/0- FEED@5.50,8.50,2.46/2- VAPOUR_RETURN@8.54,5.50,5.50/0+ BOTTOMS@5.50,0.50,4.70/2-
+sweep d 6.0 n 10 kettle+steam+draw+PA VAPOUR_OUTLET@5.50,14.56,5.50/1+ REFLUX@2.46,11.50,5.50/0- FEED@5.50,8.50,2.46/2- PUMPAROUND_DRAW@2.46,9.50,5.50/0- RETURN@5.50,11.50,2.46/2- VAPOUR_RETURN@8.54,5.50,5.50/0+ DRAW@8.54,9.50,5.50/0+ STEAM@5.50,5.50,2.46/2- BOTTOMS@5.50,0.50,4.70/2-
+sweep d 6.0 n 10 steam+draw VAPOUR_OUTLET@5.50,14.56,5.50/1+ REFLUX@2.46,11.50,5.50/0- FEED@5.50,8.50,2.46/2- DRAW@8.54,9.50,5.50/0+ STEAM@8.54,5.50,5.50/0+ BOTTOMS@5.50,0.50,4.70/2-
+sweep d 6.0 n 10 full REFUSED side draw 1 has no free row by its tray on any side of a 12-tray column
+sweep d 6.0 n 15 kettle VAPOUR_OUTLET@5.50,17.56,5.50/1+ REFLUX@2.46,14.50,5.50/0- FEED@5.50,9.50,2.46/2- VAPOUR_RETURN@8.54,5.50,5.50/0+ BOTTOMS@5.50,0.50,4.70/2-
+sweep d 6.0 n 15 kettle+steam+draw+PA VAPOUR_OUTLET@5.50,17.56,5.50/1+ REFLUX@2.46,14.50,5.50/0- FEED@5.50,9.50,2.46/2- PUMPAROUND_DRAW@2.46,11.50,5.50/0- RETURN@5.50,12.50,2.46/2- VAPOUR_RETURN@8.54,5.50,5.50/0+ DRAW@8.54,11.50,5.50/0+ STEAM@5.50,5.50,2.46/2- BOTTOMS@5.50,0.50,4.70/2-
+sweep d 6.0 n 15 steam+draw VAPOUR_OUTLET@5.50,17.56,5.50/1+ REFLUX@2.46,14.50,5.50/0- FEED@5.50,9.50,2.46/2- DRAW@8.54,11.50,5.50/0+ STEAM@8.54,5.50,5.50/0+ BOTTOMS@5.50,0.50,4.70/2-
+sweep d 6.0 n 15 full REFUSED side draw 2 has no free row by its tray on any side of a 17-tray column
+sweep d 6.0 n 20 kettle VAPOUR_OUTLET@5.50,20.56,5.50/1+ REFLUX@2.46,17.50,5.50/0- FEED@5.50,11.50,2.46/2- VAPOUR_RETURN@8.54,5.50,5.50/0+ BOTTOMS@5.50,0.50,4.70/2-
+sweep d 6.0 n 20 kettle+steam+draw+PA VAPOUR_OUTLET@5.50,20.56,5.50/1+ REFLUX@2.46,17.50,5.50/0- FEED@5.50,11.50,2.46/2- PUMPAROUND_DRAW@2.46,13.50,5.50/0- RETURN@2.46,15.50,5.50/0- VAPOUR_RETURN@8.54,5.50,5.50/0+ DRAW@8.54,12.50,5.50/0+ STEAM@5.50,5.50,2.46/2- BOTTOMS@5.50,0.50,4.70/2-
+sweep d 6.0 n 20 steam+draw VAPOUR_OUTLET@5.50,20.56,5.50/1+ REFLUX@2.46,17.50,5.50/0- FEED@5.50,11.50,2.46/2- DRAW@8.54,12.50,5.50/0+ STEAM@8.54,5.50,5.50/0+ BOTTOMS@5.50,0.50,4.70/2-
+sweep d 6.0 n 20 full VAPOUR_OUTLET@5.50,20.56,5.50/1+ REFLUX@2.46,17.50,5.50/0- FEED@5.50,11.50,2.46/2- PUMPAROUND_DRAW@2.46,14.50,5.50/0- RETURN@5.50,15.50,2.46/2- PUMPAROUND_DRAW@2.46,9.50,5.50/0- RETURN@2.46,11.50,5.50/0- VAPOUR_RETURN@8.54,5.50,5.50/0+ DRAW@8.54,14.50,5.50/0+ DRAW@8.54,11.50,5.50/0+ DRAW@8.54,8.50,5.50/0+ STEAM@5.50,5.50,2.46/2- BOTTOMS@5.50,0.50,4.70/2-
+sweep d 6.0 n 30 kettle VAPOUR_OUTLET@5.50,26.56,5.50/1+ REFLUX@2.46,23.50,5.50/0- FEED@5.50,14.50,2.46/2- VAPOUR_RETURN@8.54,5.50,5.50/0+ BOTTOMS@5.50,0.50,4.70/2-
+sweep d 6.0 n 30 kettle+steam+draw+PA VAPOUR_OUTLET@5.50,26.56,5.50/1+ REFLUX@2.46,23.50,5.50/0- FEED@5.50,14.50,2.46/2- PUMPAROUND_DRAW@2.46,17.50,5.50/0- RETURN@5.50,18.50,2.46/2- VAPOUR_RETURN@8.54,5.50,5.50/0+ DRAW@8.54,15.50,5.50/0+ STEAM@5.50,5.50,2.46/2- BOTTOMS@5.50,0.50,4.70/2-
+sweep d 6.0 n 30 steam+draw VAPOUR_OUTLET@5.50,26.56,5.50/1+ REFLUX@2.46,23.50,5.50/0- FEED@5.50,14.50,2.46/2- DRAW@8.54,15.50,5.50/0+ STEAM@8.54,5.50,5.50/0+ BOTTOMS@5.50,0.50,4.70/2-
+sweep d 6.0 n 30 full VAPOUR_OUTLET@5.50,26.56,5.50/1+ REFLUX@2.46,23.50,5.50/0- FEED@5.50,14.50,2.46/2- PUMPAROUND_DRAW@2.46,17.50,5.50/0- RETURN@2.46,19.50,5.50/0- PUMPAROUND_DRAW@2.46,11.50,5.50/0- RETURN@2.46,13.50,5.50/0- VAPOUR_RETURN@8.54,5.50,5.50/0+ DRAW@8.54,19.50,5.50/0+ DRAW@8.54,14.50,5.50/0+ DRAW@8.54,10.50,5.50/0+ STEAM@5.50,5.50,2.46/2- BOTTOMS@5.50,0.50,4.70/2-
+sweep d 6.0 n 40 kettle VAPOUR_OUTLET@5.50,32.56,5.50/1+ REFLUX@2.46,29.50,5.50/0- FEED@5.50,17.50,2.46/2- VAPOUR_RETURN@8.54,5.50,5.50/0+ BOTTOMS@5.50,0.50,4.70/2-
+sweep d 6.0 n 40 kettle+steam+draw+PA VAPOUR_OUTLET@5.50,32.56,5.50/1+ REFLUX@2.46,29.50,5.50/0- FEED@5.50,17.50,2.46/2- PUMPAROUND_DRAW@2.46,21.50,5.50/0- RETURN@2.46,23.50,5.50/0- VAPOUR_RETURN@8.54,5.50,5.50/0+ DRAW@8.54,18.50,5.50/0+ STEAM@5.50,5.50,2.46/2- BOTTOMS@5.50,0.50,4.70/2-
+sweep d 6.0 n 40 steam+draw VAPOUR_OUTLET@5.50,32.56,5.50/1+ REFLUX@2.46,29.50,5.50/0- FEED@5.50,17.50,2.46/2- DRAW@8.54,18.50,5.50/0+ STEAM@8.54,5.50,5.50/0+ BOTTOMS@5.50,0.50,4.70/2-
+sweep d 6.0 n 40 full VAPOUR_OUTLET@5.50,32.56,5.50/1+ REFLUX@2.46,29.50,5.50/0- FEED@5.50,17.50,2.46/2- PUMPAROUND_DRAW@2.46,21.50,5.50/0- RETURN@2.46,23.50,5.50/0- PUMPAROUND_DRAW@2.46,14.50,5.50/0- RETURN@5.50,15.50,2.46/2- VAPOUR_RETURN@8.54,5.50,5.50/0+ DRAW@8.54,23.50,5.50/0+ DRAW@8.54,17.50,5.50/0+ DRAW@8.54,11.50,5.50/0+ STEAM@5.50,5.50,2.46/2- BOTTOMS@5.50,0.50,4.70/2-
+sweep d 6.0 n 64 kettle VAPOUR_OUTLET@5.50,46.56,5.50/1+ REFLUX@2.46,44.50,5.50/0- FEED@5.50,24.50,2.46/2- VAPOUR_RETURN@8.54,5.50,5.50/0+ BOTTOMS@5.50,0.50,4.70/2-
+sweep d 6.0 n 64 kettle+steam+draw+PA VAPOUR_OUTLET@5.50,46.56,5.50/1+ REFLUX@2.46,44.50,5.50/0- FEED@5.50,24.50,2.46/2- PUMPAROUND_DRAW@2.46,30.50,5.50/0- RETURN@2.46,32.50,5.50/0- VAPOUR_RETURN@8.54,5.50,5.50/0+ DRAW@8.54,25.50,5.50/0+ STEAM@5.50,5.50,2.46/2- BOTTOMS@5.50,0.50,4.70/2-
+sweep d 6.0 n 64 steam+draw VAPOUR_OUTLET@5.50,46.56,5.50/1+ REFLUX@2.46,44.50,5.50/0- FEED@5.50,24.50,2.46/2- DRAW@8.54,25.50,5.50/0+ STEAM@8.54,5.50,5.50/0+ BOTTOMS@5.50,0.50,4.70/2-
+sweep d 6.0 n 64 full VAPOUR_OUTLET@5.50,46.56,5.50/1+ REFLUX@2.46,44.50,5.50/0- FEED@5.50,24.50,2.46/2- PUMPAROUND_DRAW@2.46,31.50,5.50/0- RETURN@2.46,33.50,5.50/0- PUMPAROUND_DRAW@2.46,18.50,5.50/0- RETURN@2.46,20.50,5.50/0- VAPOUR_RETURN@8.54,5.50,5.50/0+ DRAW@8.54,34.50,5.50/0+ DRAW@8.54,24.50,5.50/0+ DRAW@8.54,15.50,5.50/0+ STEAM@5.50,5.50,2.46/2- BOTTOMS@5.50,0.50,4.70/2-
+sweep d 8.0 n 1 kettle VAPOUR_OUTLET@6.50,12.06,6.50/1+ REFLUX@2.45,8.50,6.50/0- FEED@6.50,7.50,2.45/2- VAPOUR_RETURN@10.55,6.50,6.50/0+ BOTTOMS@6.50,0.50,5.70/2-
+sweep d 8.0 n 1 steam+draw VAPOUR_OUTLET@6.50,12.06,6.50/1+ REFLUX@2.45,8.50,6.50/0- FEED@6.50,7.50,2.45/2- DRAW@10.55,7.50,6.50/0+ STEAM@6.50,6.50,10.55/2+ BOTTOMS@6.50,0.50,5.70/2-
+sweep d 8.0 n 1 full REFUSED pumparound 2's return has no free row by its tray on any side of a 3-tray column
+sweep d 8.0 n 3 kettle VAPOUR_OUTLET@6.50,13.06,6.50/1+ REFLUX@2.45,9.50,6.50/0- FEED@6.50,8.50,2.45/2- VAPOUR_RETURN@10.55,6.50,6.50/0+ BOTTOMS@6.50,0.50,5.70/2-
+sweep d 8.0 n 3 kettle+steam+draw+PA REFUSED side draw 1 has no free row by its tray on any side of a 5-tray column
+sweep d 8.0 n 3 steam+draw VAPOUR_OUTLET@6.50,13.06,6.50/1+ REFLUX@2.45,9.50,6.50/0- FEED@6.50,8.50,2.45/2- DRAW@10.55,8.50,6.50/0+ STEAM@2.45,7.50,6.50/0- BOTTOMS@6.50,0.50,5.70/2-
+sweep d 8.0 n 3 full REFUSED pumparound 2's draw has no free row by its tray on any side of a 5-tray column
+sweep d 8.0 n 5 kettle VAPOUR_OUTLET@6.50,14.06,6.50/1+ REFLUX@2.45,10.50,6.50/0- FEED@6.50,8.50,2.45/2- VAPOUR_RETURN@10.55,6.50,6.50/0+ BOTTOMS@6.50,0.50,5.70/2-
+sweep d 8.0 n 5 kettle+steam+draw+PA REFUSED side draw 1 has no free row by its tray on any side of a 7-tray column
+sweep d 8.0 n 5 steam+draw VAPOUR_OUTLET@6.50,14.06,6.50/1+ REFLUX@2.45,10.50,6.50/0- FEED@6.50,8.50,2.45/2- DRAW@10.55,10.50,6.50/0+ STEAM@10.55,7.50,6.50/0+ BOTTOMS@6.50,0.50,5.70/2-
+sweep d 8.0 n 5 full REFUSED pumparound 2's return has no free row by its tray on any side of a 7-tray column
+sweep d 8.0 n 10 kettle VAPOUR_OUTLET@6.50,17.06,6.50/1+ REFLUX@2.45,13.50,6.50/0- FEED@6.50,10.50,2.45/2- VAPOUR_RETURN@10.55,6.50,6.50/0+ BOTTOMS@6.50,0.50,5.70/2-
+sweep d 8.0 n 10 kettle+steam+draw+PA VAPOUR_OUTLET@6.50,17.06,6.50/1+ REFLUX@2.45,13.50,6.50/0- FEED@6.50,10.50,2.45/2- PUMPAROUND_DRAW@2.45,11.50,6.50/0- RETURN@6.50,13.50,2.45/2- VAPOUR_RETURN@10.55,6.50,6.50/0+ DRAW@10.55,11.50,6.50/0+ STEAM@6.50,7.50,2.45/2- BOTTOMS@6.50,0.50,5.70/2-
+sweep d 8.0 n 10 steam+draw VAPOUR_OUTLET@6.50,17.06,6.50/1+ REFLUX@2.45,13.50,6.50/0- FEED@6.50,10.50,2.45/2- DRAW@10.55,11.50,6.50/0+ STEAM@10.55,7.50,6.50/0+ BOTTOMS@6.50,0.50,5.70/2-
+sweep d 8.0 n 10 full REFUSED side draw 1 has no free row by its tray on any side of a 12-tray column
+sweep d 8.0 n 15 kettle VAPOUR_OUTLET@6.50,20.06,6.50/1+ REFLUX@2.45,16.50,6.50/0- FEED@6.50,11.50,2.45/2- VAPOUR_RETURN@10.55,6.50,6.50/0+ BOTTOMS@6.50,0.50,5.70/2-
+sweep d 8.0 n 15 kettle+steam+draw+PA VAPOUR_OUTLET@6.50,20.06,6.50/1+ REFLUX@2.45,16.50,6.50/0- FEED@6.50,11.50,2.45/2- PUMPAROUND_DRAW@2.45,13.50,6.50/0- RETURN@6.50,14.50,2.45/2- VAPOUR_RETURN@10.55,6.50,6.50/0+ DRAW@10.55,13.50,6.50/0+ STEAM@6.50,7.50,2.45/2- BOTTOMS@6.50,0.50,5.70/2-
+sweep d 8.0 n 15 steam+draw VAPOUR_OUTLET@6.50,20.06,6.50/1+ REFLUX@2.45,16.50,6.50/0- FEED@6.50,11.50,2.45/2- DRAW@10.55,13.50,6.50/0+ STEAM@10.55,7.50,6.50/0+ BOTTOMS@6.50,0.50,5.70/2-
+sweep d 8.0 n 15 full REFUSED side draw 2 has no free row by its tray on any side of a 17-tray column
+sweep d 8.0 n 20 kettle VAPOUR_OUTLET@6.50,23.06,6.50/1+ REFLUX@2.45,19.50,6.50/0- FEED@6.50,13.50,2.45/2- VAPOUR_RETURN@10.55,6.50,6.50/0+ BOTTOMS@6.50,0.50,5.70/2-
+sweep d 8.0 n 20 kettle+steam+draw+PA VAPOUR_OUTLET@6.50,23.06,6.50/1+ REFLUX@2.45,19.50,6.50/0- FEED@6.50,13.50,2.45/2- PUMPAROUND_DRAW@2.45,15.50,6.50/0- RETURN@2.45,17.50,6.50/0- VAPOUR_RETURN@10.55,6.50,6.50/0+ DRAW@10.55,14.50,6.50/0+ STEAM@6.50,7.50,2.45/2- BOTTOMS@6.50,0.50,5.70/2-
+sweep d 8.0 n 20 steam+draw VAPOUR_OUTLET@6.50,23.06,6.50/1+ REFLUX@2.45,19.50,6.50/0- FEED@6.50,13.50,2.45/2- DRAW@10.55,14.50,6.50/0+ STEAM@10.55,7.50,6.50/0+ BOTTOMS@6.50,0.50,5.70/2-
+sweep d 8.0 n 20 full VAPOUR_OUTLET@6.50,23.06,6.50/1+ REFLUX@2.45,19.50,6.50/0- FEED@6.50,13.50,2.45/2- PUMPAROUND_DRAW@2.45,16.50,6.50/0- RETURN@6.50,17.50,2.45/2- PUMPAROUND_DRAW@2.45,11.50,6.50/0- RETURN@2.45,13.50,6.50/0- VAPOUR_RETURN@10.55,6.50,6.50/0+ DRAW@10.55,16.50,6.50/0+ DRAW@10.55,13.50,6.50/0+ DRAW@10.55,10.50,6.50/0+ STEAM@6.50,7.50,2.45/2- BOTTOMS@6.50,0.50,5.70/2-
+sweep d 8.0 n 30 kettle VAPOUR_OUTLET@6.50,29.06,6.50/1+ REFLUX@2.45,25.50,6.50/0- FEED@6.50,16.50,2.45/2- VAPOUR_RETURN@10.55,6.50,6.50/0+ BOTTOMS@6.50,0.50,5.70/2-
+sweep d 8.0 n 30 kettle+steam+draw+PA VAPOUR_OUTLET@6.50,29.06,6.50/1+ REFLUX@2.45,25.50,6.50/0- FEED@6.50,16.50,2.45/2- PUMPAROUND_DRAW@2.45,19.50,6.50/0- RETURN@6.50,20.50,2.45/2- VAPOUR_RETURN@10.55,6.50,6.50/0+ DRAW@10.55,17.50,6.50/0+ STEAM@6.50,7.50,2.45/2- BOTTOMS@6.50,0.50,5.70/2-
+sweep d 8.0 n 30 steam+draw VAPOUR_OUTLET@6.50,29.06,6.50/1+ REFLUX@2.45,25.50,6.50/0- FEED@6.50,16.50,2.45/2- DRAW@10.55,17.50,6.50/0+ STEAM@10.55,7.50,6.50/0+ BOTTOMS@6.50,0.50,5.70/2-
+sweep d 8.0 n 30 full VAPOUR_OUTLET@6.50,29.06,6.50/1+ REFLUX@2.45,25.50,6.50/0- FEED@6.50,16.50,2.45/2- PUMPAROUND_DRAW@2.45,19.50,6.50/0- RETURN@2.45,21.50,6.50/0- PUMPAROUND_DRAW@2.45,13.50,6.50/0- RETURN@2.45,15.50,6.50/0- VAPOUR_RETURN@10.55,6.50,6.50/0+ DRAW@10.55,21.50,6.50/0+ DRAW@10.55,16.50,6.50/0+ DRAW@10.55,12.50,6.50/0+ STEAM@6.50,7.50,2.45/2- BOTTOMS@6.50,0.50,5.70/2-
+sweep d 8.0 n 40 kettle VAPOUR_OUTLET@6.50,35.06,6.50/1+ REFLUX@2.45,31.50,6.50/0- FEED@6.50,19.50,2.45/2- VAPOUR_RETURN@10.55,6.50,6.50/0+ BOTTOMS@6.50,0.50,5.70/2-
+sweep d 8.0 n 40 kettle+steam+draw+PA VAPOUR_OUTLET@6.50,35.06,6.50/1+ REFLUX@2.45,31.50,6.50/0- FEED@6.50,19.50,2.45/2- PUMPAROUND_DRAW@2.45,23.50,6.50/0- RETURN@2.45,25.50,6.50/0- VAPOUR_RETURN@10.55,6.50,6.50/0+ DRAW@10.55,20.50,6.50/0+ STEAM@6.50,7.50,2.45/2- BOTTOMS@6.50,0.50,5.70/2-
+sweep d 8.0 n 40 steam+draw VAPOUR_OUTLET@6.50,35.06,6.50/1+ REFLUX@2.45,31.50,6.50/0- FEED@6.50,19.50,2.45/2- DRAW@10.55,20.50,6.50/0+ STEAM@10.55,7.50,6.50/0+ BOTTOMS@6.50,0.50,5.70/2-
+sweep d 8.0 n 40 full VAPOUR_OUTLET@6.50,35.06,6.50/1+ REFLUX@2.45,31.50,6.50/0- FEED@6.50,19.50,2.45/2- PUMPAROUND_DRAW@2.45,23.50,6.50/0- RETURN@2.45,25.50,6.50/0- PUMPAROUND_DRAW@2.45,16.50,6.50/0- RETURN@6.50,17.50,2.45/2- VAPOUR_RETURN@10.55,6.50,6.50/0+ DRAW@10.55,25.50,6.50/0+ DRAW@10.55,19.50,6.50/0+ DRAW@10.55,13.50,6.50/0+ STEAM@6.50,7.50,2.45/2- BOTTOMS@6.50,0.50,5.70/2-
+sweep d 8.0 n 64 kettle VAPOUR_OUTLET@6.50,49.06,6.50/1+ REFLUX@2.45,46.50,6.50/0- FEED@6.50,26.50,2.45/2- VAPOUR_RETURN@10.55,6.50,6.50/0+ BOTTOMS@6.50,0.50,5.70/2-
+sweep d 8.0 n 64 kettle+steam+draw+PA VAPOUR_OUTLET@6.50,49.06,6.50/1+ REFLUX@2.45,46.50,6.50/0- FEED@6.50,26.50,2.45/2- PUMPAROUND_DRAW@2.45,32.50,6.50/0- RETURN@2.45,34.50,6.50/0- VAPOUR_RETURN@10.55,6.50,6.50/0+ DRAW@10.55,27.50,6.50/0+ STEAM@6.50,7.50,2.45/2- BOTTOMS@6.50,0.50,5.70/2-
+sweep d 8.0 n 64 steam+draw VAPOUR_OUTLET@6.50,49.06,6.50/1+ REFLUX@2.45,46.50,6.50/0- FEED@6.50,26.50,2.45/2- DRAW@10.55,27.50,6.50/0+ STEAM@10.55,7.50,6.50/0+ BOTTOMS@6.50,0.50,5.70/2-
+sweep d 8.0 n 64 full VAPOUR_OUTLET@6.50,49.06,6.50/1+ REFLUX@2.45,46.50,6.50/0- FEED@6.50,26.50,2.45/2- PUMPAROUND_DRAW@2.45,33.50,6.50/0- RETURN@2.45,35.50,6.50/0- PUMPAROUND_DRAW@2.45,20.50,6.50/0- RETURN@2.45,22.50,6.50/0- VAPOUR_RETURN@10.55,6.50,6.50/0+ DRAW@10.55,36.50,6.50/0+ DRAW@10.55,26.50,6.50/0+ DRAW@10.55,17.50,6.50/0+ STEAM@6.50,7.50,2.45/2- BOTTOMS@6.50,0.50,5.70/2-
+sweep d 15.0 n 1 kettle VAPOUR_OUTLET@9.50,18.81,9.50/1+ REFLUX@1.94,13.50,9.50/0- FEED@9.50,13.50,1.94/2- VAPOUR_RETURN@17.06,11.50,9.50/0+ BOTTOMS@9.50,0.50,8.70/2- GATE 1
+sweep d 15.0 n 1 steam+draw VAPOUR_OUTLET@9.50,18.81,9.50/1+ REFLUX@1.94,13.50,9.50/0- FEED@9.50,13.50,1.94/2- DRAW@17.06,13.50,9.50/0+ STEAM@17.06,11.50,9.50/0+ BOTTOMS@9.50,0.50,8.70/2- GATE 1
+sweep d 15.0 n 1 full REFUSED pumparound 1's return has no free row by its tray on any side of a 3-tray column
+sweep d 15.0 n 3 kettle VAPOUR_OUTLET@9.50,19.81,9.50/1+ REFLUX@1.94,15.50,9.50/0- FEED@9.50,13.50,1.94/2- VAPOUR_RETURN@17.06,11.50,9.50/0+ BOTTOMS@9.50,0.50,8.70/2- GATE 1
+sweep d 15.0 n 3 kettle+steam+draw+PA REFUSED side draw 1 has no free row by its tray on any side of a 5-tray column
+sweep d 15.0 n 3 steam+draw VAPOUR_OUTLET@9.50,19.81,9.50/1+ REFLUX@1.94,15.50,9.50/0- FEED@9.50,13.50,1.94/2- DRAW@17.06,14.50,9.50/0+ STEAM@1.94,13.50,9.50/0- BOTTOMS@9.50,0.50,8.70/2- GATE 1
+sweep d 15.0 n 3 full REFUSED pumparound 1's return has no free row by its tray on any side of a 5-tray column
+sweep d 15.0 n 5 kettle VAPOUR_OUTLET@9.50,21.81,9.50/1+ REFLUX@1.94,16.50,9.50/0- FEED@9.50,14.50,1.94/2- VAPOUR_RETURN@17.06,11.50,9.50/0+ BOTTOMS@9.50,0.50,8.70/2- GATE 1
+sweep d 15.0 n 5 kettle+steam+draw+PA REFUSED side draw 1 has no free row by its tray on any side of a 7-tray column
+sweep d 15.0 n 5 steam+draw VAPOUR_OUTLET@9.50,21.81,9.50/1+ REFLUX@1.94,16.50,9.50/0- FEED@9.50,14.50,1.94/2- DRAW@17.06,15.50,9.50/0+ STEAM@17.06,13.50,9.50/0+ BOTTOMS@9.50,0.50,8.70/2- GATE 1
+sweep d 15.0 n 5 full REFUSED side draw 1 has no free row by its tray on any side of a 7-tray column
+sweep d 15.0 n 10 kettle VAPOUR_OUTLET@9.50,24.81,9.50/1+ REFLUX@1.94,19.50,9.50/0- FEED@9.50,15.50,1.94/2- VAPOUR_RETURN@17.06,11.50,9.50/0+ BOTTOMS@9.50,0.50,8.70/2- GATE 1
+sweep d 15.0 n 10 kettle+steam+draw+PA VAPOUR_OUTLET@9.50,24.81,9.50/1+ REFLUX@1.94,19.50,9.50/0- FEED@9.50,15.50,1.94/2- PUMPAROUND_DRAW@1.94,16.50,9.50/0- RETURN@9.50,18.50,1.94/2- VAPOUR_RETURN@17.06,11.50,9.50/0+ DRAW@17.06,16.50,9.50/0+ STEAM@17.06,13.50,9.50/0+ BOTTOMS@9.50,0.50,8.70/2- GATE 1
+sweep d 15.0 n 10 steam+draw VAPOUR_OUTLET@9.50,24.81,9.50/1+ REFLUX@1.94,19.50,9.50/0- FEED@9.50,15.50,1.94/2- DRAW@17.06,16.50,9.50/0+ STEAM@17.06,13.50,9.50/0+ BOTTOMS@9.50,0.50,8.70/2- GATE 1
+sweep d 15.0 n 10 full REFUSED side draw 1 has no free row by its tray on any side of a 12-tray column
+sweep d 15.0 n 15 kettle VAPOUR_OUTLET@9.50,27.81,9.50/1+ REFLUX@1.94,22.50,9.50/0- FEED@9.50,17.50,1.94/2- VAPOUR_RETURN@17.06,11.50,9.50/0+ BOTTOMS@9.50,0.50,8.70/2- GATE 1
+sweep d 15.0 n 15 kettle+steam+draw+PA VAPOUR_OUTLET@9.50,27.81,9.50/1+ REFLUX@1.94,22.50,9.50/0- FEED@9.50,17.50,1.94/2- PUMPAROUND_DRAW@1.94,18.50,9.50/0- RETURN@1.94,20.50,9.50/0- VAPOUR_RETURN@17.06,11.50,9.50/0+ DRAW@17.06,18.50,9.50/0+ STEAM@17.06,13.50,9.50/0+ BOTTOMS@9.50,0.50,8.70/2- GATE 1
+sweep d 15.0 n 15 steam+draw VAPOUR_OUTLET@9.50,27.81,9.50/1+ REFLUX@1.94,22.50,9.50/0- FEED@9.50,17.50,1.94/2- DRAW@17.06,18.50,9.50/0+ STEAM@17.06,13.50,9.50/0+ BOTTOMS@9.50,0.50,8.70/2- GATE 1
+sweep d 15.0 n 15 full REFUSED side draw 2 has no free row by its tray on any side of a 17-tray column
+sweep d 15.0 n 20 kettle VAPOUR_OUTLET@9.50,30.81,9.50/1+ REFLUX@1.94,25.50,9.50/0- FEED@9.50,18.50,1.94/2- VAPOUR_RETURN@17.06,11.50,9.50/0+ BOTTOMS@9.50,0.50,8.70/2- GATE 1
+sweep d 15.0 n 20 kettle+steam+draw+PA VAPOUR_OUTLET@9.50,30.81,9.50/1+ REFLUX@1.94,25.50,9.50/0- FEED@9.50,18.50,1.94/2- PUMPAROUND_DRAW@1.94,21.50,9.50/0- RETURN@9.50,22.50,1.94/2- VAPOUR_RETURN@17.06,11.50,9.50/0+ DRAW@17.06,19.50,9.50/0+ STEAM@17.06,13.50,9.50/0+ BOTTOMS@9.50,0.50,8.70/2- GATE 1
+sweep d 15.0 n 20 steam+draw VAPOUR_OUTLET@9.50,30.81,9.50/1+ REFLUX@1.94,25.50,9.50/0- FEED@9.50,18.50,1.94/2- DRAW@17.06,19.50,9.50/0+ STEAM@17.06,13.50,9.50/0+ BOTTOMS@9.50,0.50,8.70/2- GATE 1
+sweep d 15.0 n 20 full VAPOUR_OUTLET@9.50,30.81,9.50/1+ REFLUX@1.94,25.50,9.50/0- FEED@9.50,19.50,1.94/2- PUMPAROUND_DRAW@1.94,21.50,9.50/0- RETURN@1.94,23.50,9.50/0- PUMPAROUND_DRAW@1.94,17.50,9.50/0- RETURN@1.94,19.50,9.50/0- VAPOUR_RETURN@17.06,11.50,9.50/0+ DRAW@17.06,22.50,9.50/0+ DRAW@17.06,19.50,9.50/0+ DRAW@17.06,16.50,9.50/0+ STEAM@17.06,13.50,9.50/0+ BOTTOMS@9.50,0.50,8.70/2- GATE 1
+sweep d 15.0 n 30 kettle VAPOUR_OUTLET@9.50,36.81,9.50/1+ REFLUX@1.94,31.50,9.50/0- FEED@9.50,21.50,1.94/2- VAPOUR_RETURN@17.06,11.50,9.50/0+ BOTTOMS@9.50,0.50,8.70/2- GATE 1
+sweep d 15.0 n 30 kettle+steam+draw+PA VAPOUR_OUTLET@9.50,36.81,9.50/1+ REFLUX@1.94,31.50,9.50/0- FEED@9.50,21.50,1.94/2- PUMPAROUND_DRAW@1.94,24.50,9.50/0- RETURN@1.94,26.50,9.50/0- VAPOUR_RETURN@17.06,11.50,9.50/0+ DRAW@17.06,22.50,9.50/0+ STEAM@17.06,13.50,9.50/0+ BOTTOMS@9.50,0.50,8.70/2- GATE 1
+sweep d 15.0 n 30 steam+draw VAPOUR_OUTLET@9.50,36.81,9.50/1+ REFLUX@1.94,31.50,9.50/0- FEED@9.50,21.50,1.94/2- DRAW@17.06,22.50,9.50/0+ STEAM@17.06,13.50,9.50/0+ BOTTOMS@9.50,0.50,8.70/2- GATE 1
+sweep d 15.0 n 30 full VAPOUR_OUTLET@9.50,36.81,9.50/1+ REFLUX@1.94,31.50,9.50/0- FEED@9.50,22.50,1.94/2- PUMPAROUND_DRAW@1.94,25.50,9.50/0- RETURN@9.50,26.50,1.94/2- PUMPAROUND_DRAW@1.94,19.50,9.50/0- RETURN@9.50,20.50,1.94/2- VAPOUR_RETURN@17.06,11.50,9.50/0+ DRAW@17.06,27.50,9.50/0+ DRAW@17.06,22.50,9.50/0+ DRAW@17.06,18.50,9.50/0+ STEAM@17.06,13.50,9.50/0+ BOTTOMS@9.50,0.50,8.70/2- GATE 1
+sweep d 15.0 n 40 kettle VAPOUR_OUTLET@9.50,42.81,9.50/1+ REFLUX@1.94,37.50,9.50/0- FEED@9.50,24.50,1.94/2- VAPOUR_RETURN@17.06,11.50,9.50/0+ BOTTOMS@9.50,0.50,8.70/2- GATE 1
+sweep d 15.0 n 40 kettle+steam+draw+PA VAPOUR_OUTLET@9.50,42.81,9.50/1+ REFLUX@1.94,37.50,9.50/0- FEED@9.50,24.50,1.94/2- PUMPAROUND_DRAW@1.94,28.50,9.50/0- RETURN@1.94,30.50,9.50/0- VAPOUR_RETURN@17.06,11.50,9.50/0+ DRAW@17.06,25.50,9.50/0+ STEAM@17.06,13.50,9.50/0+ BOTTOMS@9.50,0.50,8.70/2- GATE 1
+sweep d 15.0 n 40 steam+draw VAPOUR_OUTLET@9.50,42.81,9.50/1+ REFLUX@1.94,37.50,9.50/0- FEED@9.50,24.50,1.94/2- DRAW@17.06,25.50,9.50/0+ STEAM@17.06,13.50,9.50/0+ BOTTOMS@9.50,0.50,8.70/2- GATE 1
+sweep d 15.0 n 40 full VAPOUR_OUTLET@9.50,42.81,9.50/1+ REFLUX@1.94,37.50,9.50/0- FEED@9.50,25.50,1.94/2- PUMPAROUND_DRAW@1.94,29.50,9.50/0- RETURN@1.94,31.50,9.50/0- PUMPAROUND_DRAW@1.94,21.50,9.50/0- RETURN@1.94,23.50,9.50/0- VAPOUR_RETURN@17.06,11.50,9.50/0+ DRAW@17.06,31.50,9.50/0+ DRAW@17.06,25.50,9.50/0+ DRAW@17.06,19.50,9.50/0+ STEAM@17.06,13.50,9.50/0+ BOTTOMS@9.50,0.50,8.70/2- GATE 1
+sweep d 15.0 n 64 kettle VAPOUR_OUTLET@9.50,56.81,9.50/1+ REFLUX@1.94,51.50,9.50/0- FEED@9.50,31.50,1.94/2- VAPOUR_RETURN@17.06,11.50,9.50/0+ BOTTOMS@9.50,0.50,8.70/2- GATE 1
+sweep d 15.0 n 64 kettle+steam+draw+PA VAPOUR_OUTLET@9.50,56.81,9.50/1+ REFLUX@1.94,51.50,9.50/0- FEED@9.50,31.50,1.94/2- PUMPAROUND_DRAW@1.94,38.50,9.50/0- RETURN@1.94,40.50,9.50/0- VAPOUR_RETURN@17.06,11.50,9.50/0+ DRAW@17.06,33.50,9.50/0+ STEAM@17.06,13.50,9.50/0+ BOTTOMS@9.50,0.50,8.70/2- GATE 1
+sweep d 15.0 n 64 steam+draw VAPOUR_OUTLET@9.50,56.81,9.50/1+ REFLUX@1.94,51.50,9.50/0- FEED@9.50,31.50,1.94/2- DRAW@17.06,33.50,9.50/0+ STEAM@17.06,13.50,9.50/0+ BOTTOMS@9.50,0.50,8.70/2- GATE 1
+sweep d 15.0 n 64 full VAPOUR_OUTLET@9.50,56.81,9.50/1+ REFLUX@1.94,51.50,9.50/0- FEED@9.50,32.50,1.94/2- PUMPAROUND_DRAW@1.94,39.50,9.50/0- RETURN@9.50,40.50,1.94/2- PUMPAROUND_DRAW@1.94,26.50,9.50/0- RETURN@1.94,28.50,9.50/0- VAPOUR_RETURN@17.06,11.50,9.50/0+ DRAW@17.06,42.50,9.50/0+ DRAW@17.06,32.50,9.50/0+ DRAW@17.06,22.50,9.50/0+ STEAM@17.06,13.50,9.50/0+ BOTTOMS@9.50,0.50,8.70/2- GATE 1
+gate 3.0 ColumnTrays[trays=12, feed=6, draws=[], steam=[], pumparounds=[]] SOUTH 4 VAPOUR_OUTLET@3.50,14.79,3.50/1+ REFLUX@1.99,13.50,3.50/0- FEED@3.50,9.50,1.99/2- VAPOUR_RETURN@5.01,5.50,3.50/0+ BOTTOMS@3.50,0.50,2.70/2- GATE 1
+gate 1.5 ColumnTrays[trays=25, feed=13, draws=[8], steam=[26], pumparounds=[Pumparound[draw=6, ret=4], Pumparound[draw=15, ret=13]]] EAST 2 VAPOUR_OUTLET@2.50,20.39,2.50/1+ REFLUX@1.79,18.50,2.50/0- FEED@2.50,11.50,1.79/2- PUMPAROUND_DRAW@1.79,15.50,2.50/0- RETURN@2.50,16.50,1.79/2- PUMPAROUND_DRAW@1.79,9.50,2.50/0- RETURN@1.79,11.50,2.50/0- VAPOUR_RETURN@3.21,3.50,2.50/0+ DRAW@3.21,13.50,2.50/0+ STEAM@2.50,3.50,1.79/2- BOTTOMS@2.50,0.50,1.70/2- GATE 1
+gate 0.5 ColumnTrays[trays=30, feed=15, draws=[8, 20], steam=[31], pumparounds=[Pumparound[draw=6, ret=4], Pumparound[draw=12, ret=10], Pumparound[draw=18, ret=16], Pumparound[draw=26, ret=24]]] NORTH 2 VAPOUR_OUTLET@2.50,22.97,2.50/1+ REFLUX@2.53,21.50,2.50/0- FEED@2.50,13.50,2.53/2- PUMPAROUND_DRAW@2.53,18.50,2.50/0- RETURN@2.53,16.50,2.50/0- PUMPAROUND_DRAW@2.50,10.50,2.53/2- PUMPAROUND_DRAW@2.50,6.50,2.53/2- RETURN@2.50,8.50,2.53/2- VAPOUR_RETURN@2.50,3.50,2.53/2- BOTTOMS@2.50,0.50,1.70/2-
+SUMMARY sweep designs 315 refused 103 gate 117; gate columns 3 failing necks 2

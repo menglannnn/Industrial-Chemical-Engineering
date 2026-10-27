@@ -1,0 +1,11 @@
+--- a/src/main/java/com/wormzjl/createcheme/runtime/fluid/PhysicalFluidTopology.java
++++ b/src/main/java/com/wormzjl/createcheme/runtime/fluid/PhysicalFluidTopology.java
+@@ -118,7 +118,7 @@
+             // every junction the compiler creates, on every topology edit, including the junction on
+             // the far side of a filter edge, where no connection can ever deliver them. See
+             // documentation/FULL_TANK_SOLIDS_EVENT.md.
+-            var boundarySeed=boundaryStates.get(boundaries.getFirst()).state();
++            var boundarySeed="ambient".equals(System.getProperty("t45.placeholder"))&&idleSeed!=null?idleSeed:"last".equals(System.getProperty("t45.placeholder"))?boundaryStates.get(boundaries.getLast()).state():boundaryStates.get(boundaries.getFirst()).state();
+             var seed=boundarySeed.solids().empty()?boundarySeed:boundarySeed.withSolids(com.wormzjl.createcheme.science.fluid.state.SolidInventory.EMPTY);
+             var reservoirs=new ArrayList<PassiveNetwork.Reservoir>();var indices=new HashMap<Long,Integer>();
+             for(long id:new TreeSet<>(members))if(retained.containsKey(id)) {

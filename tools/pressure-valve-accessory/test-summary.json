@@ -1,0 +1,17 @@
+{
+  "com.wormzjl.icheme.runtime.fluid.PipelineCheckValveTest": {
+    "tests": 4,
+    "failures": 0,
+    "errors": 0
+  },
+  "com.wormzjl.icheme.runtime.fluid.PipelinePressureValveTest": {
+    "tests": 3,
+    "failures": 0,
+    "errors": 0
+  },
+  "com.wormzjl.icheme.runtime.fluid.PipelineShutoffValveTest": {
+    "tests": 4,
+    "failures": 0,
+    "errors": 0
+  }
+}

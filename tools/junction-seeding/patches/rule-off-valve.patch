@@ -1,0 +1,12 @@
+diff -ru a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+--- a/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
++++ b/src/main/java/com/wormzjl/createcheme/science/fluid/network/PassiveStepSolver.java
+@@ -2287,7 +2287,7 @@
+                     // minted at 100.9 kPa the valve started closed, the closed network balanced at 1 125 kPa and pass 1 was singular);
+                     // one that nothing reaches closes; one the open valve cannot relieve at its target opens; an open one whose inlet
+                     // falls under the target regulates again.
+-                    if(pipe.control() instanceof FlowControl.PressureValve valve&&graph.reservoirs().get(a).junction()&&!hardClosed[e]) {
++                    if(pipe.control() instanceof FlowControl.PressureValve valve&&graph.reservoirs().get(a).junction()&&!hardClosed[e]&&false) { // rule-off proof (tools/junction-seeding): the balance leaves valve modes alone
+                         double target=valve.targetPressure();
+                         if(mode==FlowControl.Mode.CLOSED) {
+                             double pa=endAt(e,0,p),pb=endAt(e,1,p),dz=graph.reservoirs().get(b).elevation()-graph.reservoirs().get(a).elevation();

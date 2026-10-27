@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.wormzjl.icheme.runtime.fluid.HoldClassWorldsTest" tests="1" skipped="0" failures="1" errors="0" timestamp="2026-10-24T08:35:47.233Z" hostname="WORMZ-PC" time="0.683">
+  <properties/>
+  <testcase name="aFailedIterateRaisesNoPhaseHold()" classname="com.wormzjl.icheme.runtime.fluid.HoldClassWorldsTest" time="0.683">
+    <failure message="org.opentest4j.AssertionFailedError: cold 430 filling transient keeps up: [Held[tick=406, island=13, committed=404, status=HELD: Substep refinement exhausted: Newton iteration limit at residual 0.7654043164404858; active-set pass=0; reasons={Newton iteration limit at residual #; active-set pass=#=13, Newton line search stalled at residual #; active-set pass=#=7}]] ==&gt; expected: &lt;true&gt; but was: &lt;false&gt;" type="org.opentest4j.AssertionFailedError">org.opentest4j.AssertionFailedError: cold 430 filling transient keeps up: [Held[tick=406, island=13, committed=404, status=HELD: Substep refinement exhausted: Newton iteration limit at residual 0.7654043164404858; active-set pass=0; reasons={Newton iteration limit at residual #; active-set pass=#=13, Newton line search stalled at residual #; active-set pass=#=7}]] ==&gt; expected: &lt;true&gt; but was: &lt;false&gt;
+	at app//org.junit.jupiter.api.AssertionFailureBuilder.build(AssertionFailureBuilder.java:151)
+	at app//org.junit.jupiter.api.AssertionFailureBuilder.buildAndThrow(AssertionFailureBuilder.java:132)
+	at app//org.junit.jupiter.api.AssertTrue.failNotTrue(AssertTrue.java:63)
+	at app//org.junit.jupiter.api.AssertTrue.assertTrue(AssertTrue.java:36)
+	at app//org.junit.jupiter.api.Assertions.assertTrue(Assertions.java:214)
+	at app//com.wormzjl.icheme.runtime.fluid.HoldClassWorldsTest.lambda$aFailedIterateRaisesNoPhaseHold$2(HoldClassWorldsTest.java:96)
+	at app//com.wormzjl.icheme.runtime.fluid.HoldClassWorldsTest.lambda$cold$0(HoldClassWorldsTest.java:40)
+	at app//com.wormzjl.icheme.science.material.MaterialRuntime.with(MaterialRuntime.java:26)
+	at app//com.wormzjl.icheme.runtime.fluid.HoldClassWorldsTest.cold(HoldClassWorldsTest.java:40)
+	at app//com.wormzjl.icheme.runtime.fluid.HoldClassWorldsTest.aFailedIterateRaisesNoPhaseHold(HoldClassWorldsTest.java:85)
+	at java.base@21.0.11/java.lang.reflect.Method.invoke(Method.java:580)
+	at java.base@21.0.11/java.util.ArrayList.forEach(ArrayList.java:1596)
+	at java.base@21.0.11/java.util.ArrayList.forEach(ArrayList.java:1596)
+</failure>
+  </testcase>
+  <system-out><![CDATA[FAILED_ITERATE_HELD Held[tick=406, island=13, committed=404, status=HELD: Substep refinement exhausted: Newton iteration limit at residual 0.7654043164404858; active-set pass=0; reasons={Newton iteration limit at residual #; active-set pass=#=13, Newton line search stalled at residual #; active-set pass=#=7}]
+]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
