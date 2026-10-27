@@ -17,6 +17,14 @@ class PhysicalFluidTopologyTest {
                 kind==Kind.PUMP?new FlowControl.Pump(.00001,500000):kind==Kind.COMPRESSOR?new FlowControl.Compressor(.00001,3):kind==Kind.VALVE?new FlowControl.PressureValve(150000):new FlowControl.Passive());
     }
     private PassiveNetwork.Reservoir reservoir(long id){return new PassiveNetwork.Reservoir(id,0,model.initialNitrogenCharge(1,298.15,101325,()->{}));}
+    @Test void valveCharacteristicKeepsTheRegisteredBoreAcrossNarrowerRuns(){
+        var valve=device(3,2,0,Kind.VALVE,EAST);
+        valve=new PhysicalFluidTopology.Device(valve.id(),valve.position(),valve.kind(),valve.facing(),new PipeResistance.Geometry(1,.08,.000045,0),valve.control());
+        var compiled=PhysicalFluidTopology.compile(List.of(device(1,0,0,Kind.RESERVOIR,EAST),device(2,1,0,Kind.PIPE,EAST),valve,device(4,3,0,Kind.PIPE,EAST),device(5,4,0,Kind.RESERVOIR,EAST)),Map.of(1L,reservoir(1),5L,reservoir(5)));
+        var pipe=compiled.islands().getFirst().graph().pipes().stream().filter(p->p.control() instanceof FlowControl.Valve).findFirst().orElseThrow();
+        assertEquals(Math.PI*.08*.08/4,pipe.controlArea());assertTrue(pipe.controlArea()>pipe.minimumArea());
+        assertEquals(pipe.controlArea(),pipe.withPorts(pipe.firstPort(),pipe.secondPort()).withBlockedDirections(0).withObservationPoints(List.of()).controlArea());
+    }
     @Test void tenPhysicalPipeBlocksCompileToOneTenMetreRunWithEveryDebugMapping() {
         var devices=new ArrayList<PhysicalFluidTopology.Device>();devices.add(device(1,0,0,Kind.RESERVOIR,PhysicalFluidTopology.Direction.EAST));
         for(int x=1;x<=10;x++)devices.add(device(x+1,x,0,Kind.PIPE,PhysicalFluidTopology.Direction.EAST));devices.add(device(12,11,0,Kind.RESERVOIR,PhysicalFluidTopology.Direction.EAST));

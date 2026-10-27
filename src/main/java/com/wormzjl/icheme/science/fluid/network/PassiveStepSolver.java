@@ -235,7 +235,7 @@ public final class PassiveStepSolver {
     private List<FlowControl.Mode> previousModes=List.of();
     private final Map<PassiveNetwork.Pipe.Identity,Double> acceptedOpenings=new HashMap<>();
     private double[] heldOpenings=new double[0];
-    private static double boreArea(PassiveNetwork.Pipe pipe){return pipe.minimumArea();}
+    private static double boreArea(PassiveNetwork.Pipe pipe){return pipe.controlArea();}
     private void rememberOpenings(PassiveNetwork graph,double[] flows,double[] heads,List<FlowControl.Mode> modes){
         for(int e=0;e<graph.pipes().size();e++){var p=graph.pipes().get(e);if(!(p.control() instanceof FlowControl.Valve))continue;
             double rho=endDensity(graph.reservoirs().get(p.first()).state(),p.firstPort());

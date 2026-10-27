@@ -82,10 +82,10 @@ class FlowControlTest {
         var high=model.flashTP(350,300000,n,()->{});var low=model.flashTP(350,101325,n,()->{});
         var nodes=List.of(new PassiveNetwork.Reservoir(1,0,high,PassiveNetwork.NodeKind.GENERATOR),new PassiveNetwork.Reservoir(2,0,low,PassiveNetwork.NodeKind.JUNCTION),new PassiveNetwork.Reservoir(3,0,low,PassiveNetwork.NodeKind.VOID));
         var line=new PipeResistance.Geometry(10,.05,.000045,0);
-        var valve=new PassiveNetwork.Pipe(5,0,1,line,new FlowControl.ControlValve(FlowControl.ValveSource.MASS_FLOW,.01,new UUID(1,1),1));
+        var valve=new PassiveNetwork.Pipe(5,0,1,line,new FlowControl.ControlValve(FlowControl.ValveSource.MASS_FLOW,.01,new UUID(1,1),1)).withActuatorArea(Math.PI*.08*.08/4);
         var original=new PassiveNetwork(nodes,List.of(valve,new PassiveNetwork.Pipe(6,1,2,line,new FlowControl.Passive())));
         var solver=new PassiveStepSolver(model);var accepted=solver.solve(original,.1,()->{});solver.markBackwardEulerAccepted(original,accepted);
-        double rho=accepted.states().getFirst().mass()/accepted.states().getFirst().volume(),area=valve.minimumArea();
+        double rho=accepted.states().getFirst().mass()/accepted.states().getFirst().volume(),area=valve.controlArea();assertNotEquals(area,valve.minimumArea());
         double opening=FlowControl.opening(accepted.massFlows()[0],accepted.devicePressureChanges()[0],rho,area);assertTrue(opening>0&&opening<1);
         var other=new PassiveNetwork.Pipe(6,1,2,line,new FlowControl.ControlValve(FlowControl.ValveSource.MASS_FLOW,.02,new UUID(1,2),1));
         var independent=new PassiveNetwork.Pipe(7,0,2,line,new FlowControl.ControlValve(FlowControl.ValveSource.MASS_FLOW,.005,new UUID(1,3),1));

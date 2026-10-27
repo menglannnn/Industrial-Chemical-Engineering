@@ -358,7 +358,7 @@ public final class IslandCertificate {
                 case FlowControl.PressureValve valve->{d.text("valve");d.real(valve.targetPressure());}
                 case FlowControl.ControlValve valve->{d.text("control_valve");d.text(valve.source().name());d.real(valve.target());d.text(String.valueOf(valve.sensor()));d.number(valve.revision());d.real(valve.targetPressure());d.real(valve.massTarget());d.real(valve.volumeTarget());}
             }
-            d.integer(pipe.blockedDirections());d.integer(pipe.forbiddenDirections());
+            d.integer(pipe.blockedDirections());d.integer(pipe.forbiddenDirections());d.real(pipe.actuatorArea());
             // What each end draws (PassiveNetwork.PhasePort): it changes the equations, so a replay holds only under it.
             d.integer(pipe.firstPort().ordinal());d.integer(pipe.secondPort().ordinal());
             var filter=pipe.filter();

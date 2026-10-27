@@ -298,6 +298,7 @@ public final class PhysicalFluidTopology {
             }
             var ids=new TreeSet<Long>();for(long id:members)if(physical.containsKey(id))ids.add(id);
             Optional<String> error=ids.stream().filter(compiled.invalidPumpCycles()::contains).findFirst().map(id->diagnostics.get(id));
+            for(int e=0;e<pipes.size();e++){var pipe=pipes.get(e);if(pipe.control() instanceof FlowControl.Valve){var actuator=physical.get(reservoirs.get(pipe.first()).id());if(actuator!=null)pipes.set(e,pipe.withActuatorArea(actuator.geometry().area()));}}
             for(int p=0;p<pipes.size();p++){
                 var pipe=pipes.get(p);var measurementPoints=new ArrayList<PassiveNetwork.Pipe.ObservationPoint>();
                 for(long host:flowmeters){var device=physical.get(host);if(device==null)continue;

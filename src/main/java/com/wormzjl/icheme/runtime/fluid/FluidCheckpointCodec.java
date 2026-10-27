@@ -65,7 +65,7 @@ import java.util.function.Function;
  */
 public final class FluidCheckpointCodec {
     /** The state format: the core record's {@code StateFormat} and every unit's state section. */
-    public static final int VERSION=21;
+    public static final int VERSION=22;
     /** The envelope: the core record's frame, the unit header and the section layout. Frozen. */
     public static final int ENVELOPE=1;
     /** The {@code Base} of an awake island: it carries no certificate. */
@@ -290,7 +290,7 @@ public final class FluidCheckpointCodec {
                 case FlowControl.Compressor compressor->{w.u8(3);w.f64(compressor.requestedVolumeFlow());w.f64(compressor.maximumPressureRatio());w.bool(compressor.enabled());}
             }
             // Format 6: the port of each end (PassiveNetwork.PhasePort ordinal), after the control.
-            w.u8(p.firstPort().ordinal());w.u8(p.secondPort().ordinal());w.varint(p.forbiddenDirections());
+            w.u8(p.firstPort().ordinal());w.u8(p.secondPort().ordinal());w.varint(p.forbiddenDirections());w.f64(p.actuatorArea());
         }
     }
     private static void state(Writer w,PassiveNetwork graph) {
@@ -324,7 +324,7 @@ public final class FluidCheckpointCodec {
     /** Where a unit lies: its pack, offset, length and SHA-256. */
     record UnitRef(long pack,long offset,int length,byte[] sha256) {}
     private record Topology(long[] ids,double[] elevations,PassiveNetwork.NodeKind[] kinds,double[] volumes,double[] heights,boolean[] opens,com.wormzjl.icheme.science.fluid.network.VesselGeometry[] geometries,long[] pipeIds,int[] first,int[] second,
-                            List<List<PipeResistance.Geometry>> sections,List<FlowControl> controls,PassiveNetwork.PhasePort[] firstPorts,PassiveNetwork.PhasePort[] secondPorts,int[] forbiddenDirections) {}
+                            List<List<PipeResistance.Geometry>> sections,List<FlowControl> controls,PassiveNetwork.PhasePort[] firstPorts,PassiveNetwork.PhasePort[] secondPorts,int[] forbiddenDirections,double[] actuatorAreas) {}
     private static PassiveNetwork.PhasePort port(Reader r){int port=r.u8();if(port>=PHASE_PORTS.length)throw r.invalid("unknown pipe port "+port);return PHASE_PORTS[port];}
 
     /** The sections of an island's unit, its header checked against its index row. */
@@ -435,16 +435,16 @@ public final class FluidCheckpointCodec {
         int pipes=r.varint(MAXIMUM_PIPES);var pipeIds=new long[pipes];var first=new int[pipes];var second=new int[pipes];
         var sections=new ArrayList<List<PipeResistance.Geometry>>(pipes);var controls=new ArrayList<FlowControl>(pipes);
         var firstPorts=new PassiveNetwork.PhasePort[pipes];var secondPorts=new PassiveNetwork.PhasePort[pipes];
-        var forbiddenDirections=new int[pipes];
+        var forbiddenDirections=new int[pipes];var actuatorAreas=new double[pipes];
         for(int p=0;p<pipes;p++) {
             pipeIds[p]=r.i64();first[p]=r.varint(nodes);second[p]=r.varint(nodes);int count=r.varint(MAXIMUM_SECTIONS);
             var list=new ArrayList<PipeResistance.Geometry>(count);for(int s=0;s<count;s++)list.add(new PipeResistance.Geometry(r.f64(),r.f64(),r.f64(),r.f64()));
             sections.add(List.copyOf(list));
             controls.add(switch(r.u8()){case 0->new FlowControl.Passive();case 1->new FlowControl.Pump(r.f64(),r.f64(),r.bool());case 2->new FlowControl.PressureValve(r.f64());
                 case 3->new FlowControl.Compressor(r.f64(),r.f64(),r.bool());case 4->new FlowControl.ControlValve(FlowControl.ValveSource.valueOf(r.text()),r.f64(),r.f64(),r.f64(),r.bool()?new java.util.UUID(r.i64(),r.i64()):null,r.i64());default->throw new IllegalArgumentException("Unknown saved control");});
-            firstPorts[p]=port(r);secondPorts[p]=port(r);forbiddenDirections[p]=r.varint(3);
+            firstPorts[p]=port(r);secondPorts[p]=port(r);forbiddenDirections[p]=r.varint(3);actuatorAreas[p]=r.f64();
         }
-        return new Topology(ids,elevations,kinds,volumes,heights,opens,geometries,pipeIds,first,second,sections,controls,firstPorts,secondPorts,forbiddenDirections);
+        return new Topology(ids,elevations,kinds,volumes,heights,opens,geometries,pipeIds,first,second,sections,controls,firstPorts,secondPorts,forbiddenDirections,actuatorAreas);
     }
     private static PassiveNetwork state(Reader r,Topology t,FluidThermodynamics model) {
         var nodes=new ArrayList<PassiveNetwork.Reservoir>(t.ids.length);
@@ -459,7 +459,7 @@ public final class FluidCheckpointCodec {
         for(int p=0;p<t.pipeIds.length;p++) {
             int blocked=r.varint(3);InlineFilter filter=null;
             if(r.bool()){double capacity=r.f64();var captured=solids(r,model);double energy=r.f64();boolean stopped=r.bool();filter=currentFilter(capacity,captured,energy,stopped,model);}
-            pipes.add(new PassiveNetwork.Pipe(t.pipeIds[p],t.first[p],t.second[p],t.sections.get(p),t.controls.get(p),blocked,filter,t.firstPorts[p],t.secondPorts[p],t.forbiddenDirections[p]));
+            pipes.add(new PassiveNetwork.Pipe(t.pipeIds[p],t.first[p],t.second[p],t.sections.get(p),t.controls.get(p),blocked,filter,t.firstPorts[p],t.secondPorts[p],t.forbiddenDirections[p]).withActuatorArea(t.actuatorAreas[p]));
         }
         return new PassiveNetwork(nodes,pipes);
     }
