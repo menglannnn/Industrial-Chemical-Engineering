@@ -48,9 +48,10 @@ public final class AssemblyGameTests {
     /**
      * A small column plant: a 2 m column of 8 trays with sump steam and no kettle (an exchanger condenser, a standard
      * reflux pump), its condenser, its receiver and its reflux pump, the lines between them routed so that no pipe touches
-     * another line, and a valve and a tank on every boundary line.
+     * another line, and a valve and a tank on every boundary line. The review world builds a larger plant with the same
+     * tools ({@link ColumnReviewWorld}).
      */
-    private static final class Plant {
+    static final class Plant {
         final GameTestHelper helper;
         final ServerLevel level;
         final FluidWorldAuthority world;
@@ -63,12 +64,25 @@ public final class AssemblyGameTests {
         BlockPos offgasEnd;
 
         Plant(GameTestHelper helper) {
+            this(helper, helper.absolutePos(new BlockPos(8, 4, 18)), new BlockPos(-8, -3, -18), new BlockPos(32, 22, 14));
+        }
+
+        /** A plant built from {@code base}, its pipes kept inside the box from {@code base + below} to {@code base + above}. */
+        Plant(GameTestHelper helper, BlockPos base, BlockPos below, BlockPos above) {
             this.helper = helper;
             level = helper.getLevel();
             world = FluidWorldAuthority.find(level.getServer()).orElseThrow();
-            base = helper.absolutePos(new BlockPos(8, 4, 18));
-            low = base.offset(-8, -3, -18);
-            high = base.offset(32, 22, 14);
+            this.base = base;
+            low = base.offset(below);
+            high = base.offset(above);
+        }
+
+        /** Holds the plant's chunks loaded while it is built and checked. */
+        void hold() {
+            for (var chunk : chunks()) {
+                level.setChunkForced(chunk.x, chunk.z, true);
+                level.getChunk(chunk.x, chunk.z);
+            }
         }
 
         static EquipmentShape unit(EquipmentShape.Kind kind) {
@@ -81,10 +95,7 @@ public final class AssemblyGameTests {
         /** Builds the plant; {@code offgasTank}: the off-gas line ends at a tank, else open two blocks beyond its valve. */
         void build(boolean offgasTank) {
             // The plant reaches beyond the test's structure: its chunks are held loaded until it is removed.
-            for (var chunk : chunks()) {
-                level.setChunkForced(chunk.x, chunk.z, true);
-                level.getChunk(chunk.x, chunk.z);
-            }
+            hold();
             var components = new ColumnComponents(ColumnComponents.Condenser.EXCHANGER, ColumnComponents.Pump.STANDARD, List.of(), false, false);
             var trays = new ColumnTrays(8, 4, List.of(), List.of(9), List.of(), components);
             column = place(EquipmentShape.column(2, trays, EquipmentShape.Heading.NORTH, EquipmentShape.minimumSkirt(2)), 0, 0, 0);

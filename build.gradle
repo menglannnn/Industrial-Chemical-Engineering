@@ -92,6 +92,14 @@ neoForge {
             gameDirectory = layout.projectDirectory.dir("run/column-gametest-${fixtureRun}")
             systemProperty 'neoforge.enabledGameTestNamespaces', 'icheme_column_test'
         }
+        // A world to review by hand (batch 2026-10-26-multi-machine-framework): the icheme_review GameTests build their
+        // plants and leave them standing in run/review-world/world, to be copied into a client's saves. Not a gate.
+        reviewWorldServer {
+            type = 'gameTestServer'
+            sourceSet = sourceSets.fluidGameTest
+            gameDirectory = layout.projectDirectory.dir('run/review-world')
+            systemProperty 'neoforge.enabledGameTestNamespaces', 'icheme_review'
+        }
         fluidBenchmarkServer {
             type = 'gameTestServer'
             sourceSet = sourceSets.fluidGameTest
@@ -150,7 +158,7 @@ neoForge {
         }
     }
     runs.configureEach {
-        loadedMods = name in ['fluidGameTestServer', 'fluidBenchmarkServer', 'columnGameTestServer'] ? [mods.icheme, mods.icheme_fluid_test]
+        loadedMods = name in ['fluidGameTestServer', 'fluidBenchmarkServer', 'columnGameTestServer', 'reviewWorldServer'] ? [mods.icheme, mods.icheme_fluid_test]
                 : name == 'mcpClient' ? [mods.icheme, mods.icheme_mcp_compat] : [mods.icheme]
     }
 }
