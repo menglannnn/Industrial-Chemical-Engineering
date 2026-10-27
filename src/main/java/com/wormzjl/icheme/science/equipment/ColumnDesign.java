@@ -4,6 +4,7 @@ import com.wormzjl.icheme.science.column.v3.V3ColumnInput;
 import com.wormzjl.icheme.science.column.v3.V3ColumnSpecification;
 import com.wormzjl.icheme.science.column.v3.V3SteamFeedSpec;
 
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -35,8 +36,8 @@ public record ColumnDesign(ColumnTrays trays, double diameter) {
 
     /**
      * The design of a calculator input with the player's component choices, after the structure checks: the column has a
-     * diameter and at least one tray, its draws, steam feeds and pumparounds lie on its trays, every nozzle finds a row on
-     * its side of the shell (on the least skirt; the constructor checks its own again, {@link #misfit}), and a column
+     * diameter and at least one tray, its draws, steam feeds and pumparounds lie on its trays, every nozzle finds a row by
+     * its tray on a side of the shell (on the least skirt; the constructor checks its own again, {@link #misfit}), and a column
      * without reboiler duty is stripped by steam into its sump (the column solver refuses it otherwise: nothing boils up
      * at the bottom).
      *
@@ -65,18 +66,38 @@ public record ColumnDesign(ColumnTrays trays, double diameter) {
     }
 
     /**
-     * Why a column's shape cannot carry its design: the first nozzle with no free row on its side, in words for the player
+     * Why a column's shape cannot carry its design: the first nozzle with no free row by its tray, in words for the player
      * with the tray count the calculator shows (its trays and the condenser and reboiler); empty when every nozzle fits.
      */
     public static Optional<String> misfit(EquipmentShape column) {
         var missing = ColumnStructure.unplaced(column);
         if (missing.isEmpty()) return Optional.empty();
         var u = missing.getFirst();
-        return Optional.of(nozzle(u) + " has no free row on the " + (u.axis() == 2 ? "front" : u.sign() < 0 ? "right" : "left") + " side of a "
-                + (column.trays().trays() + 2) + "-tray column");
+        String where = u.turned() ? "by its tray on the " + SIDE_NAMES[u.side()] + " side it is turned to" : "by its tray on any side";
+        return Optional.of(nozzle(u) + " has no free row " + where + " of a " + (column.trays().trays() + 2) + "-tray column");
     }
 
-    private static String nozzle(ColumnStructure.Unplaced u) {
+    /** The sides a column's side nozzle faces, by {@link EquipmentShape#side} index, in words. */
+    private static final String[] SIDE_NAMES = {"front", "left", "back", "right"};
+
+    /**
+     * A column's side nozzle (finding F3): its role; which one of its role it is (from 1, in the trays' order, as a
+     * {@link ColumnTrays.Turn} names it); its home side, the one it tries first by itself; the side it faces, or was to
+     * face where the shell has no row for it (indices into {@link EquipmentShape#side}: the front, the left, the back, the
+     * right); whether the player turned it there; and the nozzle, or null where the shell has no row and side for it.
+     */
+    public record SideNozzle(EquipmentShape.Role role, int index, int home, int side, boolean turned, @org.jetbrains.annotations.Nullable EquipmentShape.Nozzle nozzle) {
+        public boolean placed() {
+            return nozzle != null;
+        }
+    }
+
+    /** Every side nozzle of a column's shape in placing order (the reflux, the feed, the pumparounds, the reboiler's return, the draws, the steam, the bottoms), placed or not. */
+    public static List<SideNozzle> sides(EquipmentShape column) {
+        return ColumnStructure.sides(column);
+    }
+
+    private static String nozzle(SideNozzle u) {
         return switch (u.role()) {
             case REFLUX -> "the reflux nozzle";
             case FEED -> "the feed nozzle";

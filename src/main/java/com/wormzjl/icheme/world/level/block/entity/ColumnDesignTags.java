@@ -5,6 +5,7 @@ import com.wormzjl.icheme.science.equipment.ColumnDesign;
 import com.wormzjl.icheme.science.equipment.ColumnTrays;
 import com.wormzjl.icheme.science.equipment.ShapeRepair;
 import java.util.ArrayList;
+import java.util.List;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.StringTag;
@@ -13,8 +14,9 @@ import org.jetbrains.annotations.Nullable;
 
 /**
  * The tags of a saved column design (batch 2026-10-26-multi-machine-framework): the trays, the diameter and the
- * components, whose kinds are saved by name. A column shell's and a constructor's components are equipment facts
- * (AGENTS.md): their fields are append-only and read through {@link ShapeRepair}.
+ * components, whose kinds are saved by name; and the side nozzles a player turned (finding F3), roles by name. A column
+ * shell's and a constructor's components and turns are equipment facts (AGENTS.md): their fields are append-only and read
+ * through {@link ShapeRepair}.
  */
 public final class ColumnDesignTags {
     private ColumnDesignTags() {
@@ -46,6 +48,34 @@ public final class ColumnDesignTags {
         tag.putBoolean("Ejector", components.ejector());
         tag.putBoolean("Kettle", components.kettle());
         return tag;
+    }
+
+    /** The turned nozzles' fields: one compound per turn, its role by name, its number and the side it faces. */
+    public static ListTag writeTurns(List<ColumnTrays.Turn> turns) {
+        var list = new ListTag();
+        for (var turn : turns) {
+            var tag = new CompoundTag();
+            tag.putString("Role", turn.role().name());
+            tag.putInt("Index", turn.index());
+            tag.putInt("Side", turn.side());
+            list.add(tag);
+        }
+        return list;
+    }
+
+    /**
+     * The turns saved under {@code key} in {@code parent}, as written: none when the key is absent (a column whose nozzles
+     * all take their sides by themselves); an entry that is not a compound, or a field that is not a list, reads as a
+     * turn with no role, which the reader drops and names.
+     */
+    public static List<ShapeRepair.SavedTurn> savedTurns(CompoundTag parent, String key) {
+        if (!parent.contains(key)) return List.of();
+        if (!(parent.get(key) instanceof ListTag list)) return List.of(new ShapeRepair.SavedTurn("", 0, 0));
+        var turns = new ArrayList<ShapeRepair.SavedTurn>();
+        for (int i = 0; i < Math.min(list.size(), ColumnTrays.MAX_TURNS + 1); i++)
+            turns.add(list.get(i) instanceof CompoundTag tag ? new ShapeRepair.SavedTurn(tag.getString("Role"), tag.getInt("Index"), tag.getInt("Side"))
+                    : new ShapeRepair.SavedTurn("", 0, 0));
+        return turns;
     }
 
     /**

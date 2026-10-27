@@ -19,7 +19,8 @@ import org.jetbrains.annotations.Nullable;
  */
 public final class ShapeRepair {
     /** Renamed or removed constants, by their saved name: the current name. None yet. */
-    static final Map<String, String> KIND_ALIASES = Map.of(), HEADING_ALIASES = Map.of(), ORIENTATION_ALIASES = Map.of(), FORM_ALIASES = Map.of();
+    static final Map<String, String> KIND_ALIASES = Map.of(), HEADING_ALIASES = Map.of(), ORIENTATION_ALIASES = Map.of(), FORM_ALIASES = Map.of(),
+            ROLE_ALIASES = Map.of();
     /** A column a repair falls back to: twenty trays, fed in the middle (the constructor's new column). */
     private static final ColumnTrays DEFAULT_TRAYS = ColumnTrays.simple(20, 10);
 
@@ -28,14 +29,35 @@ public final class ShapeRepair {
 
     /**
      * A shape as saved, before any rule reads it: names as written, numbers, and the arrays a shape was saved with (null
-     * when absent); a column's component design (null when absent: a column built without one).
+     * when absent); a column's component design (null when absent: a column built without one); a column's turned side
+     * nozzles (empty when absent: a column whose nozzles all take their sides by themselves).
      */
     public record Saved(String kind, String front, @Nullable String orientation, double diameter, double length, int support, int @Nullable [] trays,
-                        int @Nullable [] connections, boolean boot, int outlet, int @Nullable [] bank, @Nullable SavedComponents components) {
+                        int @Nullable [] connections, boolean boot, int outlet, int @Nullable [] bank, @Nullable SavedComponents components,
+                        List<SavedTurn> turns) {
+        public Saved {
+            turns = List.copyOf(turns);
+        }
+
         /** A shape saved before its column could carry a component design. */
         public Saved(String kind, String front, @Nullable String orientation, double diameter, double length, int support, int @Nullable [] trays,
                      int @Nullable [] connections, boolean boot, int outlet, int @Nullable [] bank) {
-            this(kind, front, orientation, diameter, length, support, trays, connections, boot, outlet, bank, null);
+            this(kind, front, orientation, diameter, length, support, trays, connections, boot, outlet, bank, null, List.of());
+        }
+
+        /** A shape saved before its column could carry turned nozzles. */
+        public Saved(String kind, String front, @Nullable String orientation, double diameter, double length, int support, int @Nullable [] trays,
+                     int @Nullable [] connections, boolean boot, int outlet, int @Nullable [] bank, @Nullable SavedComponents components) {
+            this(kind, front, orientation, diameter, length, support, trays, connections, boot, outlet, bank, components, List.of());
+        }
+    }
+
+    /** A turned side nozzle as saved (finding F3): its role by name, its number and the side it faces. */
+    public record SavedTurn(String role, int index, int side) {
+        /** @throws IllegalArgumentException naming a role this build does not have or does not turn, a number or a side out of range */
+        public ColumnTrays.Turn resolve() {
+            var named = constant(EquipmentShape.Role.class, role, ROLE_ALIASES).orElseThrow(() -> new IllegalArgumentException("no role " + role));
+            return new ColumnTrays.Turn(named, index, side);
         }
     }
 
@@ -80,6 +102,27 @@ public final class ShapeRepair {
         }
     }
 
+    /**
+     * The turns of {@code saved} this build reads: a turn naming a role it does not have or a number or side out of range
+     * is dropped, as is a second turn of one nozzle and any turn past {@link ColumnTrays#MAX_TURNS}; that nozzle then
+     * takes its side by itself. Each drop goes to {@code repairs}.
+     */
+    public static List<ColumnTrays.Turn> turns(List<SavedTurn> saved, java.util.function.Consumer<String> repairs) {
+        var turns = new ArrayList<ColumnTrays.Turn>();
+        var seen = new HashSet<String>();
+        for (var turn : saved) {
+            try {
+                var read = turn.resolve();
+                if (!seen.add(read.role() + "#" + read.index())) throw new IllegalArgumentException("turned twice");
+                if (turns.size() == ColumnTrays.MAX_TURNS) throw new IllegalArgumentException("too many turns");
+                turns.add(read);
+            } catch (IllegalArgumentException invalid) {
+                repairs.accept("turn " + turn.role() + " " + turn.index() + " (" + invalid.getMessage() + ") -> automatic");
+            }
+        }
+        return turns;
+    }
+
     /** The fields one repair step works on. */
     private record Fields(Kind kind, Heading front, Orientation orientation, double diameter, double length, int support, @Nullable ColumnTrays trays,
                           List<Connection> connections, boolean boot, int outlet, ProcessUnit.Bank bank) {
@@ -122,6 +165,7 @@ public final class ShapeRepair {
                 } catch (IllegalArgumentException invalid) {
                     repairs.add("components (" + invalid.getMessage() + ") -> none");
                 }
+            if (!saved.turns().isEmpty()) trays = trays.withTurns(turns(saved.turns(), repairs::add));
         }
         List<Connection> connections = List.of();
         if (kind == Kind.DRUM) {

@@ -24,6 +24,9 @@ class EquipmentShapeCompatTest {
     static final ColumnComponents COMPONENTS = new ColumnComponents(ColumnComponents.Condenser.EXCHANGER, ColumnComponents.Pump.IN_LINE,
             List.of(ColumnComponents.Pump.STANDARD), true, false);
 
+    /** The sump steam turned to the front, the pumparound draw to the left. */
+    static final List<ColumnTrays.Turn> TURNS = List.of(new ColumnTrays.Turn(EquipmentShape.Role.STEAM, 1, 0), new ColumnTrays.Turn(EquipmentShape.Role.PUMPAROUND_DRAW, 1, 1));
+
     /** One shape of every kind at its default size, and a lying drum. */
     static List<EquipmentShape> everyKind() {
         var shapes = new ArrayList<EquipmentShape>();
@@ -33,6 +36,9 @@ class EquipmentShapeCompatTest {
         // Shape fields 2: a column built from a calculator's design carries its components.
         shapes.add(EquipmentShape.column(3, new ColumnTrays(20, 15, List.of(8), List.of(21), List.of(new ColumnTrays.Pumparound(8, 6)),
                 COMPONENTS), Heading.NORTH, EquipmentShape.minimumSkirt(3)));
+        // Shape fields 3 (finding F3): side nozzles the player turned.
+        shapes.add(EquipmentShape.column(3, new ColumnTrays(20, 15, List.of(8), List.of(21), List.of(new ColumnTrays.Pumparound(8, 6)), COMPONENTS, TURNS),
+                Heading.EAST, EquipmentShape.minimumSkirt(3)));
         for (var kind : Kind.values()) {
             if (!kind.designed()) continue;
             double size = ProcessUnit.minDiameter(kind);int length = ProcessUnit.defaultLength(kind, size);
@@ -120,6 +126,31 @@ class EquipmentShapeCompatTest {
         // A field that is not a compound is named too.
         var broken = saved(built);broken.putInt("Components", 7);
         assertFalse(EquipmentShellBlockEntity.readShape(broken).repairs().isEmpty());
+    }
+
+    /**
+     * A column's turned nozzles are read by role name (finding F3); a turn this build cannot read is dropped and named,
+     * and that nozzle takes its side by itself; the other turns and the column are kept.
+     */
+    @Test
+    void aColumnsTurnsReadByNameAndAnUnreadableTurnIsDropped() {
+        var built = everyKind().stream().filter(s -> s.trays() != null && !s.trays().turns().isEmpty()).findFirst().orElseThrow();
+        var tag = saved(built);
+        assertEquals("STEAM", tag.getList("Turns", net.minecraft.nbt.Tag.TAG_COMPOUND).getCompound(0).getString("Role"), "roles saved by name");
+        tag.getList("Turns", net.minecraft.nbt.Tag.TAG_COMPOUND).getCompound(0).putString("Role", "sidecar");
+        var read = EquipmentShellBlockEntity.readShape(tag);
+        assertEquals(built.trays().withTurns(TURNS.subList(1, 2)), read.shape().trays());
+        assertEquals(1, read.repairs().size(), read.repairs().toString());
+        assertTrue(read.repairs().getFirst().startsWith("turn sidecar 1 (no role sidecar) -> automatic"), read.repairs().toString());
+        // A side out of range, a nozzle turned twice and a field that is not a list are named too.
+        var twice = saved(built);
+        var list = twice.getList("Turns", net.minecraft.nbt.Tag.TAG_COMPOUND);
+        list.getCompound(0).putInt("Side", 4);list.add(list.getCompound(1).copy());
+        var repairs = EquipmentShellBlockEntity.readShape(twice).repairs();
+        assertEquals(2, repairs.size(), repairs.toString());
+        var broken = saved(built);broken.putInt("Turns", 7);
+        assertEquals(built.trays().withTurns(List.of()), EquipmentShellBlockEntity.readShape(broken).shape().trays());
+        assertEquals(1, EquipmentShellBlockEntity.readShape(broken).repairs().size());
     }
 
     /**
@@ -212,8 +243,11 @@ class EquipmentShapeCompatTest {
     // ---------------- the corpus: saved shell tags per shape-field change ----------------
 
     private static final Path CORPUS = Path.of("src/test/resources/compat/equipment");
-    /** The shape fields' revision: the corpus file this build's tags are kept in. Raise it with a shape-field change (2: a column's components). */
-    private static final int SHAPE_FIELDS = 2;
+    /**
+     * The shape fields' revision: the corpus file this build's tags are kept in. Raise it with a shape-field change (2: a
+     * column's components; 3: a column's turned nozzles).
+     */
+    private static final int SHAPE_FIELDS = 3;
 
     /**
      * Every corpus file's saved shell tags read with no repair, to the shapes recorded beside them. The file of this

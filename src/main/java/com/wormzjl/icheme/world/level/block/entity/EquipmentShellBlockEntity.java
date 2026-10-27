@@ -448,7 +448,8 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements com.
 
     /**
      * A shape's NBT: kind, diameter, tangent length, orientation, front, support, a column's trays and its component
-     * design (shape fields 2, batch 2026-10-26-multi-machine-framework), a drum's side connections and whether it has a
+     * design (shape fields 2, batch 2026-10-26-multi-machine-framework) and its turned nozzles (shape fields 3, finding
+     * F3), a drum's side connections and whether it has a
      * boot, an air cooler's bank; a drum's and a designed shape's bottom outlet turns (a column's leaves to the front).
      */
     public static void writeShape(CompoundTag tag, EquipmentShape shape) {
@@ -461,6 +462,7 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements com.
         if (shape.trays() != null) {
             tag.putIntArray("Trays", shape.trays().encode());
             if (shape.trays().components() != null) tag.put("Components", ColumnDesignTags.writeComponents(shape.trays().components()));
+            if (!shape.trays().turns().isEmpty()) tag.put("Turns", ColumnDesignTags.writeTurns(shape.trays().turns()));
         } else {
             if (shape.drum()) {
                 tag.putIntArray("Connections", EquipmentShape.Connection.encode(shape.connections()));
@@ -484,7 +486,7 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements com.
         return new ShapeRepair.Saved(tag.getString("Kind"), tag.getString("Front"), tag.contains("Orientation") ? tag.getString("Orientation") : null,
                 tag.getDouble("Diameter"), tag.getDouble("TangentLength"), tag.getInt("Support"), tag.contains("Trays") ? tag.getIntArray("Trays") : null,
                 tag.contains("Connections") ? tag.getIntArray("Connections") : null, tag.getBoolean("Boot"), tag.getInt("Outlet"),
-                tag.contains("Bank") ? tag.getIntArray("Bank") : null, ColumnDesignTags.saved(tag, "Components"));
+                tag.contains("Bank") ? tag.getIntArray("Bank") : null, ColumnDesignTags.saved(tag, "Components"), ColumnDesignTags.savedTurns(tag, "Turns"));
     }
 
     @Override

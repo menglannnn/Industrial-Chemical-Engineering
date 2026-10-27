@@ -46,10 +46,14 @@ public final class EquipmentConstructorBlockEntity extends BlockEntity {
      * plan section 4.5), or null. A column is built from it only: its diameter, trays and components; the skirt, the
      * placement and the paint stay the player's. Without one, the column form shows {@code trays} at {@code diameter} (a
      * design saved before imports were required) and builds nothing.
+     *
+     * <p>{@code turns}: the column's side nozzles the player turned (finding F3, owner decision 2026-10-27), applied to
+     * whichever trays the column shows; every other side nozzle takes its side by itself. Kept across an import and a
+     * form switch; a turn for a nozzle the column does not have changes nothing.
      */
     public record Design(double diameter, int tangentLength, VesselPlacement.Form form, int support, VesselPlacement placement, ColumnTrays trays,
                          List<EquipmentShape.Connection> connections, Paint paint, ProcessUnit.Bank bank, boolean boot, int outlet,
-                         @org.jetbrains.annotations.Nullable ColumnDesign column) {
+                         @org.jetbrains.annotations.Nullable ColumnDesign column, List<ColumnTrays.Turn> turns) {
         /** A new column's trays: twenty, fed in the middle. */
         public static final ColumnTrays TRAYS = ColumnTrays.simple(20, 10);
         /**
@@ -64,7 +68,14 @@ public final class EquipmentConstructorBlockEntity extends BlockEntity {
         /** A design without an imported column. */
         public Design(double diameter, int tangentLength, VesselPlacement.Form form, int support, VesselPlacement placement, ColumnTrays trays,
                       List<EquipmentShape.Connection> connections, Paint paint, ProcessUnit.Bank bank, boolean boot, int outlet) {
-            this(diameter, tangentLength, form, support, placement, trays, connections, paint, bank, boot, outlet, null);
+            this(diameter, tangentLength, form, support, placement, trays, connections, paint, bank, boot, outlet, null, List.of());
+        }
+
+        /** A design whose column's nozzles all take their sides by themselves. */
+        public Design(double diameter, int tangentLength, VesselPlacement.Form form, int support, VesselPlacement placement, ColumnTrays trays,
+                      List<EquipmentShape.Connection> connections, Paint paint, ProcessUnit.Bank bank, boolean boot, int outlet,
+                      @org.jetbrains.annotations.Nullable ColumnDesign column) {
+            this(diameter, tangentLength, form, support, placement, trays, connections, paint, bank, boot, outlet, column, List.of());
         }
 
         /** What a new constructor proposes: {@link #DEFAULT} in the config's primary and secondary colours. */
@@ -80,13 +91,19 @@ public final class EquipmentConstructorBlockEntity extends BlockEntity {
             Objects.requireNonNull(paint, "paint");
             Objects.requireNonNull(bank, "bank");
             connections = List.copyOf(connections);
+            turns = List.copyOf(turns);
             // Validates the shape from the parameters (a compact constructor assigns the fields after its body); the
             // facing does not change what is valid.
-            shape(diameter, tangentLength, form, support, trays, connections, bank, boot, outlet, column, EquipmentShape.Heading.NORTH);
+            shape(diameter, tangentLength, form, support, trays, connections, bank, boot, outlet, column, turns, EquipmentShape.Heading.NORTH);
         }
 
         public EquipmentShape shape(Direction facing) {
-            return shape(diameter, tangentLength, form, support, trays, connections, bank, boot, outlet, column, form.front(facing.getStepX(), facing.getStepZ()));
+            return shape(diameter, tangentLength, form, support, trays, connections, bank, boot, outlet, column, turns, form.front(facing.getStepX(), facing.getStepZ()));
+        }
+
+        /** This design with the column's side nozzles turned as {@code next}. */
+        public Design withTurns(List<ColumnTrays.Turn> next) {
+            return new Design(diameter, tangentLength, form, support, placement, trays, connections, paint, bank, boot, outlet, column, next);
         }
 
         /** Whether this design builds: anything but a column without an imported design. */
@@ -101,24 +118,25 @@ public final class EquipmentConstructorBlockEntity extends BlockEntity {
         public Design imported(ColumnDesign imported) {
             double d = imported.diameter();
             return new Design(d, tangentLength, VesselPlacement.Form.COLUMN, Math.max(support, EquipmentShape.minimumSkirt(d)), placement, trays, connections, paint,
-                    bank, boot, 0, imported);
+                    bank, boot, 0, imported, turns);
         }
 
         /** {@code edited}, a design the player sent, with this design's imported column: only an import sets it. */
         public Design keepingColumn(Design edited) {
             return new Design(edited.diameter, edited.tangentLength, edited.form, edited.support, edited.placement, edited.trays, edited.connections, edited.paint,
-                    edited.bank, edited.boot, edited.outlet, column);
+                    edited.bank, edited.boot, edited.outlet, column, edited.turns);
         }
 
         /** The shape; an outlet the form does not turn to is refused ({@link EquipmentShape#outlets}). */
         private static EquipmentShape shape(double diameter, int tangentLength, VesselPlacement.Form form, int support, ColumnTrays trays,
                                             List<EquipmentShape.Connection> connections, ProcessUnit.Bank bank, boolean boot, int outlet,
-                                            @org.jetbrains.annotations.Nullable ColumnDesign column, EquipmentShape.Heading front) {
+                                            @org.jetbrains.annotations.Nullable ColumnDesign column, List<ColumnTrays.Turn> turns, EquipmentShape.Heading front) {
             if (form.designed())
                 return EquipmentShape.designed(form.kind(), diameter, tangentLength, front, support, form.kind() == EquipmentShape.Kind.AIR_COOLER ? bank : ProcessUnit.Bank.ONE, outlet);
             if (form.column()) {
                 if (outlet != 0) throw new IllegalArgumentException("A column's bottoms leave to the front");
-                return column != null ? EquipmentShape.column(column.diameter(), column.trays(), front, support) : EquipmentShape.column(diameter, trays, front, support);
+                return column != null ? EquipmentShape.column(column.diameter(), column.trays().withTurns(turns), front, support)
+                        : EquipmentShape.column(diameter, trays.withTurns(turns), front, support);
             }
             return EquipmentShape.drum(diameter, tangentLength, form.orientation(), front, support, connections, boot && form.orientation().horizontal(), outlet);
         }
@@ -208,7 +226,8 @@ public final class EquipmentConstructorBlockEntity extends BlockEntity {
      * saved placement and paint, as {@code fresh} (what a new constructor proposes) has them otherwise. The shape is read
      * from the fields its form builds with ({@link Design#shape}); the other forms' fields (a drum's side connections and
      * boot, the air cooler's bank, the trays) are kept as saved, as a form switch keeps them (finding F2, batch
-     * 2026-10-26-multi-machine-framework). Each change goes to {@code repairs}.
+     * 2026-10-26-multi-machine-framework), and so are the column's turned nozzles (shape fields 3). Each change goes to
+     * {@code repairs}.
      */
     public static Design readDesign(CompoundTag tag, Design fresh, java.util.function.Consumer<String> repairs) {
         var placement = fresh.placement();
@@ -225,10 +244,12 @@ public final class EquipmentConstructorBlockEntity extends BlockEntity {
         } catch (IllegalArgumentException invalid) {
             repairs.accept("paint (" + invalid.getMessage() + ") -> default");
         }
+        var turns = ShapeRepair.turns(ColumnDesignTags.savedTurns(tag, "Turns"), repairs);
         var form = ShapeRepair.form(tag.getString("Form")).orElse(null);
         if (form == null) {
             repairs.accept("form " + tag.getString("Form") + " -> " + fresh.form().name().toLowerCase(Locale.ROOT) + " (this build no longer has it)");
-            return new Design(fresh.diameter(), fresh.tangentLength(), fresh.form(), fresh.support(), placement, fresh.trays(), fresh.connections(), paint, fresh.bank(), fresh.boot(), fresh.outlet());
+            return new Design(fresh.diameter(), fresh.tangentLength(), fresh.form(), fresh.support(), placement, fresh.trays(), fresh.connections(), paint, fresh.bank(),
+                    fresh.boot(), fresh.outlet(), null, turns);
         }
         var trays = Design.TRAYS;
         if (tag.contains("Trays"))
@@ -262,7 +283,7 @@ public final class EquipmentConstructorBlockEntity extends BlockEntity {
                 repairs.accept("bank (" + invalid.getMessage() + ") -> one bay");
             }
         var design = new Design(shape.diameter(), length, form, shape.support(), placement, shape.trays() != null ? shape.trays() : trays, connections, paint,
-                bank, lying ? shape.boot() : boot, shape.outlet());
+                bank, lying ? shape.boot() : boot, shape.outlet(), null, turns);
         if (!tag.contains("Column")) return design;
         // The imported column (shape fields 2): its own checks, then the skirt at least its least.
         try {
@@ -271,7 +292,7 @@ public final class EquipmentConstructorBlockEntity extends BlockEntity {
             int skirt = Math.max(design.support(), EquipmentShape.minimumSkirt(column.diameter()));
             if (form.column() && skirt != design.support()) repairs.accept("support " + design.support() + " -> " + skirt);
             return new Design(design.diameter(), design.tangentLength(), form, form.column() ? skirt : design.support(), placement, design.trays(), design.connections(),
-                    paint, design.bank(), design.boot(), design.outlet(), column);
+                    paint, design.bank(), design.boot(), design.outlet(), column, turns);
         } catch (IllegalArgumentException invalid) {
             repairs.accept("column design (" + invalid.getMessage() + ") -> none");
             return design;
@@ -282,7 +303,10 @@ public final class EquipmentConstructorBlockEntity extends BlockEntity {
         writeDesign(tag, design);
     }
 
-    /** A design's tags, which {@link #readDesign} reads: its fields by name; an imported column (shape fields 2) under {@code Column}. */
+    /**
+     * A design's tags, which {@link #readDesign} reads: its fields by name; an imported column (shape fields 2) under
+     * {@code Column}; the turned nozzles (shape fields 3) under {@code Turns}.
+     */
     public static void writeDesign(CompoundTag tag, Design design) {
         tag.putDouble("Diameter", design.diameter());
         tag.putInt("TangentLength", design.tangentLength());
@@ -297,6 +321,7 @@ public final class EquipmentConstructorBlockEntity extends BlockEntity {
         tag.putBoolean("Boot", design.boot());
         tag.putInt("Outlet", design.outlet());
         if (design.column() != null) tag.put("Column", ColumnDesignTags.write(design.column()));
+        if (!design.turns().isEmpty()) tag.put("Turns", ColumnDesignTags.writeTurns(design.turns()));
     }
 
     /**

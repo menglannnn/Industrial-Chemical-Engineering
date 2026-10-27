@@ -96,7 +96,7 @@ class ColumnComponentsTest {
         assertEquals(List.of(Pump.STANDARD, Pump.IN_LINE), Choices.DEFAULT.withPumparoundPump(1, Pump.IN_LINE).pumparoundPumps());
     }
 
-    /** Finding F1 through the save: a nozzle without a row refuses the design and names itself and its side. */
+    /** Finding F1 through the save: a nozzle without a row by its tray on any side refuses the design and names itself (finding F3). */
     @Test
     void aDesignWhoseNozzleFindsNoRowIsNotSaved() {
         var in = crude();
@@ -105,7 +105,7 @@ class ColumnComponentsTest {
                 List.of(new V3SideDrawSpec(1, 1), new V3SideDrawSpec(2, 1), new V3SideDrawSpec(3, 1), new V3SideDrawSpec(4, 1)),
                 List.of(new V3SteamFeedSpec(4, 10, 533.15), new V3SteamFeedSpec(5, 10, 533.15)), List.of(), 2.0);
         var refused = assertThrows(IllegalArgumentException.class, () -> ColumnDesign.of(short4, Choices.DEFAULT));
-        assertTrue(refused.getMessage().matches("(the reboiler's vapour return|side draw \\d|steam feed \\d) has no free row on the left side of a 6-tray column"),
+        assertTrue(refused.getMessage().matches("(the reboiler's vapour return|side draw \\d|steam feed \\d) has no free row by its tray on any side of a 6-tray column"),
                 refused.getMessage());
         var prescribed = new V3ColumnInput(in.schemaVersion(), in.packageId(), in.assayId(), in.componentBasis(), in.feedComponentMolarFlowsMolPerSecond(),
                 in.feedTemperatureKelvin(), in.stageCount(), in.feedStageNumber(), in.topPressurePascal(), in.stagePressureDropPascal(), in.specifications(),

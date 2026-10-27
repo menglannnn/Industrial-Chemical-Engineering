@@ -884,7 +884,7 @@ public record EquipmentShape(Kind kind, double diameter, double tangentLength, O
     double[] frameBox() {
         if (designed()) return ProcessUnit.of(this).box();
         double x0 = orientation.horizontal() ? -support : 0, x1 = width(), y0 = 0, z0 = 0, z1 = width();
-        double y1 = column() ? Math.max(axialCells(), Math.ceil(ColumnStructure.plan(this).davitTop())) : axialCells();
+        double y1 = column() ? Math.max(axialCells(), Math.ceil(ColumnStructure.davitTop(this))) : axialCells();
         for (var nozzle : nozzles()) {
             var face = nozzle.face();
             switch (nozzle.axis * 2 + (nozzle.sign > 0 ? 1 : 0)) {
