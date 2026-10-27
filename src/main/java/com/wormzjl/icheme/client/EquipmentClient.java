@@ -10,6 +10,8 @@ import com.wormzjl.icheme.registry.ModBlocks;
 import com.wormzjl.icheme.science.equipment.Paint;
 import com.wormzjl.icheme.science.equipment.ShapeRasterizer;
 import com.wormzjl.icheme.world.level.block.entity.EquipmentShellBlockEntity;
+import com.wormzjl.icheme.world.level.block.entity.FluidDeviceBlockEntity;
+import com.wormzjl.icheme.world.level.block.entity.PipeRackBlockEntity;
 import com.wormzjl.icheme.world.level.block.EquipmentStructure;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.RenderType;
@@ -34,6 +36,7 @@ public final class EquipmentClient {
     public static void registerGeometryLoaders(ModelEvent.RegisterGeometryLoaders event) {
         event.register(EquipmentShellModel.LOADER_ID, EquipmentShellModel.LOADER);
         event.register(com.wormzjl.icheme.client.model.FluidDeviceModel.LOADER_ID, com.wormzjl.icheme.client.model.FluidDeviceModel.LOADER);
+        event.register(com.wormzjl.icheme.client.model.PipeRackModel.LOADER_ID, com.wormzjl.icheme.client.model.PipeRackModel.LOADER);
     }
 
     /**
@@ -44,6 +47,23 @@ public final class EquipmentClient {
     public static void registerBlockColours(RegisterColorHandlersEvent.Block event) {
         event.register((state, level, position, tint) -> Paint.tint((level != null && position != null
                 && level.getBlockEntity(position) instanceof EquipmentShellBlockEntity shell ? shell.paint() : Paint.DEFAULT).colour(tint)), ModBlocks.EQUIPMENT_SHELL.get());
+        // A painted laid line (batch 2026-10-26-pipe-laying-system): a pipe's tinted quads take the paint of their channel
+        // (its pipe the primary, its flanges the secondary), a rack's those of the lane whose option is half the tint
+        // index, the low bit the channel. Only painted parts bake tinted quads.
+        event.register((state, level, position, tint) -> {
+            if (level == null || position == null || !(level.getBlockEntity(position) instanceof FluidDeviceBlockEntity pipe)) return -1;
+            int paint = tint == Paint.STRUCTURE ? pipe.secondary() : pipe.paint();
+            return paint != Paint.BARE ? Paint.tint(paint) : -1;
+        }, ModBlocks.FLUID_PIPE.get());
+        event.register((state, level, position, tint) -> {
+            if (level != null && position != null && level.getBlockEntity(position) instanceof PipeRackBlockEntity rack)
+                for (var lane : rack.lanes()) {
+                    if (lane.option() != tint >> 1) continue;
+                    int paint = (tint & 1) == Paint.STRUCTURE ? lane.secondary() : lane.paint();
+                    return paint != Paint.BARE ? Paint.tint(paint) : -1;
+                }
+            return -1;
+        }, ModBlocks.PIPE_RACK.get());
     }
 
     /** Called by the constructor block on the client only: open its design screen. */

@@ -82,3 +82,6 @@ CLAUDE.md
 /examples/crude-assays/screen_estimation_methods.py
 /examples/crude-assays/source-quality.json
 /examples/crude-assays/test_quality.py
+
+# Scratch output (owner rule: <repo root>/tmp/<name>/, indexed in tmp/INDEX.md)
+/tmp/

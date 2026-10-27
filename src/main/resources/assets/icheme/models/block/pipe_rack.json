@@ -1,0 +1,7 @@
+{
+  "parent": "icheme:block/fluid_device",
+  "loader": "icheme:pipe_rack",
+  "textures": {
+    "concrete": "icheme:block/equipment_concrete"
+  }
+}

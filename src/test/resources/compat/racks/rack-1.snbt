@@ -1,0 +1,1 @@
+{Expected:"lane 41 option 0+1 arms 48 joints 48 bore 0.1; lane 42 option 1+2 arms 18 joints 16 bore 0.25 paint #2271B3; lane 43 option 12+1 arms 12 joints 0 bore 0.05; ",Saved:{Lanes:[{Arms:48,Bore:0.1d,Identity:41L,Joints:48,Option:0,Width:1},{Arms:18,Bore:0.25d,Identity:42L,Joints:16,Option:1,Paint:2257331,Width:2},{Arms:12,Bore:0.05d,Identity:43L,Joints:0,Option:12,Width:1}]}}

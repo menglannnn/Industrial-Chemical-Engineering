@@ -123,8 +123,8 @@ class FluidPacketCodecTest {
      * 2026-10-21-floating-roof-tanks) and every payload has its own wire identity. A tank's dry ice crosses
      * the live payload as a solid with its crystal record and comes back equal; a crystal made of a component off the
      * menu's axis is refused. fluid-14 adds a tank's capacity and paired pressures. */
-    @Test void theProtocolIsFluidFourteenWithDistinctStaticAndLivePayloads() {
-        assertEquals("fluid-14",FluidNetwork.PROTOCOL);
+    @Test void theProtocolIsFluidFifteenWithDistinctStaticAndLivePayloads() {
+        assertEquals("fluid-15",FluidNetwork.PROTOCOL);
         var ids=java.util.Set.of(FluidNetwork.EditPayload.TYPE.id(),FluidNetwork.RecoverPayload.TYPE.id(),FluidNetwork.StaticPayload.TYPE.id(),FluidNetwork.LivePayload.TYPE.id());
         assertEquals(4,ids.size());
         var base=generatorMenu("");int count=base.components().size();

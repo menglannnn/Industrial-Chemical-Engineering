@@ -38,6 +38,17 @@ public record Paint(int body, int structure) {
             new Swatch("5015", 0x2271B3), new Swatch("5010", 0x0E4C92), new Swatch("6011", 0x587246), new Swatch("6005", 0x2F4538));
     /** RAL 9006 white aluminium on RAL 7031 blue grey steel: an aluminium-painted vessel on a primed and painted skirt. */
     public static final Paint DEFAULT = new Paint(0xA1A1A0, 0x5B686D);
+    /**
+     * A laid line's paint when it has none (batch 2026-10-26-pipe-laying-system): bare steel, the look of every pipe
+     * before lines could be painted. A line has a primary paint (its pipe) and a secondary one (its flanges), each
+     * 0xRRGGBB or this.
+     */
+    public static final int BARE = -1;
+
+    /** Whether {@code rgb} is a line's paint: a colour as 0xRRGGBB, or {@link #BARE}. */
+    public static boolean line(int rgb) {
+        return rgb == BARE || (rgb & ~0xFFFFFF) == 0;
+    }
 
     public Paint {
         if ((body & ~0xFFFFFF) != 0 || (structure & ~0xFFFFFF) != 0) throw new IllegalArgumentException("A paint colour is 0xRRGGBB");

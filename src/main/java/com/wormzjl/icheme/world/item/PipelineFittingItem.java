@@ -48,7 +48,7 @@ public final class PipelineFittingItem extends Item {
             return InteractionResult.FAIL;
         }
         int mask=FluidDeviceBlock.connectionMask(state);
-        if(!SightGlassGeometry.supports(mask)||mover()&&!com.wormzjl.icheme.science.equipment.InlineMoverGeometry.supports(mask,state.getValue(FluidDeviceBlock.FACING).ordinal())) {
+        if(!SightGlassGeometry.supports(mask)||transition(level,pos)||mover()&&!com.wormzjl.icheme.science.equipment.InlineMoverGeometry.supports(mask,state.getValue(FluidDeviceBlock.FACING).ordinal())) {
             if(!level.isClientSide())player.displayClientMessage(Component.translatable(translation+"straight_only"),true);
             return InteractionResult.FAIL;
         }
@@ -81,13 +81,16 @@ public final class PipelineFittingItem extends Item {
         return InteractionResult.sidedSuccess(level.isClientSide());
     }
 
+    /** A transition pipe beside a rack lane (plan 6): its run bends off the centre line, so it takes no fitting. */
+    private static boolean transition(net.minecraft.world.level.Level level,net.minecraft.core.BlockPos pos){return level.getBlockEntity(pos) instanceof FluidDeviceBlockEntity entity&&entity.transition();}
+
     /** The sight glass is static and visual: its window faces the player, and no fluid registration changes. */
     private static InteractionResult sightGlass(ItemStack stack,net.minecraft.world.entity.player.Player player,net.minecraft.world.level.Level level,net.minecraft.core.BlockPos pos,BlockState state) {
         if(FluidDeviceBlock.hasAxialAccessory(state)) {
             if(!level.isClientSide())player.displayClientMessage(Component.translatable("item.icheme.pipeline_shutoff_valve.one_accessory"),true);
             return InteractionResult.FAIL;
         }
-        if(!FluidDeviceBlock.supportsSightGlass(state)) {
+        if(!FluidDeviceBlock.supportsSightGlass(state)||transition(level,pos)) {
             if(!level.isClientSide())player.displayClientMessage(Component.translatable("item.icheme.pipeline_sight_glass.straight_only"),true);
             return InteractionResult.FAIL;
         }

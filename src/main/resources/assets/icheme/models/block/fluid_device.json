@@ -7,6 +7,8 @@
     "support": "icheme:block/vessel_support",
     "pipe": "icheme:block/equipment_pipe",
     "flange": "icheme:block/equipment_flange",
+    "painted_pipe": "icheme:block/painted_pipe",
+    "painted_flange": "icheme:block/painted_flange",
     "bolt": "icheme:block/equipment_bolt",
     "opening": "icheme:block/equipment_opening",
     "cladding": "icheme:block/equipment_cladding",

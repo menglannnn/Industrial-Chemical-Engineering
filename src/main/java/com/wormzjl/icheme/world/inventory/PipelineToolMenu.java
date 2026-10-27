@@ -2,9 +2,10 @@ package com.wormzjl.icheme.world.inventory;
 
 import com.wormzjl.icheme.registry.ModItems;
 import com.wormzjl.icheme.registry.ModMenus;
+import com.wormzjl.icheme.science.equipment.Paint;
+import com.wormzjl.icheme.world.item.PipeLayingToolItem;
 import com.wormzjl.icheme.world.item.PipelineToolItem;
 import net.minecraft.network.RegistryFriendlyByteBuf;
-import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.SimpleMenuProvider;
@@ -15,48 +16,85 @@ import net.minecraft.world.item.ItemStack;
 
 import java.util.Objects;
 
-/** A slot-free settings session bound to the exact held stack; it requests no fluid presentation. */
+/**
+ * A slot-free settings session bound to the exact held stack; it requests no fluid presentation. It serves the sizing
+ * tool and the laying tool (batch 2026-10-26-pipe-laying-system): each keeps its bore in its own item component, and
+ * the laying tool also the paint of its lines.
+ */
 public final class PipelineToolMenu extends AbstractContainerMenu {
     private final InteractionHand hand;
     private final int selectedSlot;
     private final ItemStack tool;
     private final PipelineToolItem.Settings initialSettings;
+    private final int initialPaint, initialSecondary;
 
     public PipelineToolMenu(int id, Inventory inventory, RegistryFriendlyByteBuf buffer) {
-        this(id, inventory, buffer.readEnum(InteractionHand.class), buffer.readVarInt(), PipelineToolItem.Settings.STREAM_CODEC.decode(buffer));
+        this(id, inventory, buffer.readEnum(InteractionHand.class), buffer.readVarInt(), PipelineToolItem.Settings.STREAM_CODEC.decode(buffer), buffer.readInt(), buffer.readInt());
     }
 
-    private PipelineToolMenu(int id, Inventory inventory, InteractionHand hand, int selectedSlot, PipelineToolItem.Settings settings) {
+    private PipelineToolMenu(int id, Inventory inventory, InteractionHand hand, int selectedSlot, PipelineToolItem.Settings settings, int paint, int secondary) {
         super(ModMenus.PIPELINE_TOOL.get(), id);
         this.hand = hand;
         this.selectedSlot = selectedSlot;
         tool = inventory.player.getItemInHand(hand);
         initialSettings = Objects.requireNonNull(settings);
+        initialPaint = Paint.line(paint) ? paint : Paint.BARE;
+        initialSecondary = Paint.line(secondary) ? secondary : initialPaint;
     }
 
     public static void open(ServerPlayer player, InteractionHand hand) {
         int slot = player.getInventory().selected;
-        var settings = Objects.requireNonNull(player.getItemInHand(hand).get(ModItems.PIPELINE_TOOL_SETTINGS.get()));
-        player.openMenu(new SimpleMenuProvider((id, inventory, owner) -> new PipelineToolMenu(id, inventory, hand, slot, settings),
-                Component.translatable("item.icheme.pipeline_tool")), buffer -> {
+        var stack = player.getItemInHand(hand);
+        var settings = Objects.requireNonNull(stack.get(component(stack)));
+        int paint = PipeLayingToolItem.paint(stack), secondary = PipeLayingToolItem.secondary(stack);
+        player.openMenu(new SimpleMenuProvider((id, inventory, owner) -> new PipelineToolMenu(id, inventory, hand, slot, settings, paint, secondary),
+                stack.getHoverName()), buffer -> {
             buffer.writeEnum(hand);
             buffer.writeVarInt(slot);
             PipelineToolItem.Settings.STREAM_CODEC.encode(buffer, settings);
+            buffer.writeInt(paint);
+            buffer.writeInt(secondary);
         });
+    }
+
+    /** The component holding {@code stack}'s bore: the laying tool's own, else the sizing tool's. */
+    private static net.minecraft.core.component.DataComponentType<PipelineToolItem.Settings> component(ItemStack stack) {
+        return stack.is(ModItems.PIPE_LAYING_TOOL.get()) ? ModItems.PIPE_LAYING_SETTINGS.get() : ModItems.PIPELINE_TOOL_SETTINGS.get();
     }
 
     public PipelineToolItem.Settings initialSettings() {
         return initialSettings;
     }
 
-    /** Server: the packet handler has checked this session's id, lifetime and diameter. */
-    public void save(PipelineToolItem.Settings settings) {
-        tool.set(ModItems.PIPELINE_TOOL_SETTINGS.get(), settings);
+    /** The laying tool's primary paint when the session opened; {@link Paint#BARE} for the sizing tool. */
+    public int initialPaint() {
+        return initialPaint;
+    }
+
+    /** The laying tool's secondary paint when the session opened. */
+    public int initialSecondary() {
+        return initialSecondary;
+    }
+
+    /** Whether the tool lays lines, which take a paint: the laying tool, not the sizing tool. */
+    public boolean paints() {
+        return tool.is(ModItems.PIPE_LAYING_TOOL.get());
+    }
+
+    /** Server: the packet handler has checked this session's id, lifetime, diameter and paints. The sizing tool keeps no paint; a secondary paint equal to the primary is kept as unset. */
+    public void save(PipelineToolItem.Settings settings, int paint, int secondary) {
+        tool.set(component(tool), settings);
+        if (paints()) {
+            if (paint == Paint.BARE) tool.remove(ModItems.PIPE_LAYING_PAINT.get());
+            else tool.set(ModItems.PIPE_LAYING_PAINT.get(), paint);
+            if (secondary == paint) tool.remove(ModItems.PIPE_LAYING_SECONDARY.get());
+            else tool.set(ModItems.PIPE_LAYING_SECONDARY.get(), secondary);
+        }
     }
 
     @Override
     public boolean stillValid(Player player) {
-        return !player.isSpectator() && tool.is(ModItems.PIPELINE_TOOL.get()) && player.getItemInHand(hand) == tool
+        return !player.isSpectator() && (tool.is(ModItems.PIPELINE_TOOL.get()) || tool.is(ModItems.PIPE_LAYING_TOOL.get())) && player.getItemInHand(hand) == tool
                 && (hand == InteractionHand.OFF_HAND || player.getInventory().selected == selectedSlot);
     }
 

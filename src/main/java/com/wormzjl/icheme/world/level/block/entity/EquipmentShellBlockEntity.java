@@ -96,6 +96,11 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements com.
      * glass the client draws from the tank's display ({@code TankRenderer}). Render thread only; weak, as above.
      */
     private static final Set<EquipmentShellBlockEntity> CLIENT_TANKS = Collections.newSetFromMap(new WeakHashMap<>());
+    /**
+     * Client: the cells holding a nozzle's flange face, which the pipe laying tool marks while it is held (batch
+     * 2026-10-26-pipe-laying-system). Render thread only; weak, as above.
+     */
+    private static final Set<EquipmentShellBlockEntity> CLIENT_PORTS = Collections.newSetFromMap(new WeakHashMap<>());
 
     public EquipmentShellBlockEntity(BlockPos position, BlockState state) {
         super(ModBlockEntities.EQUIPMENT_SHELL.get(), position, state);
@@ -153,17 +158,28 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements com.
         return List.copyOf(CLIENT_TANKS);
     }
 
+    /** Client: the cells holding a nozzle's flange face in the client's level. */
+    public static List<EquipmentShellBlockEntity> clientPortCells() {
+        return List.copyOf(CLIENT_PORTS);
+    }
+
     /**
      * Client: lists the moving parts whose pivots lie in this cell ({@link ShapeRasterizer#moving}) for the client that moves
-     * them, and a floating-roof tank's node cell for the client that draws its roof.
+     * them, a floating-roof tank's node cell for the client that draws its roof, and a nozzle's cell for the laying tool.
      */
     private void trackMoving() {
         if(level!=null&&level.isClientSide())com.wormzjl.icheme.client.MoverSounds.track(this);
         moving = new int[0];
         CLIENT_MOVING.remove(this);
         CLIENT_TANKS.remove(this);
+        CLIENT_PORTS.remove(this);
         if (shape == null || level == null || !level.isClientSide) return;
         if (shape.kind() == EquipmentShape.Kind.TANK && cell().equals(ShapeRasterizer.fluidCell(shape))) CLIENT_TANKS.add(this);
+        for (var port : ShapeRasterizer.ports(shape))
+            if (port.cell().equals(cell())) {
+                CLIENT_PORTS.add(this);
+                break;
+            }
         if (!shape.unit() || !ProcessUnit.moves(shape.kind())) return;
         var parts = ShapeRasterizer.moving(shape);
         var here = new ArrayList<Integer>();
@@ -231,6 +247,7 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements com.
         if(level!=null&&level.isClientSide())com.wormzjl.icheme.client.MoverSounds.forget(this);
         CLIENT_MOVING.remove(this);
         CLIENT_TANKS.remove(this);
+        CLIENT_PORTS.remove(this);
         if (level != null) FloatingRoofs.of(level).remove(worldPosition);
         if (identity != 0 && level instanceof ServerLevel serverLevel && serverLevel.getServer().isSameThread())
             FluidWorldAuthority.find(serverLevel.getServer()).ifPresent(world -> world.deviceUnloaded(identity));

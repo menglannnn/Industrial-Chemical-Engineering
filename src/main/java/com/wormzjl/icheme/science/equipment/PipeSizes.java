@@ -97,4 +97,9 @@ public final class PipeSizes {
     public static double outsideOf(int code) {
         return code / 64.0;
     }
+
+    /** The outside a pipe of bore {@code bore} is drawn at: its {@link #outside}, on the 1/64 m grid. A rack lane's width and height follow it. */
+    public static double drawn(double bore) {
+        return outsideOf(code(outside(bore)));
+    }
 }

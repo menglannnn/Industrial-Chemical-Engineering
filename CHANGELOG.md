@@ -15,6 +15,18 @@ All notable changes to Industrial Chemical Engineering (IChemE, formerly CreateC
 
 ## [Unreleased]
 
+## [0.14.1] - 2026-10-27
+
+### Added
+
+- Process sensors and ideal local control valves (commits `0f3a569a`, `21193cbf`, `a33ec4a6`, `b92385c6`; review fixes `fa62fd81`, `8b91a822`, `ab8cb8ba`, `3ed2351c`; merge of 0.14.0 `6445a3b8`; batch `2026-10-26-process-control`, reviews `PROCESS_CONTROL_CODE_REVIEW.md`, `SEED236_FIX_REVIEW.md`, `MERGE_REVIEW.md`): GUI-only pressure/temperature probes, local mass/actual-volume flowmeters and body/boot level meters; modular valves retain legacy pressure targets and regulate within the coupled fluid solve; shared vessel volume-height geometry drives levels, hydrostatics and conservative boot-weir withdrawal. Data cables and remote level control have contracts for a later batch. Fluid facts schema 3 (a device spec's vessel geometry and the control valve, after 0.14.0's schema 2; schemas 1 and 2 still read), accessory facts schema 2 and fluid state format 22 retain existing inventories and installations. Review fixes: the hydrostatic head stands over the body bottom with its solids, the mixed bottom stream at vanishing flow is amount-weighted, a water-full vessel omits a hydrocarbon trace below its resolution from the step layout (D41 for vessels, bundled fuzz seed 236), flowmeter taps survive a reload and follow an installation, an island with a flow valve rests when nothing drives through it, and a sensor-configured valve keeps a laid pipe's joints.
+
+## [0.14.0] - 2026-10-27
+
+### Added
+
+- Pipe laying tool and pipe racks (batch folder: `2026-10-26-pipe-laying-system`, plans `PIPE_LAYING_PLAN.md`, `RACK_FLANGES_AIM_PLAN.md`, reviews `CONSOLIDATION_REVIEW.md`, `MERGE_REVIEW.md`): explicit pipe joints (fluid facts schema 2, schema 1 still reads); a laying tool (survival too, one pipe item per cell; no recipe) that searches a route between two clicks, draws its ghost before each click, lays the whole line as one ledger event, dismantles one block, and paints lines in a primary and a secondary colour; a layered pipe rack (shape decided at placement, facing by the look, tees, nesting wide turns, sturdy frame) with lanes in five diagonal slots, flanged like laid pipes, a slot aimed on the tier, one-block lanes; transition pipes that bend plain cells beside a rack lane to the lane's point; rack lane copy `rack-3`, pipe and rack fact fields `Joints`, `Paint`, `Secondary` with corpus images; wire registrar `pipeline-tool-2`. Saves of 0.13.2 load. Commits `69c5ebf8`, `68fa39f9`, `68ceb242`, `031e855d`, `14bc86d9`, `9d8f1aae`, `d7c5149e`, `8d693dd1`, `131857a3`, `527ba706`, `84da49e5`, `3f6a39e6`, `43ad8063`, `eeb0742f`, `9b5f1fcb`, consolidation `32de136e`..`71ad53ef`.
+
 ## [0.13.2] - 2026-10-26
 
 ### Fixed

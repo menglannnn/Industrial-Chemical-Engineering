@@ -113,8 +113,16 @@ final class SolidEventIntegrator {
         // of the solids, checked for its own carrier (ORGANIC_LIQUID, WATER) over its stream's mass per the whole liquid
         // it carries the solids in; a bulk end, and a phase port on a vessel holding none of the phases, the donor's mix,
         // except a bulk end on a donor holding solids but no liquid: nothing carries them, so it draws the gas and the
-        // solids stay (owner decision D33, the GAS outlet through PhaseDraw.leading).
-        int phase=PhaseDraw.leading(model,donor,pipe.drawPort(flow));
+        // solids stay (owner decision D33, the GAS outlet through PhaseDraw.leading). A LIQUID end holding both liquids draws
+        // both carriers (MIXED), each in its PhaseDraw.mixedShares of the stream: its stream's mass per the whole liquid is
+        // their shares of each one's.
+        var port=pipe.drawPort(flow);
+        if(PhaseDraw.mixedLiquids(donor,port)) {
+            var shares=PhaseDraw.mixedShares(donor,pipe.volume());double drawnMass=0;
+            for(int liquid:new int[]{FluidThermodynamics.OIL,FluidThermodynamics.WATER})drawnMass+=shares[liquid]*model.phaseMass(donor,liquid)/FluidThermodynamics.phaseSolidShare(donor,liquid);
+            return SolidMobility.check(prepared[upstream],donor,pipe,flow,SolidMobility.Outlet.MIXED,drawnMass);
+        }
+        int phase=PhaseDraw.leading(model,donor,port);
         SolidMobility.Outlet outlet;double drawnMass;
         if(phase<0){outlet=SolidMobility.Outlet.MIXED;drawnMass=donor.mass();}
         else if(phase==FluidThermodynamics.GAS){outlet=SolidMobility.Outlet.GAS;drawnMass=donor.mass();}
