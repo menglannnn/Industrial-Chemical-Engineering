@@ -234,6 +234,51 @@ public final class PipeLayingGameTests {
         }
     }
 
+    /**
+     * Owner report 2026-10-27: a one-block pipe laid on a rack showed only after the world was reopened. Its lane has no
+     * joint, so nothing the rack draws changed and the copy was never sent. Laid now, the rack is queued in its chunk's
+     * block updates, which reach the clients at the end of the tick.
+     */
+    @GameTest(template = "empty", timeoutTicks = 100, batch = "pipe-laying")
+    public static void aOneBlockLaneOnARackIsSentToTheClients(GameTestHelper helper) {
+        var level = helper.getLevel();
+        var cell = helper.absolutePos(new BlockPos(1, 1, 1));
+        level.setBlock(cell, ModBlocks.PIPE_RACK.get().placed(level, cell, Direction.EAST, false), 3);
+        var player = FakePlayerFactory.get(level, new GameProfile(UUID.randomUUID(), "PipeRackOneBlockTest"));
+        player.setGameMode(GameType.SURVIVAL);
+        player.setPos(cell.getX() + .5, cell.getY(), cell.getZ() - 1.5);
+        var tool = new ItemStack(ModItems.PIPE_LAYING_TOOL.get());
+        tool.set(ModItems.PIPE_LAYING_SETTINGS.get(), new PipelineToolItem.Settings(.1));
+        player.setItemInHand(InteractionHand.MAIN_HAND, tool);
+        player.getInventory().add(new ItemStack(ModItems.FLUID_PIPE.get(), 1));
+        // Two ticks on, the placing update has gone out: whatever is queued after the lay, the lay queued.
+        helper.runAfterDelay(2, () -> {
+            try {
+                helper.assertTrue(!queued(level, cell), "The rack's placing update is still queued");
+                // Both clicks on one slot of the tier: position 0, near the east face (as in the corner test).
+                var click = new PipeAnchor.Click(cell, Direction.UP, new net.minecraft.world.phys.Vec3(.9, .37, .3));
+                var refusal = PipeLaying.lay(player, InteractionHand.MAIN_HAND, click, click, List.of(cell), List.of(RackGeometry.option(0, RackGeometry.TIER)));
+                helper.assertTrue(refusal == null, "The one-block lane was refused: " + refusal);
+                var rack = (PipeRackBlockEntity) level.getBlockEntity(cell);
+                helper.assertTrue(rack.lanes().size() == 1 && rack.lanes().getFirst().joints() == 0 && rack.lanes().getFirst().arms() == ALONG_X, "The one-block lane: " + rack.lanes());
+                helper.assertTrue(queued(level, cell), "The one-block lane was not sent to the clients");
+                helper.assertTrue(PipeLaying.dismantle(player, InteractionHand.MAIN_HAND, onLane(cell, rack, 0)) == null, "The one-block lane did not come out");
+                helper.killAllEntities();
+                helper.succeed();
+            } finally {
+                level.removeBlock(cell, false);
+            }
+        });
+    }
+
+    /** Whether the block at {@code at} is queued in its chunk's block updates, which go to the clients at the end of the tick. */
+    private static boolean queued(net.minecraft.server.level.ServerLevel level, BlockPos at) {
+        var holder = level.getChunkSource().chunkMap.getVisibleChunkIfPresent(net.minecraft.world.level.ChunkPos.asLong(at));
+        it.unimi.dsi.fastutil.shorts.ShortSet[] sections = net.neoforged.fml.util.ObfuscationReflectionHelper.getPrivateValue(net.minecraft.server.level.ChunkHolder.class, holder, "changedBlocksPerSection");
+        var section = sections[level.getSectionIndex(at.getY())];
+        return section != null && section.contains(net.minecraft.core.SectionPos.sectionRelativePos(at));
+    }
+
     /** A click on the middle of lane {@code index}'s first arm. */
     private static PipeAnchor.Click onLane(BlockPos at, PipeRackBlockEntity rack, int index) {
         var box = RackGeometry.boxes(rack.rack(), rack.drawnLanes().get(index)).getFirst();

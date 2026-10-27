@@ -220,7 +220,10 @@ public final class PipeRackBlockEntity extends BlockEntity {
 
     // ---- server ----
 
-    /** Server: a lane just laid here, bound to its registration; drawn by {@link #refresh} once its line is placed. */
+    /**
+     * Server: a lane just laid here, bound to its registration; its joins are drawn by {@link #refresh} once its line is
+     * placed. The clients get both in one update: a tick's block updates go out together at its end.
+     */
     public void addLane(Lane lane) {
         var next = new ArrayList<>(lanes);
         var others = new ArrayList<RackGeometry.Lane>();
@@ -235,7 +238,6 @@ public final class PipeRackBlockEntity extends BlockEntity {
         var next = new ArrayList<>(lanes);
         next.removeIf(lane -> lane.identity == identity);
         setLanes(next, null);
-        sync();
     }
 
     private void setLanes(List<Lane> next, int @Nullable [] nextJoined) {
@@ -250,6 +252,9 @@ public final class PipeRackBlockEntity extends BlockEntity {
             else for (int j = 0; j < previous.size(); j++) if (previous.get(j).identity == lanes.get(i).identity) joined[i] = previousJoined[j];
         shape = null;
         setChanged();
+        // The server sends the copy whenever it changes, as a client draws only what it is sent: a lane with no joint (a
+        // one-block line, open at both faces) changes nothing that refresh draws.
+        if (level != null && !level.isClientSide() && !lanes.equals(previous)) sync();
     }
 
     /**
@@ -310,9 +315,8 @@ public final class PipeRackBlockEntity extends BlockEntity {
             var copied = record == null ? null : copy(record.device());
             next.add(copied != null && copied.option == lane.option && copied.width == lane.width && copied.arms == lane.arms ? copied.painted(lane.paint, lane.secondary) : lane);
         }
-        boolean changed = !next.equals(lanes);
-        if (changed) setLanes(next, null);
-        if (refreshDrawn() || changed) sync();
+        if (!next.equals(lanes)) setLanes(next, null);
+        if (refreshDrawn()) sync();
         if (neighbours) for (var direction : Direction.values()) {
             var at = worldPosition.relative(direction);
             if (!level.isLoaded(at)) continue;
