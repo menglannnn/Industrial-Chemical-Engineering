@@ -26,7 +26,14 @@ public final class Mesh {
      * which {@link Paint} colour a vessel's sprite of it takes.
      */
     public enum Material {
-        SHELL(4, Paint.BODY), HEAD(4, Paint.BODY), SUPPORT(2, Paint.STRUCTURE), PIPE(1, -1), FLANGE(1, -1), OPENING(1, -1), CLADDING(2, Paint.BODY),
+        SHELL(4, Paint.BODY), HEAD(4, Paint.BODY), SUPPORT(2, Paint.STRUCTURE),
+        /**
+         * A vertical vessel's skirt plate, both faces and its cut edges: the support's sprite in the body's paint, so the
+         * skirt shades as the shell above it (owner request 2026-10-27: "Remove the shadow in drum/vessel skirt"). Its
+         * base ring and anchor chairs stay {@link #SUPPORT}.
+         */
+        SKIRT(2, Paint.BODY),
+        PIPE(1, -1), FLANGE(1, -1), OPENING(1, -1), CLADDING(2, Paint.BODY),
         GRATING(1, -1), HANDRAIL(1, -1), STEELWORK(1, Paint.STRUCTURE), MACHINE(1, Paint.BODY), MOTOR(1, -1), ACTUATOR(1, -1), FEED(1, -1), DRAIN(1, -1),
         /** A flange's nuts and stud ends ({@link #bolts}). */
         BOLT(1, -1),

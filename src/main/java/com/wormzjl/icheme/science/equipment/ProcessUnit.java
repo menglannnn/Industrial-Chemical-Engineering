@@ -3607,7 +3607,7 @@ public final class ProcessUnit {
     /**
      * A skirt as a drum's or a column's (owner report 2026-10-25: the reactors' skirts in line with theirs): a steel
      * plate {@link EquipmentShape#SKIRT_WALL} through, of outer radius {@code r} round the vertical axis through (x, z),
-     * from grade to {@code y1}, {@code n} sides, in the structure's paint. Cut through over each of {@code openings}
+     * from grade to {@code y1}, {@code n} sides, in the body's paint ({@link Material#SKIRT}). Cut through over each of {@code openings}
      * ({centre angle, half width (m), sill, head}): a slot or a bay, the skirt's inside face and the cut's sill, head and
      * jambs drawn; closed, its inside is never seen and is not drawn. It collides solid, as a drum's, unless an opening
      * reaches grade (a bay one walks into), then as drawn.
@@ -3630,18 +3630,18 @@ public final class ProcessUnit {
             for (var span : o == null ? List.of(new double[]{0, y1}) : List.of(new double[]{0, o[2]}, new double[]{o[3], y1})) {
                 if (span[1] - span[0] < 1e-9) continue;
                 mesh.add(List.of(Access.around(x, z, r, a0, span[0]), Access.around(x, z, r, a1, span[0]), Access.around(x, z, r, a1, span[1]), Access.around(x, z, r, a0, span[1])),
-                        new double[]{x, (span[0] + span[1]) / 2, z}, outside, Material.SUPPORT, null, null);
+                        new double[]{x, (span[0] + span[1]) / 2, z}, outside, Material.SKIRT, null, null);
                 if (open)
                     mesh.add(List.of(Access.around(x, z, ri, a0, span[0]), Access.around(x, z, ri, a1, span[0]), Access.around(x, z, ri, a1, span[1]), Access.around(x, z, ri, a0, span[1])),
-                            Access.around(x, z, 2 * r, (a0 + a1) / 2, (span[0] + span[1]) / 2), inside, Material.SUPPORT, null, null);
+                            Access.around(x, z, 2 * r, (a0 + a1) / 2, (span[0] + span[1]) / 2), inside, Material.SKIRT, null, null);
             }
             if (o != null) {
                 // The cut's head, and its sill where it stands off the ground.
                 mesh.flat(List.of(Access.around(x, z, ri, a0, o[3]), Access.around(x, z, ri, a1, o[3]), Access.around(x, z, r, a1, o[3]), Access.around(x, z, r, a0, o[3])), down,
-                        Material.SUPPORT);
+                        Material.SKIRT);
                 if (o[2] > 0)
                     mesh.flat(List.of(Access.around(x, z, r, a0, o[2]), Access.around(x, z, r, a1, o[2]), Access.around(x, z, ri, a1, o[2]), Access.around(x, z, ri, a0, o[2])), up,
-                            Material.SUPPORT);
+                            Material.SKIRT);
             }
             var before = cut[(i + n - 1) % n];
             if (o == before) continue;
@@ -3650,7 +3650,7 @@ public final class ProcessUnit {
                 if (j == null) continue;
                 double[] facing = j == o ? tangential(a0) : neg(tangential(a0));
                 mesh.flat(List.of(Access.around(x, z, ri, a0, j[2]), Access.around(x, z, r, a0, j[2]), Access.around(x, z, r, a0, j[3]), Access.around(x, z, ri, a0, j[3])), facing,
-                        Material.SUPPORT);
+                        Material.SKIRT);
             }
         }
         if (!bay) {

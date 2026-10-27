@@ -212,7 +212,7 @@ final class AdsorberDesign extends UnitDesign {
         u.mesh.cylinder(up, rs + .25, 0, PLINTH, n, Material.CONCRETE);
         u.solids.add(ProcessUnit.Solid.rod(axis, 1, 0, PLINTH, rs + .25, 0));
         // The skirt on its base ring, the anchor chairs between its openings.
-        u.mesh.prism(up, rs, PLINTH, p.bottom, n, Material.SUPPORT);
+        u.mesh.prism(up, rs, PLINTH, p.bottom, n, Material.SKIRT);
         u.mesh.prism(up, rs + .1, PLINTH, PLINTH + .03, n, Material.SUPPORT);
         u.mesh.annulus(up, rs, rs + .1, PLINTH + .03, n, 1, Material.SUPPORT);
         if (d >= 1.5 - 1e-9) {

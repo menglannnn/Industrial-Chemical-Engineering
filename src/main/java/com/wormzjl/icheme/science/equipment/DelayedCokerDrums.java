@@ -89,7 +89,7 @@ final class DelayedCokerDrums {
         u.mesh.annulus(up, BOTTOM, BOTTOM + .15, s + FLANGE, nb, 1, Material.FLANGE);
         u.mesh.frustum(up, BOTTOM, rc, s + FLANGE, yc, n, Material.SHELL);
         if (shown < p.cone) u.mesh.annulus(up, rc, p.r, yc, n, -1, Material.SHELL);
-        u.prism(up, p.r, p.yTable, p.ySkirt, n, Material.SUPPORT);
+        u.prism(up, p.r, p.yTable, p.ySkirt, n, Material.SKIRT);
         u.mesh.annulus(up, p.r, p.jacket, p.ySkirt, n, -1, Material.CLADDING);
         u.prism(up, p.jacket, p.ySkirt, p.yTangent, n, Material.CLADDING);
         u.mesh.head(up, p.jacket, p.yTangent, p.jacket / 2, n, Material.CLADDING);

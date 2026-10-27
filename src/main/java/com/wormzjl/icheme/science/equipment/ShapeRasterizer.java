@@ -711,11 +711,11 @@ public final class ShapeRasterizer {
             var skirtU = new Uv(a, neg(tangent), -i * chord, plateLength / 2);
             var skirtTiles = new Uv(new double[]{axis, yB, axis}, up, 0, SUPPORT_TILE);
             var centre = new double[]{axis, (yB + yT) / 2, axis};
-            for (var piece : skirtFacet(i, radius, apothem, y0, y1, port)) m.add(piece, centre, new Radial(new double[]{axis, 0, axis}, up), Material.SUPPORT, skirtU, skirtTiles);
+            for (var piece : skirtFacet(i, radius, apothem, y0, y1, port)) m.add(piece, centre, new Radial(new double[]{axis, 0, axis}, up), Material.SKIRT, skirtU, skirtTiles);
             if (!hollow) return;
             var beyond = new double[]{axis + 2 * radius * normalCos[i], yB / 2, axis + 2 * radius * normalSin[i]};
             for (var piece : skirtFacet(i, innerRadius, apothem - EquipmentShape.SKIRT_WALL, y0, y1, port))
-                m.add(piece, beyond, new Inward(new double[]{axis, 0, axis}, up), Material.SUPPORT, skirtU, skirtTiles);
+                m.add(piece, beyond, new Inward(new double[]{axis, 0, axis}, up), Material.SKIRT, skirtU, skirtTiles);
         }
 
         /** Whether the port at its largest reaches skirt facet {@code i}: its band is drawn with the bottom outlet. */
@@ -796,7 +796,7 @@ public final class ShapeRasterizer {
             for (double y : new double[]{slotLow, slotHigh}) {
                 var edge = List.of(lerp(vertex(i, radius, y), vertex(i + 1, radius, y), span[0]), lerp(vertex(i, radius, y), vertex(i + 1, radius, y), span[1]),
                         lerp(vertex(i, innerRadius, y), vertex(i + 1, innerRadius, y), span[1]), lerp(vertex(i, innerRadius, y), vertex(i + 1, innerRadius, y), span[0]));
-                mesh.flat(edge, new double[]{0, y == slotLow ? 1 : -1, 0}, Material.SUPPORT);
+                mesh.flat(edge, new double[]{0, y == slotLow ? 1 : -1, 0}, Material.SKIRT);
             }
             // The jamb stands where the slot ends inside this facet (s = 0.5); the facet's other end is the slot's middle.
             double s = span[0] == 0 ? span[1] : span[0];
@@ -804,7 +804,7 @@ public final class ShapeRasterizer {
                     lerp(vertex(i, innerRadius, slotHigh), vertex(i + 1, innerRadius, slotHigh), s), lerp(vertex(i, innerRadius, slotLow), vertex(i + 1, innerRadius, slotLow), s));
             var along = sub(vertex(i + 1, radius, 0), vertex(i, radius, 0));
             // It faces into the slot: towards vertex i when the slot holds vertex i, the plate lying towards vertex i + 1.
-            mesh.flat(jamb, span[0] == 0 ? neg(along) : along, Material.SUPPORT);
+            mesh.flat(jamb, span[0] == 0 ? neg(along) : along, Material.SKIRT);
         }
 
         /** Vertex {@code i} of a skirt face at radius {@code r} and axial position {@code y}, in the vessel frame. */

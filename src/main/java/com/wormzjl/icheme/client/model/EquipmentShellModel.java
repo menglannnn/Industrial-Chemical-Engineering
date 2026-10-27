@@ -179,7 +179,7 @@ public final class EquipmentShellModel implements IDynamicBakedModel {
      * flanges have too few facets: their highlight would jump from facet to facet.
      */
     private static final Set<Mesh.Material> SHEEN = EnumSet.of(Mesh.Material.SHELL, Mesh.Material.HEAD, Mesh.Material.CLADDING, Mesh.Material.SUPPORT,
-            Mesh.Material.HEATER, Mesh.Material.MACHINE, Mesh.Material.MOTOR, Mesh.Material.AC_HEADER);
+            Mesh.Material.SKIRT, Mesh.Material.HEATER, Mesh.Material.MACHINE, Mesh.Material.MOTOR, Mesh.Material.AC_HEADER);
 
     /**
      * A fixed highlight over the shade of a round body's vertex with normal (nx, nz): {@code k |nz|^8} and half as much
