@@ -45,14 +45,18 @@ class EventPathWorld {
     /** The world {@code saved} ({@code world.ledger.snapshot()}) and {@code islands} ({@code world.coordinator.snapshots()})
      * reload to, as {@code FluidWorldAuthority} starts: the ledger, every saved island registered, then the registry loaded. */
     EventPathWorld(int workers,WorldTopologyLedger.Snapshot saved,List<IslandCoordinator.Snapshot> islands) {
-        this(workers,saved,islands,CATALOG,FluidTestSupport.networkModel());
+        this(workers,saved,islands,List.of());
+    }
+    /** That reload with the flowmeters the accessory store holds on {@code flowmeters}, given to the registry before it loads. */
+    EventPathWorld(int workers,WorldTopologyLedger.Snapshot saved,List<IslandCoordinator.Snapshot> islands,Collection<Long> flowmeters) {
+        this(workers,saved,islands,CATALOG,FluidTestSupport.networkModel(),flowmeters);
     }
     /** A world with one synchronous worker on {@code catalog}, whose network model is {@code model}
      * ({@code FluidThermodynamics.forNetwork} of its network package): built and run inside that catalog's
      * {@code MaterialRuntime} context, as the cold placement fuzz runs a seed. A block placed without a spec holds a 1 m3
      * nitrogen charge of that catalog. */
-    EventPathWorld(MaterialCatalog catalog,FluidThermodynamics model){this(1,WorldTopologyLedger.Snapshot.empty(catalog),List.of(),catalog,model);}
-    private EventPathWorld(int workers,WorldTopologyLedger.Snapshot saved,List<IslandCoordinator.Snapshot> islands,MaterialCatalog catalog,FluidThermodynamics model) {
+    EventPathWorld(MaterialCatalog catalog,FluidThermodynamics model){this(1,WorldTopologyLedger.Snapshot.empty(catalog),List.of(),catalog,model,List.of());}
+    private EventPathWorld(int workers,WorldTopologyLedger.Snapshot saved,List<IslandCoordinator.Snapshot> islands,MaterialCatalog catalog,FluidThermodynamics model,Collection<Long> flowmeters) {
         this.workers=workers;this.catalog=catalog;this.model=model;ledger=new WorldTopologyLedger(saved);
         coordinator=new IslandCoordinator(new IslandCoordinator.Dispatcher() {
             public int availableWorkers(){return workers-attempts.size();}
@@ -72,7 +76,7 @@ class EventPathWorld {
             public void committed(Set<Long> removed,Set<Long> recompiled){committedRemovals.add(removed);}
         });
         for(var island:islands)coordinator.register(island,model);
-        registry.load();
+        registry.flowmeters(flowmeters);registry.load();
     }
     /** The world's default control of a device kind (FluidWorldAuthority.place). */
     static FlowControl defaultControl(Kind kind) {

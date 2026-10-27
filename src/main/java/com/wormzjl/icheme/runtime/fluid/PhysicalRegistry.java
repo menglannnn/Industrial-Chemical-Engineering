@@ -59,8 +59,20 @@ public final class PhysicalRegistry {
     private int unapplied;
 
     private final Set<Long> flowmeters=new HashSet<>();
+    /** The installed flowmeters a load compiles taps for: set before {@link #load()}. */
     public void flowmeters(Collection<Long> hosts){flowmeters.clear();flowmeters.addAll(hosts);}
-    public void flowmeter(long host,boolean installed){if(installed)flowmeters.add(host);else flowmeters.remove(host);}
+    /**
+     * A flowmeter installed on or removed from {@code host}. Its island compiles another tap, but no fact of the device
+     * changes: the host's registration is queued again at its next revision, so the island recompiles on the engine's
+     * schedule like any edit.
+     */
+    public void flowmeter(long host,boolean installed) {
+        if(!(installed?flowmeters.add(host):flowmeters.remove(host)))return;
+        var record=registrations().get(host);
+        if(record!=null)submit(List.of(new WorldTopologyLedger.Edit(host,new WorldTopologyLedger.Registration(record.device(),record.spec(),Math.addExact(record.revision(),1)))),topology.nextIdentity(),null);
+    }
+    /** A flowmeter whose host is going: forgotten without a recompile, as the host's own removal recompiles its island. */
+    public void forgetFlowmeter(long host){flowmeters.remove(host);}
     /** {@code emptyFilter} is a new filter's cake: the configured capacity and resistance, nothing captured. */
     public PhysicalRegistry(WorldTopologyLedger topology,FluidThermodynamics model,InlineFilter emptyFilter,Host host) {
         this.topology=Objects.requireNonNull(topology);this.model=Objects.requireNonNull(model);weights=model.molecularWeights();
@@ -95,6 +107,10 @@ public final class PhysicalRegistry {
             if(ids.size()!=1)throw new IllegalStateException("Saved topology and hydraulic ownership disagree");
             long saved=ids.getFirst();if(members.containsKey(saved))throw new IllegalStateException("Saved topology and hydraulic ownership disagree");
             var devices=island.physicalIds().stream().sorted().toList();members.put(saved,devices);for(long id:devices)bind(id,saved);
+            // A checkpoint does not carry the flowmeter taps: the restored island takes the ones compiled here.
+            var taps=new HashMap<Long,List<PassiveNetwork.Pipe.ObservationPoint>>();
+            for(var pipe:graph.pipes())if(!pipe.observationPoints().isEmpty())taps.put(pipe.id(),pipe.observationPoints());
+            if(!taps.isEmpty())host.coordinator().attachObservationPoints(saved,taps);
         }
         // Every island the checkpoint restored holds a device: one that compiles to none would be saved again with nothing
         // to name it by (D32, the island of one a join left behind).

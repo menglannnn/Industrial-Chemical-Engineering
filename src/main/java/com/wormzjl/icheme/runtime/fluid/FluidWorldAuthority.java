@@ -94,7 +94,6 @@ public final class FluidWorldAuthority implements AutoCloseable {
         registry.load();data.bindCapture(this::capture);
         instruments=new com.wormzjl.icheme.runtime.instrument.InstrumentService(server,this,accessories);
         instruments.reconcileLegacyValves();
-        for(var sensor:accessories.allSensors())if(sensor.kind()==com.wormzjl.icheme.runtime.instrument.Sensor.Kind.FLOW)flowmeter(sensor.key().host(),true);
         // Block entities whose chunks loaded before this authority existed never reported themselves: every device
         // in an already loaded chunk is marked once, and its bucket binds and presents it. Nothing is pushed here.
         registry.forEachChunk((name,chunk,devices)->{var level=server.getLevel(dimension(name));var at=new net.minecraft.world.level.ChunkPos(chunk);
@@ -507,8 +506,8 @@ public final class FluidWorldAuthority implements AutoCloseable {
     /** Marks a device for its next bucket (a test or tool asking for a refresh gets it on the engine's schedule). */
     public com.wormzjl.icheme.runtime.instrument.InstrumentHosts.Host instrumentHost(long id){owned();var r=registrations().get(id);if(r==null)return null;var p=r.device().position();var level=server.getLevel(dimension(p.dimension()));if(level==null)return null;var h=com.wormzjl.icheme.runtime.instrument.InstrumentHosts.at(level,new BlockPos(p.x(),p.y(),p.z()));return h!=null&&h.identity()==id?h:null;}
     public void instrumentObservationChanged(long id){owned();refreshObserved(id);}
-    public void forgetFlowmeter(long id){owned();registry.flowmeter(id,false);}
-    public void flowmeter(long id,boolean installed){owned();registry.flowmeter(id,installed);var r=registrations().get(id);if(r!=null)edit(id,r.revision(),r.device(),r.spec());}
+    public void forgetFlowmeter(long id){owned();registry.forgetFlowmeter(id);}
+    public void flowmeter(long id,boolean installed){owned();registry.flowmeter(id,installed);}
     public boolean removePipeAccessory(long id){owned();return registry.removePipeAccessory(id);}
     public record InstrumentReading(double pressure,double temperature,boolean flowing,double massFlow,Double volumeFlow){public InstrumentReading(double pressure,double temperature,boolean flowing){this(pressure,temperature,flowing,0,0.0);}}
     public InstrumentReading instrumentPipeReading(long id){owned();Long owner=registry.owner(id);if(owner==null)return null;var r=registrations().get(id);if(r==null)return null;var snapshot=runtime.coordinator().presentation(owner);if(snapshot.lastResult().isEmpty())return null;

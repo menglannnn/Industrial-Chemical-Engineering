@@ -261,6 +261,22 @@ public final class IslandCoordinator {
         islands.put(saved.id,island);ready.register(saved.id,false);index(island);indexStock(island);reconsider(island);
     }
     /**
+     * A restored island's observation points (its pipes' flowmeter taps), by pipe identity. A checkpoint does not carry
+     * them: the registry's load compiles them from the installed flowmeters and attaches them here, before the island's
+     * first slice. They are no part of a pipe's identity or a certificate's signature, so the island's state, certificate
+     * and schedule stay as restored.
+     */
+    public void attachObservationPoints(long id,Map<Long,List<PassiveNetwork.Pipe.ObservationPoint>> byPipe) {
+        owned();var island=require(id);if(island.pendingEntries!=0)throw new IllegalStateException("Island "+id+" has a slice in flight");
+        island.graph=observedAs(island.graph,byPipe);
+    }
+    private static PassiveNetwork observedAs(PassiveNetwork graph,Map<Long,List<PassiveNetwork.Pipe.ObservationPoint>> byPipe) {
+        return new PassiveNetwork(graph.reservoirs(),graph.pipes().stream().map(p->p.withObservationPoints(byPipe.getOrDefault(p.id(),List.of()))).toList(),graph.scheduledTransfers());
+    }
+    private static Map<Long,List<PassiveNetwork.Pipe.ObservationPoint>> observationPoints(PassiveNetwork graph) {
+        var points=new HashMap<Long,List<PassiveNetwork.Pipe.ObservationPoint>>();for(var p:graph.pipes())if(!p.observationPoints().isEmpty())points.put(p.id(),p.observationPoints());return points;
+    }
+    /**
      * A saved certificate (plan section 3.5). The snapshot's graph is already its island at the saved committed tick,
      * materialised from the base without a solve. Restored when certificates are on and its signature is the island's
      * current one: the island is certified again with its saved since tick, keeps no solver caches, and holds only its
@@ -817,7 +833,8 @@ public final class IslandCoordinator {
             // The island keeps its last solved interval as its result (what a save records and a view reads, whose
             // rates replay repeats); the replayed span with its scaled accounting goes to the replay listener only.
             var replay=certificate.replay(committed,target);
-            island.clock.rest(target,island.fence());island.graph=replay.graph();
+            // The replayed graph is the certificate's; the taps are the island's (a restored certificate's graph has none).
+            island.clock.rest(target,island.fence());island.graph=observedAs(replay.graph(),observationPoints(island.graph));
             island.pipeSpeed.accepted(committed,target,replay.pipeTransfers());
             island.metrics=new Metrics(island.metrics==null?1:Math.addExact(island.metrics.sequence(),1),committed,target,online,online,-1,-1,0,true,Advance.REPLAYED);
             FluidRuntimeDiagnostics.count(FluidRuntimeDiagnostics.materialisations);
