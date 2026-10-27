@@ -68,9 +68,7 @@ public final class PipeLayingClient {
     private static final Object START_SLOT = "icheme:pipe_start", ROUTE_SLOT = "icheme:pipe_route", AIM_SLOT = "icheme:pipe_aim";
     /** A pipe block is one box to outline, a lane at most three legs. */
     private static final Object[] REMOVE_SLOTS = {"icheme:pipe_remove", "icheme:pipe_remove_arm", "icheme:pipe_remove_leg"};
-    private static final int START_COLOUR = 0x55FF55, REFUSED_COLOUR = 0xFF5555, CONNECTED_COLOUR = 0x808080, OPEN_COLOUR = 0xFFDD33, FREE_COLOUR = 0x55FF55;
-    /** Port classes' outline colours: vapour, bulk, liquid, overflow ({@link EquipmentShape.PortClass} order). */
-    private static final int[] PORT_COLOURS = {0xF0F0F0, 0x55DDFF, 0x3377FF, 0xFF9933};
+    private static final int START_COLOUR = 0x55FF55, REFUSED_COLOUR = 0xFF5555, OPEN_COLOUR = 0xFFDD33, FREE_COLOUR = 0x55FF55;
     /** A start this far from the player is dropped, blocks; ports and open ends are marked this far, at most {@link #MAX_MARKS} of each. */
     private static final double DROP_RANGE = 96, PORT_RANGE = 48;
     private static final int MAX_MARKS = 256, RECHECK_TICKS = 20, HUD_TICKS = 5;
@@ -184,6 +182,8 @@ public final class PipeLayingClient {
         var player = mc.player;
         var outliner = Outliner.getInstance();
         if (!mc.options.keyUse.isDown()) armed = true;
+        // Holding the tool is the request for the assemblies around the player (plan section 9).
+        AssemblyToolClient.watch(player, player != null && mc.level != null && holding(player));
         if (player == null || mc.level == null || !holding(player)) {
             slot = null;
             if (start != null || plan != null || !markSlots.isEmpty()) {
@@ -396,7 +396,10 @@ public final class PipeLayingClient {
         var role = nozzle.role().name().toLowerCase(Locale.ROOT);
         var roleName = Component.translatableWithFallback("message.icheme.pipe_laying.role." + role, humanize(role));
         boolean connected = connected(level, hit.clicked(), hit.face());
-        return PipeLaying.message("port", roleName, PipeLaying.message(connected ? "port.connected" : "port.free"), String.format(Locale.ROOT, "%.1f", PipeSizes.MAX_BORE));
+        var label = PipeLaying.message("port", roleName, PipeLaying.message(connected ? "port.connected" : "port.free"), String.format(Locale.ROOT, "%.1f", PipeSizes.MAX_BORE));
+        // A watched assembly's port: its line too (plan section 9).
+        var line = AssemblyToolClient.line(shell, hit.face());
+        return line == null ? label : label.copy().append(" · ").append(line);
     }
 
     private static String humanize(String name) {
@@ -431,8 +434,14 @@ public final class PipeLayingClient {
         for (var mark : marks.subList(0, Math.min(MAX_MARKS, marks.size()))) {
             var slot = "icheme:port:" + mark.cell.asLong() + ":" + mark.face.ordinal();
             shown.add(slot);
-            int colour = connected(level, mark.cell, mark.face) ? CONNECTED_COLOUR : PORT_COLOURS[mark.port.ordinal()];
+            int colour = connected(level, mark.cell, mark.face) ? PortColours.CONNECTED : PortColours.of(mark.port);
             outliner.showAABB(slot, square(mark.cell, mark.face, faceCentre(mark.face), .3)).colored(colour).lineWidth(1 / 32F);
+            // A watched assembly's port: a frame round the square (AssemblyToolClient).
+            int frame = level.getBlockEntity(mark.cell) instanceof EquipmentShellBlockEntity shell ? AssemblyToolClient.frame(shell, mark.face) : -1;
+            if (frame < 0) continue;
+            var framed = slot + ":frame";
+            shown.add(framed);
+            outliner.showAABB(framed, square(mark.cell, mark.face, faceCentre(mark.face), .4)).colored(frame).lineWidth(1 / 32F);
         }
     }
 

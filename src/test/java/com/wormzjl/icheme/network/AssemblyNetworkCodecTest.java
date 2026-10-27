@@ -59,6 +59,24 @@ class AssemblyNetworkCodecTest {
         assertEquals(AssemblyView.NO_DESIGN, roundTrip(AssemblyView.NO_DESIGN));
     }
 
+    /** The laying tool's watch (W7): a watched column's view, or its end, crosses with its master. */
+    @Test
+    void aWatchedViewOrItsEndCrossesWithItsMaster() {
+        var buffer = new RegistryFriendlyByteBuf(Unpooled.buffer(), RegistryAccess.EMPTY);
+        try {
+            var reverted = new AssemblyView(AssemblyView.Status.NOT_VALIDATED, null, DRUM);
+            for (var payload : List.of(new AssemblyNetwork.WatchedPayload(COLUMN, java.util.Optional.of(reverted)), new AssemblyNetwork.WatchedPayload(COLUMN, java.util.Optional.empty()))) {
+                AssemblyNetwork.WatchedPayload.STREAM_CODEC.encode(buffer, payload);
+                assertEquals(payload, AssemblyNetwork.WatchedPayload.STREAM_CODEC.decode(buffer));
+            }
+            AssemblyNetwork.WatchPayload.STREAM_CODEC.encode(buffer, new AssemblyNetwork.WatchPayload(true));
+            assertTrue(AssemblyNetwork.WatchPayload.STREAM_CODEC.decode(buffer).on());
+            assertEquals(0, buffer.readableBytes());
+        } finally {
+            buffer.release();
+        }
+    }
+
     @Test
     void aReadRefusesCountsOutOfRange() {
         var buffer = new RegistryFriendlyByteBuf(Unpooled.buffer(), RegistryAccess.EMPTY);

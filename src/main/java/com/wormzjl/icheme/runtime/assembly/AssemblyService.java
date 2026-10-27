@@ -85,13 +85,36 @@ public final class AssemblyService {
         if (vessel == null || vessel.shape().kind() != EquipmentShape.Kind.COLUMN) return null;
         if (!designed(vessel.shape())) return AssemblyView.NO_DESIGN;
         var entry = entry(level, vessel.origin());
-        if (entry == null) return AssemblyView.NOT_VALIDATED;
+        return entry == null ? AssemblyView.NOT_VALIDATED : view(entry);
+    }
+
+    private static AssemblyView view(Entry entry) {
         var status = switch (entry.status()) {
             case NOT_VALIDATED -> AssemblyView.Status.NOT_VALIDATED;
             case CHECKED -> AssemblyView.Status.CHECKED;
             case COMPLETE -> AssemblyView.Status.COMPLETE;
         };
         return new AssemblyView(status, entry.report(), entry.changedAt());
+    }
+
+    /**
+     * The stored views of the columns with a block, a nozzle or a unit within {@code range} of ({@code x}, {@code y},
+     * {@code z}), by master (the laying tool's watch, {@link AssemblyWatch}): reads of the stored entries, which walk nothing.
+     */
+    public static Map<Long, AssemblyView> watched(ServerLevel level, double x, double y, double z, double range) {
+        var out = new TreeMap<Long, AssemblyView>();
+        for (var stored : AssemblyStore.of(level).entries().entrySet()) {
+            long master = stored.getKey();
+            boolean near = near(master, x, y, z, range);
+            for (var it = stored.getValue().positions().iterator(); !near && it.hasNext(); ) near = near(it.next(), x, y, z, range);
+            if (near) out.put(master, view(stored.getValue()));
+        }
+        return out;
+    }
+
+    private static boolean near(long packed, double x, double y, double z, double range) {
+        double dx = BlockPos.getX(packed) + .5 - x, dy = BlockPos.getY(packed) + .5 - y, dz = BlockPos.getZ(packed) + .5 - z;
+        return dx * dx + dy * dy + dz * dz <= range * range;
     }
 
     /** The column whose report holds the unit at {@code origin}, or null: a click on that unit opens the column's GUI. */

@@ -1,8 +1,10 @@
 package com.wormzjl.icheme.network;
 
 import com.wormzjl.icheme.IChemE;
+import com.wormzjl.icheme.registry.ModItems;
 import com.wormzjl.icheme.runtime.assembly.AssemblyPresentation;
 import com.wormzjl.icheme.runtime.assembly.AssemblyService;
+import com.wormzjl.icheme.runtime.assembly.AssemblyWatch;
 import com.wormzjl.icheme.runtime.fluid.FluidWorldAuthority;
 import com.wormzjl.icheme.science.assembly.AssemblyReport;
 import com.wormzjl.icheme.science.assembly.AssemblyReport.PortReport;
@@ -43,14 +45,17 @@ import java.util.*;
  * decides what a click on a structure opens: a column's GUI; for a unit that a column's report holds, that column's GUI
  * with the unit selected; otherwise the structure's own screen ({@link #datasheet} for a unit with no fluid screen).
  * An open GUI is a session of the engine's presentation: it gets the stored view at once, a press of "Validate
- * structure" queues one command that the next bucket runs, and the answer comes with that bucket.
+ * structure" queues one command that the next bucket runs, and the answer comes with that bucket. Holding the laying
+ * tool is a watch of the columns around the player ({@link AssemblyWatch}, plan section 9): taking it up sends
+ * {@link WatchPayload}, which replays their stored views, and their changes come with the buckets ({@link WatchedPayload}).
  */
 public final class AssemblyNetwork {
-    public static final String PROTOCOL = "assembly-1";
+    public static final String PROTOCOL = "assembly-2";
     /** Bounds a view's read checks: slots, ports, members, characters of a slot's name or detail. */
     static final int MAX_SLOTS = 256, MAX_PORTS = 1024, MAX_MEMBERS = 256, MAX_TEXT = 1024;
 
     private static final Map<MinecraftServer, AssemblyPresentation<AssemblyMenu>> SERVERS = new IdentityHashMap<>();
+    private static final Map<MinecraftServer, AssemblyWatch<ServerPlayer>> WATCHES = new IdentityHashMap<>();
 
     private AssemblyNetwork() {
     }
@@ -152,6 +157,29 @@ public final class AssemblyNetwork {
         }
     }
 
+    /** Client to server: the player took the laying tool up ({@code true}) or put it away. */
+    public record WatchPayload(boolean on) implements CustomPacketPayload {
+        public static final Type<WatchPayload> TYPE = new Type<>(ResourceLocation.fromNamespaceAndPath(IChemE.MOD_ID, "assembly_watch"));
+        public static final StreamCodec<RegistryFriendlyByteBuf, WatchPayload> STREAM_CODEC = StreamCodec.composite(ByteBufCodecs.BOOL, WatchPayload::on, WatchPayload::new);
+
+        @Override
+        public Type<? extends CustomPacketPayload> type() {
+            return TYPE;
+        }
+    }
+
+    /** Server to client: the view of the watched column at {@code master}, or its end (empty): out of range or gone. */
+    public record WatchedPayload(long master, Optional<AssemblyView> view) implements CustomPacketPayload {
+        public static final Type<WatchedPayload> TYPE = new Type<>(ResourceLocation.fromNamespaceAndPath(IChemE.MOD_ID, "assembly_watched"));
+        public static final StreamCodec<RegistryFriendlyByteBuf, WatchedPayload> STREAM_CODEC = StreamCodec.composite(ByteBufCodecs.VAR_LONG, WatchedPayload::master,
+                ByteBufCodecs.optional(VIEW), WatchedPayload::view, WatchedPayload::new);
+
+        @Override
+        public Type<? extends CustomPacketPayload> type() {
+            return TYPE;
+        }
+    }
+
     /** Server to client: open the datasheet of the structure holding {@code cell}. */
     public record DatasheetPayload(BlockPos cell) implements CustomPacketPayload {
         public static final Type<DatasheetPayload> TYPE = new Type<>(ResourceLocation.fromNamespaceAndPath(IChemE.MOD_ID, "assembly_datasheet"));
@@ -168,6 +196,9 @@ public final class AssemblyNetwork {
         var registrar = event.registrar(PROTOCOL).executesOn(HandlerThread.MAIN);
         registrar.playToServer(ValidatePayload.TYPE, ValidatePayload.STREAM_CODEC, AssemblyNetwork::validate);
         registrar.playToServer(OpenUnitPayload.TYPE, OpenUnitPayload.STREAM_CODEC, AssemblyNetwork::openUnit);
+        registrar.playToServer(WatchPayload.TYPE, WatchPayload.STREAM_CODEC, AssemblyNetwork::watch);
+        registrar.playToClient(WatchedPayload.TYPE, WatchedPayload.STREAM_CODEC,
+                (payload, context) -> com.wormzjl.icheme.client.AssemblyToolClient.received(payload.master(), payload.view().orElse(null)));
         registrar.playToClient(StatePayload.TYPE, StatePayload.STREAM_CODEC, (payload, context) -> {
             if (context.player().containerMenu instanceof AssemblyMenu menu && menu.containerId == payload.container()) menu.accept(payload.view());
         });
@@ -203,6 +234,41 @@ public final class AssemblyNetwork {
             PacketDistributor.sendToPlayer(Objects.requireNonNull(menu.serverPlayer()), new StatePayload(menu.containerId, view));
         }
     };
+
+    /** The laying tool's watches, on the server thread. */
+    private static final AssemblyWatch.Host<ServerPlayer> WATCH = new AssemblyWatch.Host<>() {
+        @Override
+        public boolean holding(ServerPlayer player) {
+            return !player.hasDisconnected() && !player.isRemoved()
+                    && (player.getMainHandItem().is(ModItems.PIPE_LAYING_TOOL.get()) || player.getOffhandItem().is(ModItems.PIPE_LAYING_TOOL.get()));
+        }
+
+        @Override
+        public Map<Long, AssemblyView> inRange(ServerPlayer player) {
+            return AssemblyService.watched(player.serverLevel(), player.getX(), player.getY(), player.getZ(), AssemblyWatch.RANGE);
+        }
+
+        @Override
+        public void send(ServerPlayer player, long master, @Nullable AssemblyView view) {
+            PacketDistributor.sendToPlayer(player, new WatchedPayload(master, Optional.ofNullable(view)));
+        }
+    };
+
+    private static AssemblyWatch<ServerPlayer> watches(MinecraftServer server) {
+        return WATCHES.computeIfAbsent(server, s -> new AssemblyWatch<>(WATCH));
+    }
+
+    /** The laying tool taken up or put away. A deployer's fake player watches nothing. */
+    private static void watch(WatchPayload payload, IPayloadContext context) {
+        if (!(context.player() instanceof ServerPlayer player) || player instanceof FakePlayer) return;
+        if (!payload.on()) {
+            var watches = WATCHES.get(player.server);
+            if (watches != null) watches.stop(player);
+            return;
+        }
+        if (!WATCH.holding(player)) return;
+        FluidWorldAuthority.find(player.server).ifPresent(engine -> watches(player.server).start(player, engine.onlineTick()));
+    }
 
     private static AssemblyPresentation<AssemblyMenu> presentation(MinecraftServer server) {
         return SERVERS.computeIfAbsent(server, s -> new AssemblyPresentation<>(HOST));
@@ -297,13 +363,16 @@ public final class AssemblyNetwork {
         if (vessel != null) EquipmentShellBlock.openOwn(player, vessel, cell, false);
     }
 
-    /** The engine's tick: the column GUIs' bucket, when one is due. */
+    /** The engine's tick: the column GUIs' and the laying tool's watches' buckets, when one is due. */
     public static void presentationTick(MinecraftServer server, long onlineTick) {
         var presentation = SERVERS.get(server);
         if (presentation != null) presentation.tick(onlineTick);
+        var watches = WATCHES.get(server);
+        if (watches != null) watches.tick(onlineTick);
     }
 
     public static void forget(MinecraftServer server) {
         SERVERS.remove(server);
+        WATCHES.remove(server);
     }
 }

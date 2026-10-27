@@ -74,7 +74,8 @@ public final class AssemblyScreen extends AbstractContainerScreen<AssemblyMenu> 
         return Component.translatable(KEY + key, args);
     }
 
-    private static Component text(Text text) {
+    /** A diagram text as a component, its nested texts translated too. */
+    public static Component text(Text text) {
         var args = new Object[text.args().size()];
         for (int i = 0; i < args.length; i++) args[i] = text.args().get(i) instanceof Text t ? text(t) : text.args().get(i);
         return Component.translatable(KEY + text.key(), args);
@@ -396,7 +397,8 @@ public final class AssemblyScreen extends AbstractContainerScreen<AssemblyMenu> 
         scroll.draw(g);
     }
 
-    private Component word(@Nullable SlotReport r) {
+    /** A slot state in one word: connected, misplaced, missing or not checked; not validated without a report. */
+    public static Component word(@Nullable SlotReport r) {
         if (r == null) return tr("word.not_validated");
         return tr("word." + switch (r.state().colour) {
             case TEAL -> "connected";
@@ -488,7 +490,8 @@ public final class AssemblyScreen extends AbstractContainerScreen<AssemblyMenu> 
         return at == AssemblyReport.NONE ? "?" : BlockPos.of(at).toShortString();
     }
 
-    private static Component role(String name) {
+    /** A nozzle role by name, as the vessel screens name it. */
+    public static Component role(String name) {
         return Component.translatable("gui.icheme.vessel.role." + name.toLowerCase(Locale.ROOT));
     }
 
