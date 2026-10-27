@@ -2,7 +2,7 @@
 
 Purpose: remove the shadow on the floor inside a vessel's skirt, seen through its slots and port, which grew with the diameter (owner request 2026-10-27: "Remove the shadow in drum/vessel skirt"; clarified: "the bottom plane looked through the windows, drums with very large diameter makes this worse").
 
-Status: Implemented 2026-10-27 (branch `claude/modest-nightingale-c9932d` fast-forwarded into `main`; released in 0.15.1 with the column sump batch); not pushed. GameTest fix on branch `claude/distillation-sump-enlargement-59e8e7`, not merged. Index: [../INDEX.md](../INDEX.md).
+Status: Implemented 2026-10-27 (branch `claude/modest-nightingale-c9932d` fast-forwarded into `main`; released in 0.15.1 with the column sump batch); not pushed. GameTest fix released in 0.15.2 (branch `claude/distillation-sump-enlargement-59e8e7`, fast-forward). Index: [../INDEX.md](../INDEX.md).
 
 ## Documents
 
@@ -24,4 +24,3 @@ Status: Implemented 2026-10-27 (branch `claude/modest-nightingale-c9932d` fast-f
 ## Open items
 
 - Owner validation (review section 4); Iris shadow map and Distant Horizons not checked in game.
-- The GameTest fix waits for the owner's merge.
