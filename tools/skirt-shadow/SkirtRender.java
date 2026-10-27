@@ -20,9 +20,11 @@ import java.util.regex.Pattern;
  *
  * <p>Args: {@code out.png pxPerMetre view light|flat spec...}; view front, back, left, right, iso, iso3 (back left), low;
  * a spec {@code drum:D:TT[:skirt]} (standing drum), {@code column:D:trays:config[:skirt]} (NewSweep's configs) or
- * {@code unit:KIND[:size[:length]]} (least size and length by default, the least support). Prints the skylight of every
- * cell holding the skirt's outer face and of the shell cells inside the skirt. Run from the worktree root: it reads
- * src/main/resources/assets/icheme/. Compile with ../multi-machine-framework/f3-nozzle-rows/NewSweep.java and RowSweep.java.
+ * {@code unit:KIND[:size[:length]]} (least size and length by default, the least support). {@code -Dcut=h} leaves out
+ * every polygon wholly above h m (a section showing the floor inside a skirt). Interior cells pass skylight where
+ * {@code ShapeRasterizer.skylight} says so. Prints the skylight of every cell holding the skirt's outer face and of the
+ * shell cells inside the skirt. Run from the worktree root: it reads src/main/resources/assets/icheme/. Compile with
+ * ../multi-machine-framework/f3-nozzle-rows/NewSweep.java and RowSweep.java.
  */
 public class SkirtRender {
     private static final String ASSETS = "src/main/resources/assets/icheme/";
@@ -109,7 +111,8 @@ public class SkirtRender {
                 default -> unit(new double[]{1, -.6, 1.15});
             };
             var paint = Paint.DEFAULT;
-            String detail = String.format(Locale.ROOT, "%s, paint body #%06X structure #%06X", lit ? "in-game skylight" : "no light", paint.colour(Paint.BODY), paint.colour(Paint.STRUCTURE));
+            String detail = lit ? String.format(Locale.ROOT, "in-game skylight, interior %s", clear(shape) ? "lets skylight through" : "opaque")
+                    : String.format(Locale.ROOT, "no light, paint body #%06X structure #%06X", paint.colour(Paint.BODY), paint.colour(Paint.STRUCTURE));
             System.out.println(caption + ": " + detail + (light != null ? ", skirt outer cells by skylight " + skirtLevels + ", shell cells inside the skirt " + insideLevels : ""));
             tiles.add(new Tile(render(triangles, shape, depth, sprites, scale, paint), caption, detail));
         }
@@ -155,7 +158,21 @@ public class SkirtRender {
         return shape.skirt() && local[1] < shape.bottomTangent() && Math.sqrt(dx * dx + dz * dz) < shape.radius() - 1;
     }
 
-    /** Skylight over a box round the vessel: what Minecraft's light engine stores in each cell at noon. */
+    /**
+     * Whether the vessel's interior cells let skylight through ({@code ShapeRasterizer.skylight}, batch
+     * 2026-10-27-skirt-shadow), looked up by name so one source compiles on the code before it (false there).
+     */
+    static boolean clear(EquipmentShape shape) {
+        try {
+            return (boolean) ShapeRasterizer.class.getMethod("skylight", EquipmentShape.class).invoke(null, shape);
+        } catch (NoSuchMethodException before) {
+            return false;
+        } catch (ReflectiveOperationException failed) {
+            throw new IllegalStateException(failed);
+        }
+    }
+
+    /** Skylight over a box round the vessel: what Minecraft's light engine stores in each cell at noon (interior cells opaque unless {@link #clear}). */
     private record Light(int x0, int y0, int z0, int sx, int sy, int sz, int[] level) {
         int at(int x, int y, int z) {
             x -= x0;
@@ -171,7 +188,7 @@ public class SkirtRender {
         int m = 3, x0 = -m, y0 = -1, z0 = -m, sx = shape.sizeX() + 2 * m, sy = shape.sizeY() + 3, sz = shape.sizeZ() + 2 * m;
         var opaque = new boolean[sx * sy * sz];
         for (int x = 0; x < sx; x++) for (int z = 0; z < sz; z++) opaque[(x * sy) * sz + z] = true; // the ground under y = 0
-        for (var c : layout.interior()) opaque[((c.x() - x0) * sy + c.y() - y0) * sz + c.z() - z0] = true;
+        if (!clear(shape)) for (var c : layout.interior()) opaque[((c.x() - x0) * sy + c.y() - y0) * sz + c.z() - z0] = true;
         var level = new int[sx * sy * sz];
         var queue = new ArrayDeque<int[]>();
         for (int x = 0; x < sx; x++)
@@ -229,9 +246,15 @@ public class SkirtRender {
         return out;
     }
 
+    /** A section: with {@code -Dcut=h}, every polygon wholly above h m is left out, so the floor inside a skirt shows. */
+    private static final double CUT = Double.parseDouble(System.getProperty("cut", "1e9"));
+
     private static void add(List<Triangle> out, Mesh.Polygon polygon, int x, int y, int z, Light light) {
         double[] p = polygon.positions(), uv = polygon.uvs();
         int n = polygon.size();
+        double low = 1e9;
+        for (int k = 0; k < n; k++) low = Math.min(low, p[3 * k + 1] + y);
+        if (low > CUT) return;
         double value = light == null ? 1 : lightmap(quadLight(polygon, x, y, z, light)) / lightmap(15);
         for (int i = 1; i + 1 < n; i++) {
             int[] c = {0, i, i + 1};

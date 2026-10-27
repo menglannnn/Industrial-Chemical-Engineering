@@ -17,7 +17,7 @@ All notable changes to Industrial Chemical Engineering (IChemE, formerly CreateC
 
 ### Fixed
 
-- Vessel skirts no longer draw as a dark band under the shell (commit `c9e827ac`; batch `2026-10-27-skirt-shadow`, review `SKIRT_SHADOW_REVIEW.md`): a skirt plate (standing drums, columns, trickle-bed and ebullated-bed reactors, coker drums, adsorbers) takes the body paint through a new `SKIRT` material; its base ring, anchor chairs and sleeves keep the structure paint. Tool folder `tools/skirt-shadow/`.
+- The floor inside a vessel's skirt is no longer shadowed (commit `d02d221f`; batch `2026-10-27-skirt-shadow`, review `SKIRT_SHADOW_REVIEW.md`): a vessel whose skirt shows its inside (standing drums, columns, trickle-bed and ebullated-bed reactors) has interior cells that let skylight through (`EquipmentInteriorBlock.SKYLIGHT`), so the floor seen through the slots and the port is lit as the ground beside it instead of darkening a level a block towards the middle (level 9 under a 10 m drum). Placed vessels restate their interior cells at their next load. A first fix that repainted skirts (`c9e827ac`) was reverted (`f2b15b31`). Tool folder `tools/skirt-shadow/`.
 
 ## [0.15.0] - 2026-10-27
 

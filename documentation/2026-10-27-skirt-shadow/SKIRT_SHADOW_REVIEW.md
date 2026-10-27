@@ -1,43 +1,43 @@
 # Skirt shadow: review
 
-Batch `2026-10-27-skirt-shadow` · branch `claude/modest-nightingale-c9932d` · 2026-10-27 · owner request (verbatim): "Remove the shadow in drum/vessel skirt".
+Batch `2026-10-27-skirt-shadow` · branch `claude/modest-nightingale-c9932d` · 2026-10-27 · owner request: "Remove the shadow in drum/vessel skirt"; clarified: "the bottom plane looked through the windows, drums with very large diameter makes this worse".
 
 ## 1. Expected behaviour
 
-A skirt is a steel cylinder of the shell's diameter under the bottom head. Outdoors, its outside faces the same sky as the shell above it, so it is lit the same way and darkens only with the angle to the light. Real skirts are usually painted with the vessel (or fireproofed in concrete grey). Only the inside of the skirt is dark, and it shows only through the access opening and the slots.
+The floor inside a skirt is the base plate under the vessel, seen through the access port and the slots. In a real skirt it is dim but even; nothing makes it darker in steps towards the middle. The owner wants it lit like the ground beside the vessel, at any diameter.
 
 ## 2. What the code did
 
-Four candidate effects were checked, on a D 3 and a D 6 standing drum and a D 4 and a D 8 column (renders in `figures/`, probe in `tools/skirt-shadow/`):
+- A vessel's interior cells are opaque full blocks (`EquipmentInteriorBlock`, closed). They cast the vessel's shadow: no skylight comes down through the vessel into its skirt.
+- The floor plate's cells are shell cells, which pass light, so the floor got light only sideways from the skirt ring, Minecraft's one level less per block, and the shell model lights each quad by its own cell (no ambient occlusion). The result is a stepped diamond, darkest at the centre:
 
-| Candidate | Finding |
-|---|---|
-| Paint channel | **The cause.** The skirt plate was `Mesh.Material.SUPPORT`, tinted by the structure colour: default RAL 7031 `#5B686D` (mean 101/255) under a RAL 9006 `#A1A1A0` shell (mean 161/255). On the same sprite (painted sprites all average about 236), the skirt drew 37 % darker than the shell: a dark band under every skirted vessel. The 7031 default was an agent choice in the 2026-10-16 polish build ("it keeps today's darker skirt", `EQUIPMENT_POLISH_PLAN.md`), not an owner decision. |
-| Shadow band under the head | None drawn. The 0.1 m bare-steel weld band at the bottom tangent line (owner request 2026-10-16) is a thin line. Kept. |
-| Light, ambient occlusion, face shade | None. The shell model asks for no ambient occlusion and bakes the same smooth-normal shade into skirt and shell. A skylight probe (Minecraft's propagation over the layout: interior cells opaque, shell cells pass skylight down) puts every cell that holds a skirt's outer face at skylight 15 on all four vessels. |
-| Inside through the port and slots | Shell cells inside the skirt sit at skylight 12 to 14 (10 to 14 under the D 8 column). Correct for the inside of a skirt; seen only through one-facet slots and the port. Unchanged. |
+| Vessel | Floor and inside skirt cells, skylight | Noon brightness |
+|---|---|---|
+| Drum D 3 | 14 | 89 % |
+| Drum D 6 | 12 to 13 | 74 to 81 % |
+| Drum D 10 | 9 to 14 | 54 to 89 % |
+| Column D 8 | 10 to 14 | 60 to 89 % |
 
-## 3. Change
+- First reading, rejected by the owner and reverted (`f2b15b31`): the skirt's darker paint (structure channel, RAL 7031). The skirt's outside was already at full skylight.
 
-- `Mesh.Material.SKIRT` (period 2, `Paint.BODY`): the support sprite in the body's paint. The shell model gives it `painted_support` and the metallic sheen, as `SUPPORT` had.
-- `SKIRT` draws the skirt plate, its inner face, its slot sills, heads and jambs, and the plate pieces round the port: `ShapeRasterizer.skirtFace`, `slotEdges`; `ProcessUnit.skirt` (trickle-bed and ebullated-bed reactors); the coker drums' skirt (`DelayedCokerDrums`); the adsorber beds' skirt (`AdsorberDesign`).
-- The base ring, the anchor chairs, the floor plate, the port sleeve and the vent sleeves stay `SUPPORT`, in the structure colour, with saddles and steelwork.
-- `Paint` documentation, the config comments and the constructor's paint texts name the skirt under the primary colour and the base ring under the secondary.
-- Cells, collision, nozzles and layouts do not change (`EquipmentLayoutGoldenTest` untouched). No saved field changes.
+## 3. Change (owner choice: "Skylight through")
 
-## 4. For the owner to validate (reversible)
+- `ShapeRasterizer.skylight(shape)`: true when the vessel's skirt shows its inside: a drum's or a column's hollow skirt, a unit's skirt with openings (`ProcessUnit.openSkirt`, set by `skirt`: trickle-bed and ebullated-bed reactors). False for lying and bare drums, spheres, tanks, the adsorber and coker (closed openings) and every other unit: they keep their shadow on the ground.
+- `EquipmentInteriorBlock.SKYLIGHT` (blockstate `skylight`, default false): light block 0 and skylight down, as a shell cell; still solid, still hides the faces beside it (Distant Horizons and face culling as before). `EquipmentStructure.interior(shape)` sets it.
+- Placed vessels: an interior cell's state follows the code at load, as a cell's drawing does. The controller cell's load queues `restateLater`; `restate` runs one vessel a tick after retired and stale ones, only on a current, own vessel, sets each interior cell holding another state and waits for light before chunks are sent. A refresh restates the cells it keeps. No cell is added or removed, the stamp and the layout table do not change, and a column's assembly is not reverted (a refresh would have reverted it).
+- Effect: the floor and the inside of the skirt take the skylight of the open sky above the vessel, 15 outdoors at every size; a roof, a cave or the night darkens them like the ground beside.
 
-- **A placed vessel's skirt redraws in its primary colour at the next load.** The saved paint keeps both colours; the secondary colour now paints the base ring, chairs, saddles and steelwork, but no longer the skirt. A player who painted a skirt differently from the shell loses that contrast.
-- Options not taken:
-  - B: a lighter default secondary colour (RAL 7035 or 9006). Only new designs change; placed vessels keep their saved 7031 skirts, and saddles and steelwork turn light too.
-  - C: base ring and anchor chairs in the primary colour as well.
-  - D: a third paint channel for skirts: one more saved paint field, page row and tint index.
+## 4. For the owner to validate
+
+- The ground under a skirted vessel is no longer shaded; it is all inside the skirt.
+- Under an Iris shader pack the sun's shadow map may still darken the inside (geometry casts it); not checked.
+- Distant Horizons: interior cells keep their full occlusion shape; not checked in game.
 
 ## 5. Gates
 
-- `./gradlew test` on `c9e827ac`'s tree (second Gradle lane, `--max-workers=4`): 1643 tests, 0 failures, 0 errors. Two tests follow the new material: `PaintTest` (`SKIRT` is a body material), `ShapeRasterizerTest.partsCarryTheirMaterials` (the skirt rows hold `SKIRT` beside `SUPPORT`); no tolerance widened.
-- `slowGates` and the fluid GameTests not run: no solver, fluid or layout code changed. Run them in the merge lane.
+- `./gradlew test` at `d02d221f`: 1644 / 1644, 0 failures (new `ShapeRasterizerTest.aSkirtShowingItsInsideLetsSkylightThrough`).
+- `./gradlew runFluidGameTestServer` (fresh run id `skirt1`): 35 / 35, including the new `EquipmentCompatGameTests.aSkirtsFloorTakesTheSkylightAboveTheDrum` (floor skylight equals the sky above; cells set back to closed are restated at the controller's load, `equipment_restate … interior=102`).
+- Software renders and the skylight probe (`tools/skirt-shadow/`): every floor and inside skirt cell at skylight 15 for the D 3, D 6, D 10 drums and the D 8 column.
+- `slowGates`: not run; it runs in the merge lane. No in-game check (lighting judged by the GameTest and the probe).
 
-No in-game check: the change only redraws (judged by the software renders, which use the game's polygons, sprites, tint and shade, plus the skylight probe), and the sump session held a Gradle lane.
-
-Code guide: `equipment.md` rows `Mesh` and `Paint` updated; the snapshot line is left for the merge (the sump branch rewrites the same line). Tool folder: `tools/skirt-shadow/`.
+Code guide: `equipment.md` (interior light contract, `EquipmentInteriorBlock` row, refresh tick order, test map); snapshot line left for the merge (the sump branch rewrites it). Tool folder: `tools/skirt-shadow/`.
