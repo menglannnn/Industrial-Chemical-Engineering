@@ -33,6 +33,17 @@ class VesselGeometryTest {
         double water=g.volumeAt(1),total=g.volumeAt(2.5);
         assertEquals(PassiveStepSolver.GRAVITY*(1000+800*1.5),g.head(water,1000*water,total-water,800*(total-water)),1e-9);
     }
+    /** The head stands over the body bottom, the node's elevation; the boot below is the line below its nozzle. */
+    @Test void bootHeadStandsOverTheBodyBottom(){
+        var g=VesselGeometry.round(VesselGeometry.Form.HORIZONTAL_DRUM,2,6,2.0/3,.7);
+        assertEquals(0,g.head(g.bootCapacity(),1000*g.bootCapacity(),0,0),1e-9,"a full boot adds nothing over the body bottom");
+        double weir=g.weirVolume();
+        assertEquals(PassiveStepSolver.GRAVITY*1000*g.weirHeight(),g.head(weir,1000*weir,0,0),1e-6);
+        double water=g.volumeAt(.5),top=g.volumeAt(1.2);
+        assertEquals(PassiveStepSolver.GRAVITY*(1000*.5+800*.7),g.head(water,1000*water,top-water,800*(top-water)),1e-6);
+        double inBoot=g.volumeAt(-.2),oil=g.volumeAt(.4);
+        assertEquals(PassiveStepSolver.GRAVITY*800*.4,g.head(inBoot,1000*inBoot,oil-inBoot,800*(oil-inBoot)),1e-6,"only the layer above the body bottom counts");
+    }
     @Test void invalidAndDamagedGeometryRefuses(){
         assertThrows(IllegalArgumentException.class,()->new VesselGeometry(VesselGeometry.Form.SPHERE,1,2,2,0,0,0));
         assertThrows(IllegalArgumentException.class,()->VesselGeometry.prism(Double.NaN,1));

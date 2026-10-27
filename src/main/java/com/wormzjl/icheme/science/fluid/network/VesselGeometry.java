@@ -74,11 +74,15 @@ public record VesselGeometry(Form form,double capacity,double height,double diam
         for(int i=0;i<56;i++){double mid=(low+high)/2;if(volumeAt(mid)<volume)low=mid;else high=mid;}
         return (low+high)/2;
     }
-    /** Bottom pressure head from two stacked liquid/slurry phases, Pa. */
+    /**
+     * Pressure head over the body bottom (z = 0, the vessel node's elevation) from two stacked liquid/slurry layers, Pa.
+     * A boot's column below is the line below its nozzle: the connection's own column from the node's elevation carries it,
+     * so it is not counted here again (a 1 m boot full of water would add 9.8 kPa twice).
+     */
     public double head(double lowerVolume,double lowerMass,double upperVolume,double upperMass){
         if(lowerVolume+upperVolume==0)return 0;
-        double bottom=-bootDepth(),split=heightAt(lowerVolume),top=heightAt(lowerVolume+upperVolume);
-        return PassiveStepSolver.GRAVITY*((lowerVolume>0?lowerMass/lowerVolume*(split-bottom):0)+
+        double split=Math.max(0,heightAt(lowerVolume)),top=Math.max(0,heightAt(lowerVolume+upperVolume));
+        return PassiveStepSolver.GRAVITY*((lowerVolume>0?lowerMass/lowerVolume*split:0)+
                 (upperVolume>0?upperMass/upperVolume*(top-split):0));
     }
 }

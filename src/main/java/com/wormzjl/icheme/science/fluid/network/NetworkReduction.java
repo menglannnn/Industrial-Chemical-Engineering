@@ -226,8 +226,8 @@ public final class NetworkReduction {
         var pipe=graph.pipes().get(edge);double flow=Double.POSITIVE_INFINITY;
         for(int node:new int[]{pipe.first(),pipe.second()}) {
             var s=graph.reservoirs().get(node).state();var port=pipe.portAt(node);
-            double density=PassiveStepSolver.endDensity(model,s,port);int phase=PhaseDraw.leading(model,s,port);
-            double viscosity=phase<0?viscosity(model,s,scratch):model.phaseViscosity(s,phase,scratch,null);
+            double density=PassiveStepSolver.endDensity(model,s,port,pipe.volume());int phase=PhaseDraw.leading(model,s,port);
+            double viscosity=PhaseDraw.mixedLiquids(s,port)?PassiveStepSolver.mixedViscosity(model,s,pipe.volume(),scratch):phase<0?viscosity(model,s,scratch):model.phaseViscosity(s,phase,scratch,null);
             double slope;
             if(pipe.filter()==null)slope=pipe.loss(0,density,viscosity).massFlowDerivative();
             else{double loading=pipe.filter().loading();slope=pipe.filter().cleanResistance()*(viscosity/.001)*(1+99*loading*loading)/density;}

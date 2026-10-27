@@ -83,6 +83,47 @@ class ProcessOutletTest extends PortFixture {
             }
         }
     }
+    /**
+     * A bottom end's vanishing-flow stream follows the amounts (the seed-236 world): 1 m3 of water carrying an 8e-24 m3
+     * pentane film draws the water's own density and viscosity to round-off over a 2 L line, not a half-and-half mix. The
+     * stream is half and half once each liquid fills half the line, and continuous on the way there.
+     */
+    @Test void aTraceFilmDoesNotTurnTheBottomStreamHalfOil(){
+        int n=mw.length-1,pentane=index("N-pentane");double t=298.15,p=250000,waterMoles=997/mw[water],line=.002;
+        double[] film=new double[n];film[pentane]=7e-20;
+        var filmed=model.state(t,p,film,new double[n],waterMoles,0,0);var clean=model.state(t,p,new double[n],new double[n],waterMoles,0,0);
+        assertTrue(FluidThermodynamics.holdsPhase(filmed,FluidThermodynamics.OIL)&&PhaseDraw.mixedLiquids(filmed,PassiveNetwork.PhasePort.LIQUID));
+        double oil=FluidThermodynamics.phaseVolume(filmed,FluidThermodynamics.OIL);assertTrue(oil<1e-22);
+        assertEquals(oil/line,PhaseDraw.mixedShares(filmed,line)[FluidThermodynamics.OIL],1e-12*oil/line);
+        double rho=PassiveStepSolver.endDensity(model,clean,PassiveNetwork.PhasePort.LIQUID,line);
+        assertEquals(rho,PassiveStepSolver.endDensity(model,filmed,PassiveNetwork.PhasePort.LIQUID,line),1e-12*rho);
+        var scratch=new com.wormzjl.icheme.science.fluid.transport.MixtureViscosity.Workspace();
+        double mu=model.phaseViscosity(clean,FluidThermodynamics.WATER,scratch,null);
+        assertEquals(mu,PassiveStepSolver.mixedViscosity(model,filmed,line,scratch),1e-12*mu);
+        double previous=0;
+        boolean half=false;
+        for(double moles:new double[]{1e-6,1e-3,.1,1,5,8,10,20,100}){
+            double[] layer=new double[n];layer[pentane]=moles;var state=model.state(t,p,layer,new double[n],waterMoles,0,0);
+            double share=PhaseDraw.mixedShares(state,line)[FluidThermodynamics.OIL],held=FluidThermodynamics.phaseVolume(state,FluidThermodynamics.OIL);
+            assertTrue(share>=previous&&share<=.5,"the oil share grows with the film and stops at half");
+            if(held>=line/2){assertEquals(.5,share);half=true;}else assertEquals(held/line,share,1e-12);
+            previous=share;
+        }
+        assertTrue(half,"the sweep reaches a film filling half the line");
+    }
+    /** A round vessel's bottom head weighs the solids its liquid carries, as the prismatic law's condensed mass does. */
+    @Test void aSlurryHeadWeighsItsSolids(){
+        var solids=new com.wormzjl.icheme.science.fluid.state.SolidInventory(List.of(new com.wormzjl.icheme.science.fluid.state.SolidInventory.Population(
+                model.solids.require("icheme:demo_particle"),com.wormzjl.icheme.science.fluid.state.ParticleSize.micrometres("100"),100)));
+        var state=waterUnderNitrogen(.5,101325).withSolids(solids);
+        var g=VesselGeometry.round(VesselGeometry.Form.SPHERE,Math.cbrt(6/Math.PI),0,0,0);
+        var inventory=new PassiveNetwork.Inventory(g.capacity(),PhaseLayout.totalAmounts(state),state.internalEnergy(),state.solids(),g.height(),false,g);
+        var node=new PassiveNetwork.Reservoir(1,0,state,PassiveNetwork.NodeKind.RESERVOIR,inventory);
+        double volume=state.waterVolume()+state.solidMoments().volume(),mass=model.phaseMass(state,FluidThermodynamics.WATER)+state.solidMoments().mass();
+        double head=PassiveStepSolver.portHead(model,node,PassiveNetwork.PhasePort.LIQUID,state);
+        assertEquals(PassiveStepSolver.GRAVITY*mass/volume*g.heightAt(volume),head,1e-9*head);
+        assertTrue(head>PassiveStepSolver.GRAVITY*model.phaseMass(state,FluidThermodynamics.WATER)/volume*g.heightAt(volume),"the solids' weight is in the head");
+    }
     @Test void aGasOnlyStateHasZeroLiquidStreamVolumes(){
         var gas=nitrogenAt(200000);
         assertEquals(0,FluidThermodynamics.phaseVolume(gas,FluidThermodynamics.OIL));

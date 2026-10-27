@@ -48,7 +48,9 @@ final class PhaseDraw {
     /** The phase a port draws at a vanishing flow: the first of its order {@code state} holds; -1 for a BULK end drawing the
      * bulk and for a state holding none of the three (then the port draws the bulk). The stream every reader of what a port
      * sends reads (a start flow's loss and velocity cap, a mover's suction, the mobility check): the priority stream's limit
-     * as the flow goes to zero. What stands in the port's connection is its {@link #fill} (owner decision D34). */
+     * as the flow goes to zero. What stands in the port's connection is its {@link #fill} (owner decision D34). A LIQUID
+     * port holding both liquids has no one leading phase (-1 too): every reader asks {@link #mixedLiquids} first and reads
+     * the {@link #mixedShares} stream there, never the bulk. */
     static int leading(FluidThermodynamics model,FluidThermodynamics.State state,PassiveNetwork.PhasePort port) {
         if(port==PassiveNetwork.PhasePort.LIQUID&&FluidThermodynamics.holdsPhase(state,OIL)&&FluidThermodynamics.holdsPhase(state,WATER))return -1;
         var order=order(model,state,port);if(order==null)return -1;
@@ -57,6 +59,23 @@ final class PhaseDraw {
     }
     static boolean mixedLiquids(FluidThermodynamics.State state,PassiveNetwork.PhasePort port){
         return port==PassiveNetwork.PhasePort.LIQUID&&FluidThermodynamics.holdsPhase(state,OIL)&&FluidThermodynamics.holdsPhase(state,WATER);
+    }
+    /**
+     * The volume shares (indexed by phase; the gas's 0) of the liquid a {@link #mixedLiquids} port draws at a vanishing
+     * flow: what first fills {@code volume} of its connection (decision D34's reference) under the equal-volume draw. The
+     * two liquids go in equal volumes until the smaller is spent and the larger takes the rest. When together they fill
+     * less than the connection, both go in whole. So the stream is half and half while each liquid fills half the
+     * connection, and it is continuous in either amount. Read as the rate's limit (always half and half), a 8.7e-24 m3 film
+     * over 1 m3 of water drew a stream half oil, and the junction it fed seeded far from what any step delivers (seed 236).
+     * Half and half when the connection has no volume.
+     */
+    static double[] mixedShares(FluidThermodynamics.State state,double volume){
+        double[] shares=new double[3];
+        if(!(volume>0)){shares[OIL]=shares[WATER]=.5;return shares;}
+        double oil=FluidThermodynamics.phaseVolume(state,OIL),water=FluidThermodynamics.phaseVolume(state,WATER);
+        double shared=Math.min(volume/2,Math.min(oil,water)),rest=volume-2*shared;
+        double o=shared+Math.min(oil-shared,rest),w=shared+Math.min(water-shared,rest-(o-shared)),total=o+w;
+        shares[OIL]=o/total;shares[WATER]=w/total;return shares;
     }
     /** Equal-volume column/sample, retaining the finite-inventory dilution of the existing column law. */
     static double[] fillMixed(FluidThermodynamics.State state,double volume,int ends){
