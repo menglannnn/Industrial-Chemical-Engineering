@@ -1,5 +1,7 @@
 # Client GUI: screens, drafts, presets and the dev-client check
 
+**Creative tab (commit `188fba66`, 2026-10-27):** all registered IChemE items are listed in the mod creative tab; the mod no longer injects items into vanilla Functional Blocks.
+
 **Process control (batch 2026-10-26-process-control, 0.14.1):** sensor rows and the Control Valve on the fluid screen; the contracts are in [process-control.md](process-control.md).
 
 `FluidDeviceScreen` shows cached sensor rows with pressure/temperature units, signed kg/s and local m³/s, and raw level metres/height percent with explicit overrange. Bare Control Valve says “Lacking components”; pressure/flow modules enable the corresponding target and mass/volume basis. Accepted opening and regulation/limit/conflict/signal status accompany the process view. `MenuData`/`LiveData` carry readings and `ValveData`; registry item IDs retain `pressure_control_valve` while its visible name is Control Valve. `InstrumentRenderer` renders the cached blank housings/connectors and placement ghosts without requesting live sensor data.

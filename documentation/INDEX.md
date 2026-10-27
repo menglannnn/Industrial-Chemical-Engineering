@@ -14,6 +14,7 @@ Status words:
 
 | Batch | Purpose | Status |
 |---|---|---|
+| [2026-10-27-creative-tab/](2026-10-27-creative-tab/README.md) | Keep IChemE items in the mod creative tab | Implemented 2026-10-27 |
 | [2026-10-26-v3-solver-performance/](2026-10-26-v3-solver-performance/README.md) | V3 distillation solver performance and aggressive warm-start path | Implemented 2026-10-27 |
 | [2026-10-27-column-sump/](2026-10-27-column-sump/README.md) | Distillation column sump sized from engineering references | Implemented 2026-10-27 (0.15.1) |
 | [2026-10-27-skirt-shadow/](2026-10-27-skirt-shadow/README.md) | Skylight on the floor inside vessel skirts | Implemented 2026-10-27 (0.15.1; GameTest fix 0.15.2) |
