@@ -4,7 +4,6 @@
     "shell": "icheme:block/painted_shell",
     "head": "icheme:block/painted_head",
     "support": "icheme:block/painted_support",
-    "skirt": "icheme:block/painted_support",
     "pipe": "icheme:block/equipment_pipe",
     "flange": "icheme:block/equipment_flange",
     "bolt": "icheme:block/equipment_bolt",

@@ -6,9 +6,8 @@ import java.util.List;
 
 /**
  * A vessel's paint (owner request 2026-10-16: "allow custom painting color for the metal parts while building them",
- * with a palette and a few good industrial defaults), as 0xRRGGBB: one colour for its body (shell, heads, skirt,
- * cladding, a unit's casings; the skirt since owner request 2026-10-27, "Remove the shadow in drum/vessel skirt") and one
- * for its structure (a skirt's base ring and anchor chairs, saddles, steelwork). Pipes, flanges, gratings, handrails, motors and
+ * with a palette and a few good industrial defaults), as 0xRRGGBB: one colour for its body (shell, heads, cladding, a
+ * unit's casings) and one for its structure (skirt, saddles, steelwork). Pipes, flanges, gratings, handrails, motors and
  * actuators keep their own colours ({@link Mesh.Material#channel()}). Chosen in the constructor and kept on every shell
  * cell; the client tints the light neutral sprites of the painted materials with it.
  */
@@ -37,7 +36,7 @@ public record Paint(int body, int structure) {
             new Swatch("7035", 0xCBD0CC), new Swatch("7001", 0x8A9597), new Swatch("7031", 0x5B686D), new Swatch("7016", 0x383E42),
             new Swatch("1023", 0xF7B500), new Swatch("2004", 0xE25303), new Swatch("3000", 0xA72920), new Swatch("3009", 0x642424),
             new Swatch("5015", 0x2271B3), new Swatch("5010", 0x0E4C92), new Swatch("6011", 0x587246), new Swatch("6005", 0x2F4538));
-    /** RAL 9006 white aluminium on RAL 7031 blue grey steel: an aluminium-painted vessel and skirt on blue grey steelwork. */
+    /** RAL 9006 white aluminium on RAL 7031 blue grey steel: an aluminium-painted vessel on a primed and painted skirt. */
     public static final Paint DEFAULT = new Paint(0xA1A1A0, 0x5B686D);
     /**
      * A laid line's paint when it has none (batch 2026-10-26-pipe-laying-system): bare steel, the look of every pipe

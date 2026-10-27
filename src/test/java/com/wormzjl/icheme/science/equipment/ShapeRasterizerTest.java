@@ -136,13 +136,12 @@ class ShapeRasterizerTest {
 
     @Test
     void partsCarryTheirMaterials() {
-        // Skirt row 0 (the skirt plate; base ring, chairs, floor plate and port sleeve; the bottom outlet with its flange and
-        // bolts leaving through its port on the lowest row: owner decision 2026-10-25, a lower skirt), the skirt row under
-        // the head seam (the plate, the head inside it, the band over the seam, the vents with their dark bores), a shell
-        // row, the top head with its nozzle. The plate is SKIRT, in the body's paint (owner request 2026-10-27).
+        // Skirt row 0 (base ring, chairs, floor plate, the bottom outlet with its flange and bolts leaving through its port
+        // on the lowest row: owner decision 2026-10-25, a lower skirt), the skirt row under the head seam (the head inside
+        // it, the band over the seam, the vents' dark bores), a shell row, the top head with its nozzle.
         var standing = drum(6, 10, Orientation.VERTICAL, Heading.NORTH, 3);
-        assertEquals(EnumSet.of(Material.SKIRT, Material.SUPPORT, Material.PIPE, Material.FLANGE, Material.BOLT), materials(standing, 0, 1));
-        assertEquals(EnumSet.of(Material.SKIRT, Material.SUPPORT, Material.HEAD, Material.FLANGE, Material.OPENING), materials(standing, 2, 3));
+        assertEquals(EnumSet.of(Material.SUPPORT, Material.PIPE, Material.FLANGE, Material.BOLT), materials(standing, 0, 1));
+        assertEquals(EnumSet.of(Material.SUPPORT, Material.HEAD, Material.FLANGE, Material.OPENING), materials(standing, 2, 3));
         assertEquals(Set.of(Material.SHELL), materials(standing, 5, 6));
         assertTrue(materials(standing, standing.sizeY() - 1, standing.sizeY()).containsAll(Set.of(Material.HEAD, Material.PIPE, Material.FLANGE)));
         // A lying drum's lowest row holds only its saddles.

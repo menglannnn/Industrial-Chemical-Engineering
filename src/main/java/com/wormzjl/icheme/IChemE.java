@@ -179,11 +179,11 @@ public final class IChemE {
         builder.pop();
         builder.push("equipment");
         EQUIPMENT_PRIMARY_COLOUR = builder
-                .comment("Primary colour of new equipment designs as #RRGGBB: shell, heads, skirts, cladding and unit casings.",
+                .comment("Primary colour of new equipment designs as #RRGGBB: shell, heads, cladding and unit casings.",
                         "Built-in: RAL 9006 white aluminium. The constructor's Paint page changes it per design.")
                 .define("primaryColour", Paint.hex(Paint.DEFAULT.body()), Paint::isHex);
         EQUIPMENT_SECONDARY_COLOUR = builder
-                .comment("Secondary colour of new equipment designs as #RRGGBB: skirt base rings, saddles and steelwork.",
+                .comment("Secondary colour of new equipment designs as #RRGGBB: skirts, saddles and steelwork.",
                         "Built-in: RAL 7031 blue grey.")
                 .define("secondaryColour", Paint.hex(Paint.DEFAULT.structure()), Paint::isHex);
         EQUIPMENT_SHEEN = builder
