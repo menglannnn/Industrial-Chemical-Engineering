@@ -36,6 +36,14 @@ final class ColumnPresentation {
     }
 
     static void queue(IPayloadContext context, BlockPos pos, long nonce, Runnable action) {
+        queue(context, pos, nonce, action, false);
+    }
+
+    static void queueImmediate(IPayloadContext context, BlockPos pos, long nonce, Runnable action) {
+        queue(context, pos, nonce, action, true);
+    }
+
+    private static void queue(IPayloadContext context, BlockPos pos, long nonce, Runnable action, boolean immediate) {
         if (!(context.player() instanceof ServerPlayer player)
                 || !(player.containerMenu instanceof ColumnCalculatorV3Menu menu) || !menu.blockPos().equals(pos)) return;
         var engine = FluidWorldAuthority.find(player.getServer());
@@ -61,7 +69,10 @@ final class ColumnPresentation {
             }
             return;
         }
-        if (!host.mailbox.submit(session, engine.orElseThrow().onlineTick(), action))
+        boolean accepted = immediate
+                ? host.mailbox.submitImmediate(session, engine.orElseThrow().onlineTick(), action)
+                : host.mailbox.submit(session, engine.orElseThrow().onlineTick(), action);
+        if (!accepted)
             session.rejection = new Rejection(pos, nonce, "A request is already awaiting the engine");
     }
 

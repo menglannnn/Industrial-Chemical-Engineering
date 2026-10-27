@@ -30,6 +30,12 @@ public final class PresentationMailbox<K> {
         subscribe(key, now);
         return pending.putIfAbsent(key, java.util.Objects.requireNonNull(action)) == null;
     }
+    /** Queues a command for the next engine tick. The command remains owner-thread serialized and coalesced. */
+    public boolean submitImmediate(K key, long now, Runnable action) {
+        boolean accepted = submit(key, now, action);
+        if (accepted) requestImmediate();
+        return accepted;
+    }
 
     public void remove(K key) {
         owned(); viewers.remove(key); pending.remove(key);

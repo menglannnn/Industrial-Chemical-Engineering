@@ -39,4 +39,10 @@ class PresentationMailboxTest {
         assertEquals(List.of("view-a"), log);
         assertEquals(100, box.nextTick());
     }
+    @Test void immediateCommandRunsAtTheNextEngineTick() {
+        var box = new PresentationMailbox<String>(); var log = new ArrayList<String>();
+        assertTrue(box.submitImmediate("a", 124, () -> log.add("input-a")));
+        box.tick(124, key -> true, key -> log.add("view-" + key));
+        assertEquals(List.of("input-a", "view-a"), log);
+    }
 }

@@ -115,7 +115,8 @@ public final class ColumnV3Network {
     }
 
     private static void handleCalculate(CalculatePayload payload, IPayloadContext context) {
-        ColumnPresentation.queue(context, payload.blockPos(), payload.clientNonce(), () -> applyCalculate(payload, context));
+        ColumnPresentation.queueImmediate(context, payload.blockPos(), payload.clientNonce(),
+                () -> applyCalculate(payload, context));
     }
 
     private static void applyCalculate(CalculatePayload payload, IPayloadContext context) {
