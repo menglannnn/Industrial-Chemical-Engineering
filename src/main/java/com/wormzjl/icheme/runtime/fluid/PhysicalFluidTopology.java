@@ -12,10 +12,22 @@ public final class PhysicalFluidTopology {
         final int x,y,z;
         Direction(int x,int y,int z){this.x=x;this.y=y;this.z=z;}
     }
-    public record Position(String dimension,int x,int y,int z) {
-        public Position {Objects.requireNonNull(dimension);if(dimension.isBlank())throw new IllegalArgumentException("Missing dimension");}
-        Position offset(Direction d){return new Position(dimension,Math.addExact(x,d.x),Math.addExact(y,d.y),Math.addExact(z,d.z));}
+    /**
+     * A device's place: its block, and for a pipe in a rack its lane (batch 2026-10-26-pipe-laying-system, plan 5.1): 0
+     * for the block itself, else one more than the lane's option in its cell, 1 to {@link #RACK_PLACES} (RACK_LAYERS_PLAN I1:
+     * a tier lane's first position and side level, or a crossing level). Lanes in one rack cell take different options, so
+     * each has its own place.
+     */
+    public record Position(String dimension,int x,int y,int z,int lane) {
+        public Position(String dimension,int x,int y,int z){this(dimension,x,y,z,0);}
+        public Position {Objects.requireNonNull(dimension);if(dimension.isBlank())throw new IllegalArgumentException("Missing dimension");if(lane<0||lane>RACK_PLACES)throw new IllegalArgumentException("Invalid rack lane "+lane);}
+        Position offset(Direction d){return new Position(dimension,Math.addExact(x,d.x),Math.addExact(y,d.y),Math.addExact(z,d.z),lane);}
+        public Position withLane(int value){return value==lane?this:new Position(dimension,x,y,z,value);}
     }
+    /** A rack lane's places (options) in its cell, and its widest width in positions (RACK_LAYERS_PLAN, RD10). */
+    public static final int RACK_PLACES=14,RACK_WIDTH=4;
+    /** Whether a rack lane of number lane (option + 1) may be slots positions wide: a tier lane within its four positions, a crossing one wide. */
+    public static boolean laneFits(int lane,int slots){return lane>=1&&lane<=RACK_PLACES&&slots>=1&&slots<=RACK_WIDTH&&(lane<=12?(lane-1)%4+slots<=4:slots==1);}
     /** A reservoir's phase outlet, or a mover's explicitly directed process connection. Stable checkpoint codes. */
     public enum ConnectionRole {
         VESSEL(0),SUCTION(1),DISCHARGE(2);
@@ -43,13 +55,27 @@ public final class PhysicalFluidTopology {
     public static FlowControl.Mover defaultMover(TopologyCompiler.Kind kind){return switch(kind){case PUMP->new FlowControl.Pump(.01,500000);case COMPRESSOR->new FlowControl.Compressor(.05,3);default->throw new IllegalArgumentException("Not a mover");};}
     /** The most ports a vessel registers. */
     public static final int MAXIMUM_PORTS=64;
+    /** Every face, in {@link Direction} order: the joints of a hand-placed pipe and of every device that is not a laid pipe. */
+    public static final int ALL_FACES=63;
     /**
      * A registered device. One block occupies {@code position} and meets its neighbours through its faces; a vessel with
      * {@code ports} occupies its node cell {@code position} (where its level head is measured from, its lowest inside
      * cell, or a mover's suction cell) and its ports' cells, and meets pipes only at its ports.
+     *
+     * <p>{@code joints} (batch 2026-10-26-pipe-laying-system): the faces, a bit per {@link Direction} ordinal, a pipe may
+     * connect through. A laid pipe has the faces its path uses, so a line laid beside another does not join it; every other
+     * device has {@link #ALL_FACES}, the behaviour before the field existed.</p>
+     *
+     * <p>{@code slots}: a rack lane's width in positions; 0 for every other device. A lane is a plain laid pipe with at most
+     * two joints: a rack carries no junction, fitting or gauge (plan 5.2). {@code points}: where a lane meets each of its
+     * joint faces, ten bits per face as the transition pipes' offsets pack them (two signed five-bit steps of 1/32 m along
+     * the face's in-plane axes); 0 for every other device. Two lanes in neighbouring cells meet where their points on the
+     * shared face coincide (RACK_LAYERS_PLAN I2), whatever their racks' facings.</p>
      */
     public record Device(long id,Position position,TopologyCompiler.Kind kind,Direction facing,
-                         PipeResistance.Geometry geometry,FlowControl control,List<Port> ports,boolean generatorEnabled,Cutoff cutoff,boolean inlineFilter) {
+                         PipeResistance.Geometry geometry,FlowControl control,List<Port> ports,boolean generatorEnabled,Cutoff cutoff,boolean inlineFilter,int joints,int slots,long points) {
+        public Device(long id,Position position,TopologyCompiler.Kind kind,Direction facing,PipeResistance.Geometry geometry,FlowControl control,List<Port> ports,boolean generatorEnabled,Cutoff cutoff,boolean inlineFilter,int joints){this(id,position,kind,facing,geometry,control,ports,generatorEnabled,cutoff,inlineFilter,joints,0,0);}
+        public Device(long id,Position position,TopologyCompiler.Kind kind,Direction facing,PipeResistance.Geometry geometry,FlowControl control,List<Port> ports,boolean generatorEnabled,Cutoff cutoff,boolean inlineFilter){this(id,position,kind,facing,geometry,control,ports,generatorEnabled,cutoff,inlineFilter,ALL_FACES);}
         public Device(long id,Position position,TopologyCompiler.Kind kind,Direction facing,PipeResistance.Geometry geometry,FlowControl control,List<Port> ports,boolean generatorEnabled,Cutoff cutoff){this(id,position,kind,facing,geometry,control,ports,generatorEnabled,cutoff,false);}
         public Device(long id,Position position,TopologyCompiler.Kind kind,Direction facing,PipeResistance.Geometry geometry,FlowControl control,List<Port> ports,boolean generatorEnabled){this(id,position,kind,facing,geometry,control,ports,generatorEnabled,Cutoff.NONE);}
         /** Authoring convenience; world placement explicitly creates generators switched off. */
@@ -59,6 +85,11 @@ public final class PhysicalFluidTopology {
             if(id<=0)throw new IllegalArgumentException("Physical identities must be positive");
             Objects.requireNonNull(position);Objects.requireNonNull(kind);Objects.requireNonNull(facing);Objects.requireNonNull(geometry);Objects.requireNonNull(control);
             Objects.requireNonNull(cutoff);
+            if((joints&~ALL_FACES)!=0)throw new IllegalArgumentException("Invalid pipe joints "+joints);
+            if(joints!=ALL_FACES&&(kind!=TopologyCompiler.Kind.PIPE||!ports.isEmpty()))throw new IllegalArgumentException("Only a laid pipe has explicit joints");
+            if(position.lane()==0?slots!=0||points!=0:!laneFits(position.lane(),slots)||(points>>>60)!=0)throw new IllegalArgumentException("Invalid rack lane "+position.lane()+" of "+slots+" positions");
+            if(slots>0&&(joints==ALL_FACES||Integer.bitCount(joints)>2||cutoff!=Cutoff.NONE||inlineFilter||!(control instanceof FlowControl.Passive)))
+                throw new IllegalArgumentException("A rack lane is a plain laid pipe with at most two joints");
             if(inlineFilter&&(kind!=TopologyCompiler.Kind.PIPE||cutoff!=Cutoff.NONE||!(control instanceof FlowControl.Passive)))throw new IllegalArgumentException("Invalid pipe filter accessory");
             if(kind!=TopologyCompiler.Kind.PIPE&&cutoff!=Cutoff.NONE)throw new IllegalArgumentException("Only a pipe has a cutoff accessory");
             boolean valid=switch(kind) {case PUMP->control instanceof FlowControl.Pump;case COMPRESSOR->control instanceof FlowControl.Compressor;case VALVE->control instanceof FlowControl.Valve;case PIPE->control instanceof FlowControl.Passive||control instanceof FlowControl.Valve||control instanceof FlowControl.Mover;default->control instanceof FlowControl.Passive;};
@@ -98,12 +129,19 @@ public final class PhysicalFluidTopology {
         }
         boolean actuator(){var hydraulic=hydraulicKind();return hydraulic==TopologyCompiler.Kind.PUMP||hydraulic==TopologyCompiler.Kind.COMPRESSOR||hydraulic==TopologyCompiler.Kind.VALVE;}
         /** Copy edits preserve accessories, ports and the independent generator switch. */
-        public Device withGeometry(PipeResistance.Geometry value){return new Device(id,position,kind,facing,value,control,ports,generatorEnabled,cutoff,inlineFilter);}
-        public Device withFacing(Direction value){return new Device(id,position,kind,value,geometry,control,ports,generatorEnabled,cutoff,inlineFilter);}
-        public Device withCutoff(Direction axis,Cutoff value){return new Device(id,position,kind,axis,geometry,control,ports,generatorEnabled,value,inlineFilter);}
-        public Device withInlineFilter(Direction axis,boolean installed){return new Device(id,position,kind,axis,geometry,control,ports,generatorEnabled,cutoff,installed);}
+        public Device withGeometry(PipeResistance.Geometry value){return new Device(id,position,kind,facing,value,control,ports,generatorEnabled,cutoff,inlineFilter,joints,slots,points);}
+        public Device withFacing(Direction value){return new Device(id,position,kind,value,geometry,control,ports,generatorEnabled,cutoff,inlineFilter,joints,slots,points);}
+        public Device withControl(FlowControl value){return new Device(id,position,kind,facing,geometry,value,ports,generatorEnabled,cutoff,inlineFilter,joints,slots,points);}
+        public Device withCutoff(Direction axis,Cutoff value){return new Device(id,position,kind,axis,geometry,control,ports,generatorEnabled,value,inlineFilter,joints,slots,points);}
+        public Device withInlineFilter(Direction axis,boolean installed){return new Device(id,position,kind,axis,geometry,control,ports,generatorEnabled,cutoff,installed,joints,slots,points);}
         /** The same device standing at {@code value} with {@code nozzles}: a layout refresh rebuilding a vessel or a machine (decision D7). */
-        public Device withPlacement(Position value,List<Port> nozzles){return new Device(id,value,kind,facing,geometry,control,nozzles,generatorEnabled,cutoff,inlineFilter);}
+        public Device withPlacement(Position value,List<Port> nozzles){return new Device(id,value,kind,facing,geometry,control,nozzles,generatorEnabled,cutoff,inlineFilter,joints,slots,points);}
+        /** The same pipe with another joint set: a line laid to one of its faces (a tee or an extension). */
+        public Device withJoints(int value){return new Device(id,position,kind,facing,geometry,control,ports,generatorEnabled,cutoff,inlineFilter,value,slots,points);}
+        /** Whether a pipe may connect through {@code direction} at all, whatever its fitting or switch. */
+        public boolean jointAt(Direction direction){return (joints>>direction.ordinal()&1)!=0;}
+        /** A lane's point on face direction (see points). */
+        public int point(Direction direction){return (int)(points>>>10*direction.ordinal()&1023);}
         /** Every cell the registry finds this device at: its own, and its ports'. */
         public Set<Position> cells() {
             var cells=new LinkedHashSet<Position>();cells.add(position);for(var port:ports)cells.add(port.cell);return cells;
@@ -133,13 +171,29 @@ public final class PhysicalFluidTopology {
          * the other there and at least one of them is a pipe block. Two pieces of equipment side by side (a tank, generator,
          * void, pump, compressor, valve or filter against another) exchange nothing.
          */
-        boolean joins(Device other,Position from,Direction direction){return meets(from,direction)&&other.meets(from.offset(direction),opposite(direction))&&(kind==TopologyCompiler.Kind.PIPE||other.kind==TopologyCompiler.Kind.PIPE);}
+        boolean joins(Device other,Position from,Direction direction) {
+            // Across a rack face (see across) the other device stands on another lane of the next cell: it meets there.
+            var to=from.offset(direction);if(to.lane()!=other.position.lane())to=other.position;
+            return meets(from,direction)&&other.meets(to,opposite(direction))&&(kind==TopologyCompiler.Kind.PIPE||other.kind==TopologyCompiler.Kind.PIPE)&&lanesMeet(other,direction);
+        }
+        /**
+         * Two lanes meet where their points on the shared face coincide. A lane meets a plain cell only through a transition pipe there (plan
+         * 5.2 and 6): a laid plain pipe of at most two joints and no fitting, whose run can bend to the lane's off-centre
+         * point.
+         */
+        private boolean lanesMeet(Device other,Direction direction) {
+            if(slots==0&&other.slots==0)return true;
+            if(slots>0&&other.slots>0)return point(direction)==other.point(opposite(direction));
+            return (slots==0?this:other).transitionPipe();
+        }
+        /** A pipe that may meet a rack lane: laid, of at most two joints, plain and without fittings. */
+        public boolean transitionPipe(){return kind==TopologyCompiler.Kind.PIPE&&ports.isEmpty()&&slots==0&&joints!=ALL_FACES&&Integer.bitCount(joints)<=2&&!actuator()&&!filter()&&cutoff==Cutoff.NONE;}
         /** A generator or a void (owner decision D17): islands meet at it without being joined by it. */
         boolean fixed(){return TopologyCompiler.fixed(kind);}
         /** Off closes a generator's hydraulic contacts; its registered identity and fixed source specification stay put. */
         boolean connects(Direction direction){return generatorEnabled&&cutoff!=Cutoff.CLOSED&&mechanicallyConnects(direction);}
         /** Fitting joints and bore inheritance remain axial even when hydraulic contacts are closed. */
-        public boolean mechanicallyConnects(Direction direction){return !actuator()&&!filter()&&cutoff==Cutoff.NONE||direction.x*facing.x+direction.y*facing.y+direction.z*facing.z!=0;}
+        public boolean mechanicallyConnects(Direction direction){return jointAt(direction)&&(!actuator()&&!filter()&&cutoff==Cutoff.NONE||direction.x*facing.x+direction.y*facing.y+direction.z*facing.z!=0);}
         /** The driven side is the actual discharge nozzle, independent of the node's position and the model's heading. */
         boolean outletAt(Position cell,Direction face) {
             if(!actuator())return false;
@@ -178,6 +232,28 @@ public final class PhysicalFluidTopology {
             var faces=new HashMap<Long,Map<Long,Direction>>();tankFaces.forEach((id,byPipe)->faces.put(id,Map.copyOf(byPipe)));tankFaces=Map.copyOf(faces);
         }
     }
+    /**
+     * What {@code from} meets out of {@code cell} towards {@code direction} (batch 2026-10-26-pipe-laying-system, plan 7):
+     * for a lane, the plain device in the next cell or the lane there whose point on the shared face is its own; for any
+     * other device, the device in the next cell; else, across a rack face, the lane of a rack cell a plain pipe meets, the
+     * one jointed back through this face (at most one, plan 5.2). Null when none; {@link Device#joins} decides whether the
+     * two join. Where no lane is near, it is the plain lookup of the next cell.
+     */
+    static <R> R across(java.util.function.Function<Position,R> at,java.util.function.Function<R,Device> device,Device from,Position cell,Direction direction) {
+        var next=cell.offset(direction);var back=opposite(direction);
+        if(next.lane()!=0) {
+            // A lane: the plain device in the next cell, or the lane there whose point on the shared face is this lane's.
+            var plain=at.apply(next.withLane(0));if(plain!=null)return plain;
+            int point=from.point(direction);
+            for(int lane=1;lane<=RACK_PLACES;lane++){var candidate=at.apply(next.withLane(lane));if(candidate!=null&&device.apply(candidate).jointAt(back)&&device.apply(candidate).point(back)==point)return candidate;}
+            return null;
+        }
+        var found=at.apply(next);
+        if(found!=null)return found;
+        if(from.kind!=TopologyCompiler.Kind.PIPE||!from.ports.isEmpty())return null;
+        for(int lane=1;lane<=RACK_PLACES;lane++){var candidate=at.apply(next.withLane(lane));if(candidate!=null&&device.apply(candidate).jointAt(back))return candidate;}
+        return null;
+    }
     private record Point(double x,double y,double z) {}
     public static long filterIdentity(long physicalId){return Long.MIN_VALUE+physicalId;}
     public static Compiled compile(Collection<Device> devices,Map<Long,PassiveNetwork.Reservoir> boundaryStates) {
@@ -204,8 +280,9 @@ public final class PhysicalFluidTopology {
         var linkDirections=new HashMap<Long,Direction>();
         for(var d:physical.values())for(var contact:d.contacts()) {
             var direction=contact.direction();var next=contact.cell().offset(direction);
-            var other=positions.get(next);
+            var other=across(positions::get,x->x,d,contact.cell(),direction);
             if(other==null||other.id<=d.id||!d.joins(other,contact.cell(),direction))continue;
+            if(next.lane()!=other.position.lane())next=other.position;
             if(d.boundary()||other.boundary()) {
                 var owner=d.boundary()?other:d;links.add(new TopologyCompiler.Link(linkId,d.id,other.id,scaled(owner.geometry,.5)));
                 linkDirections.put(linkId,direction);

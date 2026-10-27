@@ -1,0 +1,3 @@
+{Expected:"joints 48 paint #2271B3 secondary #A72920",Saved:{FluidIdentity:10L,Joints:48b,Paint:2257331,Secondary:10955040}}
+{Expected:"joints 48 paint #2271B3 secondary bare",Saved:{FluidIdentity:11L,Joints:48b,Paint:2257331,Secondary:-1}}
+{Expected:"joints 63 paint bare secondary #A72920",Saved:{FluidIdentity:12L,Secondary:10955040}}

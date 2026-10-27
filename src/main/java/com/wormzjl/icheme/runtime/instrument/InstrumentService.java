@@ -103,7 +103,7 @@ public final class InstrumentService {
         }
     }
     private void editSensorValve(WorldTopologyLedger.Registration record,com.wormzjl.icheme.science.fluid.network.FlowControl.ControlValve control){
-        var d=record.device();world.edit(d.id(),record.revision(),new PhysicalFluidTopology.Device(d.id(),d.position(),d.kind(),d.facing(),d.geometry(),control,d.ports(),d.generatorEnabled(),d.cutoff(),d.inlineFilter()),record.spec());
+        var d=record.device();world.edit(d.id(),record.revision(),d.withControl(control),record.spec());
     }
     private void recoverSensors(long host,ServerPlayer player,Level level,BlockPos position,boolean drop){for(var sensor:store.sensors(host))if(store.removeSensor(sensor.key(),sensor.instance())!=null){sensorSamples.remove(sensor.instance());if(sensor.kind()==Sensor.Kind.FLOW)world.forgetFlowmeter(host);if(drop)refund(player,level,position,sensorItem(sensor.kind()));}}
     private void recoverInvalidSensors(){for(var sensor:store.allSensors()){

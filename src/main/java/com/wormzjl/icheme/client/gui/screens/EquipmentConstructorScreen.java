@@ -3,6 +3,7 @@ package com.wormzjl.icheme.client.gui.screens;
 import com.wormzjl.icheme.IChemE;
 import com.wormzjl.icheme.client.EquipmentGhost;
 import com.wormzjl.icheme.client.gui.common.ColumnDiagram;
+import com.wormzjl.icheme.client.gui.common.PaintSwatch;
 import com.wormzjl.icheme.client.gui.common.ProcessUi;
 import com.wormzjl.icheme.network.EquipmentNetwork;
 import com.wormzjl.icheme.science.equipment.ColumnTrays;
@@ -16,11 +17,9 @@ import com.wormzjl.icheme.world.level.block.EquipmentStructure;
 import com.wormzjl.icheme.world.level.block.entity.EquipmentConstructorBlockEntity;
 import com.wormzjl.icheme.world.level.block.entity.EquipmentConstructorBlockEntity.Design;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.components.AbstractButton;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.Tooltip;
-import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -56,7 +55,7 @@ public final class EquipmentConstructorScreen extends Screen {
     }
 
     /** The paint page's palette: two rows of eight swatches across the panel. */
-    private static final int SWATCH = 19, SWATCH_GAP = 4, SWATCHES_PER_ROW = 8;
+    private static final int SWATCHES_PER_ROW = 8;
     private static final String PAINT_KEY = "gui.icheme.paint.";
 
     /** Panel layout in GUI pixels, top-down, so it fits a 240-pixel-high GUI (854×480 at scale 2). */
@@ -350,8 +349,8 @@ public final class EquipmentConstructorScreen extends Screen {
             }).bounds(PANEL - 80, TOP + (1 + c) * ROW, 74, 16).tooltip(Tooltip.create(hint(1 + c))).build());
         }
         for (int i = 0; i < Paint.PALETTE.size(); i++) {
-            int x = 8 + i % SWATCHES_PER_ROW * (SWATCH + SWATCH_GAP), y = TOP + (3 + i / SWATCHES_PER_ROW) * ROW;
-            addRenderableWidget(new SwatchButton(x, y, Paint.PALETTE.get(i)));
+            int x = 8 + i % SWATCHES_PER_ROW * (PaintSwatch.WIDTH + PaintSwatch.GAP), y = TOP + (3 + i / SWATCHES_PER_ROW) * ROW;
+            addRenderableWidget(new PaintSwatch(x, y, Paint.PALETTE.get(i), () -> paint.colour(channel), this::colour));
         }
         custom = new EditBox(font, PANEL - 80, TOP + 5 * ROW, 74, 16, Component.translatable(KEY + "custom"));
         custom.setMaxLength(7);
@@ -383,37 +382,6 @@ public final class EquipmentConstructorScreen extends Screen {
     private static Component colourName(int rgb) {
         var swatch = Paint.swatch(rgb);
         return swatch != null ? Component.literal("RAL " + swatch.ral()) : Component.literal(Paint.hex(rgb));
-    }
-
-    /** A palette colour: a filled square, outlined in white when it is the edited channel's colour. */
-    private final class SwatchButton extends AbstractButton {
-        private final Paint.Swatch swatch;
-
-        SwatchButton(int x, int y, Paint.Swatch swatch) {
-            super(x, y, SWATCH, 16, Component.translatable(PAINT_KEY + swatch.key()));
-            this.swatch = swatch;
-            setTooltip(Tooltip.create(Component.translatable(KEY + "paint.swatch", swatch.ral(), Component.translatable(PAINT_KEY + swatch.key()))));
-        }
-
-        @Override
-        public void onPress() {
-            colour(swatch.rgb());
-        }
-
-        @Override
-        protected void renderWidget(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-            boolean chosen = paint.colour(channel) == swatch.rgb();
-            int x0 = getX(), y0 = getY(), x1 = x0 + width, y1 = y0 + height;
-            g.fill(x0, y0, x1, y1, chosen ? 0xFFFFFFFF : isHoveredOrFocused() ? ProcessUi.TEXT : ProcessUi.LINE);
-            if (chosen) g.fill(x0 + 1, y0 + 1, x1 - 1, y1 - 1, 0xFF000000);
-            int inset = chosen ? 2 : 1;
-            g.fill(x0 + inset, y0 + inset, x1 - inset, y1 - inset, 0xFF000000 | swatch.rgb());
-        }
-
-        @Override
-        protected void updateWidgetNarration(NarrationElementOutput output) {
-            defaultButtonNarrationText(output);
-        }
     }
 
     /**

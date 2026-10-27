@@ -83,5 +83,5 @@ CLAUDE.md
 /examples/crude-assays/source-quality.json
 /examples/crude-assays/test_quality.py
 
-# Agent scratch outputs
+# Scratch output (owner rule: <repo root>/tmp/<name>/, indexed in tmp/INDEX.md)
 /tmp/

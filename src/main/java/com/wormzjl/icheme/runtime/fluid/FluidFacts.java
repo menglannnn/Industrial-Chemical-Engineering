@@ -37,8 +37,10 @@ import java.util.function.Function;
  * list of at most one.</p>
  */
 final class FluidFacts {
-    static final int SCHEMA=2;
-    /** Renamed or removed enum constants, per enum: the saved name to the current one. None at schema 1. */
+    /** 1: the 0.13.0 records. 2 (batch 2026-10-26-pipe-laying-system): a registration's {@code joints}, a rack lane's width and face points, a position's rack lane.
+     *  3 (batch 2026-10-26-process-control): a device spec's vessel geometry, the {@code control_valve} control. */
+    static final int SCHEMA=3;
+    /** Renamed or removed enum constants, per enum: the saved name to the current one. None at schema 3. */
     private static final Map<Class<?>,Map<String,String>> ALIASES=Map.of();
     private static final int MAXIMUM_FIELDS=256,MAXIMUM_ITEMS=1<<22,MAXIMUM_TEXTS=1<<20,MAXIMUM_ARRAY=4096;
     /** The cadence an island rebuilt from facts starts at (ticks): the shortest the clock allows, as after a merge. */
@@ -138,10 +140,11 @@ final class FluidFacts {
     }
     private static void uuid(Fields f,UUID id){f.record(u->u.i64(id.getMostSignificantBits()).i64(id.getLeastSignificantBits()));}
     private static UUID uuid(Record r){return r.record(null,u->new UUID(u.i64(0),u.i64(0)));}
-    private static void position(Fields f,PhysicalFluidTopology.Position p){f.record(q->q.text(p.dimension()).i32(p.x()).i32(p.y()).i32(p.z()));}
+    /** A rack lane is written only when there is one: a block's position keeps its schema-1 record. */
+    private static void position(Fields f,PhysicalFluidTopology.Position p){f.record(q->{q.text(p.dimension()).i32(p.x()).i32(p.y()).i32(p.z());if(p.lane()!=0)q.i32(p.lane());});}
     private static PhysicalFluidTopology.Position position(Record r) {
-        return r.record(null,q->{var dimension=q.text("");int x=q.i32(0),y=q.i32(0),z=q.i32(0);
-            try{return new PhysicalFluidTopology.Position(dimension,x,y,z);}catch(IllegalArgumentException invalid){throw q.invalid(invalid.getMessage());}});
+        return r.record(null,q->{var dimension=q.text("");int x=q.i32(0),y=q.i32(0),z=q.i32(0),lane=q.i32(0);
+            try{return new PhysicalFluidTopology.Position(dimension,x,y,z,lane);}catch(IllegalArgumentException invalid){throw q.invalid(invalid.getMessage());}});
     }
     private static <T> T required(T value,Record r,String what){if(value==null)throw r.invalid("missing "+what);return value;}
     private static <T> T valid(Record r,String what,java.util.function.Supplier<T> build) {
@@ -214,7 +217,7 @@ final class FluidFacts {
                 .record(q->q.f64(s.volume()).f64(s.temperature()).f64(s.pressure()).doubles(s.composition())
                         .record(feed->feed.f64(s.solids().volumeFraction()).list(s.solids().grades(),(e,grade)->e.text(grade.material()).text(grade.size().metres()).f64(grade.massShare())))
                         .f64(s.levelHeight()).bool(s.open()).record(shape->geometry(shape,s.geometry())))
-                .count(r.revision());
+                .count(r.revision()).count(d.joints()).count(d.slots()).count(d.points());
     }
     private static WorldTopologyLedger.Registration registration(Record f) {
         long id=f.count(0);var position=position(f);
@@ -232,8 +235,12 @@ final class FluidFacts {
             var shape=q.record(com.wormzjl.icheme.science.fluid.network.VesselGeometry.prism(volume,levelHeight),FluidFacts::geometry);
             required(composition,q,"composition");return valid(q,"device spec",()->new FluidDeviceSpec(volume,temperature,pressure,composition,feed,levelHeight,open,shape));});
         long revision=f.count(0);
+        // Schema 2: a record written before joints existed connects through every face, as every pipe did then.
+        long joints=f.count(PhysicalFluidTopology.ALL_FACES);if(joints>PhysicalFluidTopology.ALL_FACES)throw f.invalid("joints "+joints);
+        long slots=f.count(0);if(slots>PhysicalFluidTopology.RACK_WIDTH)throw f.invalid("lane width "+slots);
+        long points=f.count(0);if(points>>>60!=0)throw f.invalid("lane points "+points);
         required(position,f,"device position");required(kind,f,"device kind");required(facing,f,"device facing");required(geometry,f,"device geometry");required(spec,f,"device spec");
-        return valid(f,"registration "+id,()->new WorldTopologyLedger.Registration(new PhysicalFluidTopology.Device(id,position,kind,facing,geometry,control,ports,generatorEnabled,cutoff,filter),spec,revision));
+        return valid(f,"registration "+id,()->new WorldTopologyLedger.Registration(new PhysicalFluidTopology.Device(id,position,kind,facing,geometry,control,ports,generatorEnabled,cutoff,filter,(int)joints,(int)slots,points),spec,revision));
     }
     private static void geometry(Fields f,com.wormzjl.icheme.science.fluid.network.VesselGeometry g){f.name(g.form()).f64(g.capacity()).f64(g.height()).f64(g.diameter()).f64(g.length()).f64(g.bootDiameter()).f64(g.bootLength());}
     private static com.wormzjl.icheme.science.fluid.network.VesselGeometry geometry(Record f){var form=f.name(com.wormzjl.icheme.science.fluid.network.VesselGeometry.Form.class,null);double capacity=f.f64(0),height=f.f64(0),d=f.f64(0),l=f.f64(0),bd=f.f64(0),bl=f.f64(0);return valid(f,"vessel geometry",()->new com.wormzjl.icheme.science.fluid.network.VesselGeometry(form,capacity,height,d,l,bd,bl));}

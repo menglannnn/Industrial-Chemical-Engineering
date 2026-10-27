@@ -95,24 +95,130 @@ class LineGeometryTest {
                             // A ball corner (no room for a bend) is open inside by design: its arms end in the ball.
                             if ((faces[0] ^ 1) != faces[1] && LineGeometry.bend(LineGeometry.fit(LineGeometry.end(key, faces[0], drawn), room),
                                     LineGeometry.fit(LineGeometry.end(key, faces[1], drawn), room), drawn) == 0) continue;
-                            var edges = new HashMap<String, Integer>();
-                            var ends = new HashMap<String, double[][]>();
-                            for (var facet : LineGeometry.mesh(key).facets()) {
-                                var p = facet.positions();
-                                for (int i = 0; i < p.size(); i++) {
-                                    double[] a = p.get(i), b = p.get((i + 1) % p.size());
-                                    String ka = round(a), kb = round(b), edge = ka.compareTo(kb) < 0 ? ka + "|" + kb : kb + "|" + ka;
-                                    edges.merge(edge, 1, Integer::sum);
-                                    ends.put(edge, new double[][]{a, b});
-                                }
-                            }
-                            for (var entry : edges.entrySet()) {
-                                if (entry.getValue() == 2) continue;
-                                assertEquals(1, entry.getValue(), key + " edge used " + entry.getValue() + " times");
-                                double[][] e = ends.get(entry.getKey());
-                                assertTrue(onFacePlane(e[0]) && onFacePlane(e[1]), key + " open edge off the face planes at " + round(e[0]));
-                            }
+                            assertWatertight(key);
                         }
+    }
+
+    /** Every edge is shared by two facets, except the rims left open on a face plane where the next block continues. */
+    private static void assertWatertight(Key key) {
+        var edges = new HashMap<String, Integer>();
+        var ends = new HashMap<String, double[][]>();
+        for (var facet : LineGeometry.mesh(key).facets()) {
+            var p = facet.positions();
+            for (int i = 0; i < p.size(); i++) {
+                double[] a = p.get(i), b = p.get((i + 1) % p.size());
+                String ka = round(a), kb = round(b), edge = ka.compareTo(kb) < 0 ? ka + "|" + kb : kb + "|" + ka;
+                edges.merge(edge, 1, Integer::sum);
+                ends.put(edge, new double[][]{a, b});
+            }
+        }
+        for (var entry : edges.entrySet()) {
+            if (entry.getValue() == 2) continue;
+            assertEquals(1, entry.getValue(), key + " edge used " + entry.getValue() + " times");
+            double[][] e = ends.get(entry.getKey());
+            assertTrue(onFacePlane(e[0]) && onFacePlane(e[1]), key + " open edge off the face planes at " + round(e[0]));
+        }
+    }
+
+    /** The line sizes the transition keys use: each rack width's largest line, the largest resting four-position line, and the largest lowered one. */
+    private static final int[] LANE_CODES = {11, 23, 35, 36, 47};
+
+    /**
+     * Every point off its face's centre where a lane of size {@code code} meets rack face {@code face}, as packed offsets:
+     * over every facing and shape a rack cell takes, every option, and every pair of arms the cell takes alone.
+     */
+    private static java.util.TreeSet<Integer> lanePoints(int face, int code) {
+        var out = new java.util.TreeSet<Integer>();
+        double outside = PipeSizes.outsideOf(code);
+        for (int facing = 2; facing < 6; facing++)
+            for (int corner = RackGeometry.STRAIGHT; corner <= RackGeometry.TEE; corner++) {
+                var rack = new RackGeometry.Rack(facing, corner);
+                for (int option = 0; option < RackGeometry.OPTIONS; option++)
+                    for (int a = 0; a < 6; a++) {
+                        int arms = 1 << face | 1 << a;
+                        if (a == face) continue;
+                        int width = RackGeometry.width(outside);
+                        if (!RackGeometry.takes(option, width)) continue;
+                        var lane = new RackGeometry.Lane(option, width, arms, arms, code);
+                        if (!RackGeometry.fits(rack, List.of(), lane)) continue;
+                        int point = RackGeometry.point(rack, option, width, outside, face);
+                        if (point != 0) out.add(point);
+                    }
+            }
+        return out;
+    }
+
+    /**
+     * Transition pipes (batch 2026-10-26-pipe-laying-system, plan 6; RACK_LAYERS_PLAN I2): beside every point off its
+     * face's centre where a lane meets a rack face, at each lane size and the smallest line, on to the opposite face,
+     * round to each adjacent one, or a dead end; between that point and every point a lane of its size meets in a second
+     * rack, opposite and above; and from a flanged off-centre point, as an off-centre nozzle's would be.
+     */
+    private static List<Key> transitions() {
+        var keys = new ArrayList<Key>();
+        int small = PipeSizes.code(PipeSizes.MIN_OUTSIDE);
+        for (int lane : LANE_CODES) {
+            // The pipe's west face meets a rack to its west, through that rack's east face.
+            for (int at : lanePoints(EAST, lane)) {
+                var step = RackGeometry.steps(at);
+                for (int own : new int[]{lane, small})
+                    for (int b : new int[]{-1, EAST, UP, DOWN, NORTH, SOUTH}) {
+                        long faces = (long) lane << 7 * WEST | (b < 0 ? 0 : (long) own << 7 * b);
+                        keys.add(new Key(Kind.PIPE, EAST, 1 << WEST | (b < 0 ? 0 : 1 << b), own, faces, 0, false, Key.offsets(WEST, step[0], step[1])));
+                    }
+                for (int b : new int[]{EAST, UP})
+                    for (int there : lanePoints(b ^ 1, lane)) {
+                        var other = RackGeometry.steps(there);
+                        keys.add(new Key(Kind.PIPE, EAST, 1 << WEST | 1 << b, lane, (long) lane << 7 * WEST | (long) lane << 7 * b, 0, false,
+                                Key.offsets(WEST, step[0], step[1]) | Key.offsets(b, other[0], other[1])));
+                    }
+            }
+        }
+        for (double od : new double[]{.1, .2})
+            for (int b : new int[]{EAST, UP, NORTH}) {
+                int code = PipeSizes.code(od);
+                keys.add(new Key(Kind.PIPE, EAST, 1 << WEST | 1 << b, code, (long) code << 7 * WEST | (long) code << 7 * b, 1 << WEST, false, Key.offsets(WEST, 6, -3)));
+            }
+        return keys;
+    }
+
+    @Test
+    void transitionPipesStayInTheirBlockAndAreWatertight() {
+        var keys = transitions();
+        assertEquals(289, keys.size());
+        for (var key : keys) {
+            assertTrue(LineGeometry.transition(key), key.toString());
+            var bounds = LineGeometry.mesh(key).bounds();
+            for (int c = 0; c < 3; c++) assertTrue(bounds[c] > -1e-9 && bounds[c + 3] < 1 + 1e-9, key + " leaves its block: " + java.util.Arrays.toString(bounds));
+            assertWatertight(key);
+        }
+        assertFalse(LineGeometry.transition(key(Kind.PIPE, EAST, .2, new int[]{WEST, EAST}, 0, 0, false)), "a centred pipe");
+    }
+
+    /**
+     * Where a transition pipe meets a lane, or a centred pipe, its open rim is the other line's, vertex for vertex: the
+     * facets carried round its bends arrive where the lane's and the pipe's own lie.
+     */
+    @Test
+    void transitionRimsAreTheRimsOfTheLinesTheyMeet() {
+        for (var key : transitions()) {
+            double own = PipeSizes.outsideOf(key.outside());
+            int sides = PipeSizes.sides(own);
+            for (int face = 0; face < 6; face++) {
+                if (!key.connected(face) || key.flanged(face)) continue;
+                double met = PipeSizes.outsideOf(key.face(face));
+                if (key.centred(face)) met = Math.min(own, met);
+                var frame = new Mesh.Frame(LineGeometry.point(key, face), LineGeometry.step(face), LineGeometry.ref(face));
+                var expected = new java.util.TreeSet<String>();
+                for (int i = 0; i < sides; i++) expected.add(round(frame.at(2 * Math.PI * i / sides, met / 2, 0)));
+                int axis = LineGeometry.axis(face);
+                double plane = face & 1;
+                var rim = new java.util.TreeSet<String>();
+                for (var facet : LineGeometry.mesh(key).facets())
+                    for (var p : facet.positions()) if (Math.abs(p[axis] - plane) < 1e-9) rim.add(round(p));
+                assertEquals(expected, rim, key + " face " + face);
+            }
+        }
     }
 
     @Test
@@ -275,8 +381,9 @@ class LineGeometryTest {
         return false;
     }
 
+    /** A vertex to 1e-7, the grid shifted by a third so that no dyadic coordinate (a texel multiple) falls on a rounding edge. */
     private static String round(double[] p) {
-        return Math.round(p[0] * 1e7) + "," + Math.round(p[1] * 1e7) + "," + Math.round(p[2] * 1e7);
+        return Math.round(p[0] * 1e7 + 1 / 3.0) + "," + Math.round(p[1] * 1e7 + 1 / 3.0) + "," + Math.round(p[2] * 1e7 + 1 / 3.0);
     }
 
     @Test

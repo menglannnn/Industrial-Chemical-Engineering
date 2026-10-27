@@ -122,7 +122,7 @@ public final class PhysicalRegistry {
     /** Uses the existing pressure-valve control on the same host pipe and projected revision. */
     public boolean installPipePressureValve(long id,PhysicalFluidTopology.Direction axis) {
         var record=registrations().get(id);if(!canInstallFitting(record,axis))return false;
-        var d=record.device();var device=new PhysicalFluidTopology.Device(d.id(),d.position(),d.kind(),axis,d.geometry(),FlowControl.ControlValve.unconfigured(),d.ports(),d.generatorEnabled(),d.cutoff());
+        var d=record.device();var device=new PhysicalFluidTopology.Device(d.id(),d.position(),d.kind(),axis,d.geometry(),FlowControl.ControlValve.unconfigured(),d.ports(),d.generatorEnabled(),d.cutoff(),false,d.joints());
         submit(List.of(new WorldTopologyLedger.Edit(id,new WorldTopologyLedger.Registration(device,record.spec(),Math.addExact(record.revision(),1)))),topology.nextIdentity(),null);
         return true;
     }
@@ -130,7 +130,7 @@ public final class PhysicalRegistry {
     public boolean installPipeMover(long id,PhysicalFluidTopology.Direction axis,TopologyCompiler.Kind kind){
         var control=PhysicalFluidTopology.defaultMover(kind);var record=registrations().get(id);
         if(axis==null||axis.y!=0||!canInstallFitting(record,axis))return false;
-        var d=record.device();var replacement=new PhysicalFluidTopology.Device(d.id(),d.position(),d.kind(),axis,d.geometry(),control,d.ports(),d.generatorEnabled(),d.cutoff(),d.inlineFilter());
+        var d=record.device();var replacement=new PhysicalFluidTopology.Device(d.id(),d.position(),d.kind(),axis,d.geometry(),control,d.ports(),d.generatorEnabled(),d.cutoff(),d.inlineFilter(),d.joints());
         submit(List.of(new WorldTopologyLedger.Edit(id,new WorldTopologyLedger.Registration(replacement,record.spec(),Math.addExact(record.revision(),1)))),topology.nextIdentity(),null);return true;
     }
     public boolean installPipeFilter(long id,PhysicalFluidTopology.Direction axis) {
@@ -142,7 +142,7 @@ public final class PhysicalRegistry {
     public boolean removePipeAccessory(long id) {
         var r=registrations().get(id);if(r==null||r.device().kind()!=TopologyCompiler.Kind.PIPE)return false;
         var d=r.device();if(!d.inlineFilter()&&d.cutoff()==PhysicalFluidTopology.Cutoff.NONE&&d.control() instanceof FlowControl.Passive)return true;
-        var device=new PhysicalFluidTopology.Device(d.id(),d.position(),d.kind(),d.facing(),d.geometry(),new FlowControl.Passive(),d.ports(),d.generatorEnabled(),PhysicalFluidTopology.Cutoff.NONE);
+        var device=new PhysicalFluidTopology.Device(d.id(),d.position(),d.kind(),d.facing(),d.geometry(),new FlowControl.Passive(),d.ports(),d.generatorEnabled(),PhysicalFluidTopology.Cutoff.NONE,false,d.joints());
         submit(List.of(new WorldTopologyLedger.Edit(id,new WorldTopologyLedger.Registration(device,r.spec(),Math.addExact(r.revision(),1)))),topology.nextIdentity(),d.inlineFilter()?new WorldTopologyLedger.Recovery(id,null):null);return true;
     }
     private boolean canInstallFitting(WorldTopologyLedger.Registration record,PhysicalFluidTopology.Direction axis) {
@@ -151,7 +151,7 @@ public final class PhysicalRegistry {
         // Check projected physical neighbours too: chunk loading or an unapplied branch must not hide a junction.
         for(var direction:PhysicalFluidTopology.Direction.values()) {
             var next=record.device().position().offset(direction);var neighbour=topology.latestAt(next);
-            if(neighbour!=null&&neighbour.device().mechanicallyMeets(next,PhysicalFluidTopology.opposite(direction))
+            if(neighbour!=null&&record.device().jointAt(direction)&&neighbour.device().mechanicallyMeets(next,PhysicalFluidTopology.opposite(direction))
                     &&direction.x*axis.x+direction.y*axis.y+direction.z*axis.z==0)return false;
         }
         return true;
@@ -229,16 +229,16 @@ public final class PhysicalRegistry {
         // is met through its contacts: its faces, or a vessel's ports in other cells.
         for(var start:starts) {
             var before=topology.latestAt(start);
-            if(before!=null)for(var contact:before.device().contacts()){var next=contact.cell().offset(contact.direction());if(joined(before,topology.latestAt(next),contact))queue.add(next);}
+            if(before!=null)for(var contact:before.device().contacts()){var next=PhysicalFluidTopology.across(topology::latestAt,WorldTopologyLedger.Registration::device,before.device(),contact.cell(),contact.direction());if(joined(before,next,contact))queue.add(next.device().position());}
             var after=at.apply(start);
-            if(after!=null)for(var contact:after.device().contacts()){var next=contact.cell().offset(contact.direction());if(joined(after,at.apply(next),contact))queue.add(next);}
+            if(after!=null)for(var contact:after.device().contacts()){var next=PhysicalFluidTopology.across(at,WorldTopologyLedger.Registration::device,after.device(),contact.cell(),contact.direction());if(joined(after,next,contact))queue.add(next.device().position());}
         }
         while(!queue.isEmpty()) {
             var position=queue.removeFirst();var record=at.apply(position);if(record==null)continue;long id=record.device().id();if(!seen.add(id))continue;touched.add(id);
             // A fixed boundary the event does not edit is never walked through: what lies beyond it is another island.
             if(!starts.contains(record.device().position())&&(record.device().fixed()||standsForItsComponent(id)||topology.pending(id)))continue;
             for(var contact:record.device().contacts()) {
-                var neighbor=at.apply(contact.cell().offset(contact.direction()));if(neighbor!=null&&record.device().joins(neighbor.device(),contact.cell(),contact.direction()))queue.add(neighbor.device().position());
+                var neighbor=PhysicalFluidTopology.across(at,WorldTopologyLedger.Registration::device,record.device(),contact.cell(),contact.direction());if(neighbor!=null&&record.device().joins(neighbor.device(),contact.cell(),contact.direction()))queue.add(neighbor.device().position());
             }
         }
         var edited=new HashSet<Long>();for(var edit:edits)edited.add(edit.id());
@@ -353,7 +353,7 @@ public final class PhysicalRegistry {
         while(!queue.isEmpty()) {
             var record=queue.removeFirst();if(record.device().fixed()&&!editedIds.contains(record.device().id()))continue;
             for(var contact:record.device().contacts()) {
-                var neighbor=at.apply(contact.cell().offset(contact.direction()));
+                var neighbor=PhysicalFluidTopology.across(at,WorldTopologyLedger.Registration::device,record.device(),contact.cell(),contact.direction());
                 if(neighbor!=null&&record.device().joins(neighbor.device(),contact.cell(),contact.direction())&&component.putIfAbsent(neighbor.device().id(),neighbor)==null)queue.add(neighbor);
             }
         }
@@ -435,7 +435,7 @@ public final class PhysicalRegistry {
             var record=queue.removeFirst();long id=record.device().id();
             found.addAll(standsFor(id,edited));if(record.device().fixed()||standsForItsComponent(id))continue;
             for(var contact:record.device().contacts()) {
-                var neighbor=topology.activeAt(contact.cell().offset(contact.direction()));
+                var neighbor=PhysicalFluidTopology.across(topology::activeAt,WorldTopologyLedger.Registration::device,record.device(),contact.cell(),contact.direction());
                 if(neighbor!=null&&record.device().joins(neighbor.device(),contact.cell(),contact.direction())&&seen.add(neighbor.device().id()))queue.add(neighbor);
             }
         }
