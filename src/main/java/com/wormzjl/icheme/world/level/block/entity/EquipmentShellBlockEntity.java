@@ -17,7 +17,9 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import com.wormzjl.icheme.science.equipment.ShapeRepair;
 import com.wormzjl.icheme.science.equipment.EquipmentShape;
+import com.wormzjl.icheme.science.equipment.NozzleBore;
 import com.wormzjl.icheme.science.equipment.Paint;
+import com.wormzjl.icheme.science.equipment.PipeSizes;
 import com.wormzjl.icheme.science.equipment.ProcessUnit;
 import com.wormzjl.icheme.science.equipment.ShapeRasterizer;
 import net.minecraft.core.BlockPos;
@@ -25,6 +27,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.neoforge.client.model.data.ModelData;
@@ -376,6 +379,26 @@ public final class EquipmentShellBlockEntity extends BlockEntity implements com.
     public EquipmentShape.@Nullable Nozzle nozzleFacing(Direction outward) {
         var port = port(outward);
         return port == null ? null : shape.nozzles().get(port.nozzle());
+    }
+
+    /** The largest bore of a pipe on the nozzle facing {@code outward} ({@link NozzleBore}); a pipe's largest where there is none. */
+    public double largestBore(Direction outward) {
+        var port = port(outward);
+        return port == null ? PipeSizes.MAX_BORE : NozzleBore.largest(shape, port.nozzle());
+    }
+
+    /**
+     * The largest bore a pipe at {@code pipe} may take: the least {@link #largestBore} of the nozzles beside it that it
+     * joins (a bit per {@link Direction} in {@code joints}); a pipe's largest beside none.
+     */
+    public static double largestBoreBeside(Level level, BlockPos pipe, int joints) {
+        double largest = PipeSizes.MAX_BORE;
+        for (var direction : Direction.values()) {
+            var next = pipe.relative(direction);
+            if ((joints >> direction.ordinal() & 1) != 0 && level.isLoaded(next) && level.getBlockEntity(next) instanceof EquipmentShellBlockEntity shell)
+                largest = Math.min(largest, shell.largestBore(direction.getOpposite()));
+        }
+        return largest;
     }
 
     /** The port this cell offers towards {@code outward}, or null. */

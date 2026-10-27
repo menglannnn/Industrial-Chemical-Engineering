@@ -290,7 +290,7 @@ public final class FluidWorldAuthority implements AutoCloseable {
     /** The most pipes one line resize changes; a longer line is refused whole. */
     public static final int LINE_LIMIT=4096;
     /** Resizes the pipe line through pipe {@code id} as one event: see {@link PhysicalRegistry#resizeLine}. */
-    public int resizeLine(long id,double diameter){owned();return registry.resizeLine(id,diameter,LINE_LIMIT);}
+    public int resizeLine(long id,double diameter,java.util.function.ToDoubleFunction<PhysicalFluidTopology.Device> largest){owned();return registry.resizeLine(id,diameter,LINE_LIMIT,largest);}
     /** Installs against the projected revision, retaining pending diameter/configuration edits. */
     public boolean installPipeCutoff(long id,PhysicalFluidTopology.Direction facing) {
         owned();return registry.installPipeCutoff(id,facing);

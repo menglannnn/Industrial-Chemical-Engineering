@@ -44,7 +44,7 @@ public record PipeAnchor(Kind kind, BlockPos cell, @Nullable Direction joint, @N
     public enum Kind {FREE, PIPE, DEVICE, NOZZLE, RACK, LANE}
 
     /** Why a click is no anchor; each has a player message. */
-    public enum Refusal {FITTING, JUNCTION, DEVICE_FACE, OCCUPIED, OUTSIDE, LANE_CLOSED, FACE_TAKEN, LANE_SIZE, TRANSITION, SLOT_TAKEN}
+    public enum Refusal {FITTING, JUNCTION, DEVICE_FACE, OCCUPIED, OUTSIDE, LANE_CLOSED, FACE_TAKEN, LANE_SIZE, TRANSITION, SLOT_TAKEN, NOZZLE_SIZE}
 
     /** An anchor, or why the click gives none. */
     public record Resolved(@Nullable PipeAnchor anchor, @Nullable Refusal refusal) {
@@ -135,7 +135,8 @@ public record PipeAnchor(Kind kind, BlockPos cell, @Nullable Direction joint, @N
      * as the pipe, which becomes a transition pipe (plan 6): a pipe that meets a lane, or will, keeps two joints at most
      * and no fitting or gauge;</li>
      * <li>another fluid device: the cell in front of a face it connects through;</li>
-     * <li>an equipment cell with a nozzle on that face: the cell in front of the nozzle;</li>
+     * <li>an equipment cell with a nozzle on that face: the cell in front of the nozzle, refused for a line larger than
+     * the nozzle takes ({@link EquipmentShellBlockEntity#largestBore});</li>
      * <li>a lane on a rack: the cell beyond its open end, the clicked one where it has two (D11): an arm without a joint,
      * which takes one, or a joint nothing meets any more. A lane with no open end is refused, as a rack carries no
      * junctions. Into the next rack the line continues the lane at its point, width and height; into a plain cell a line
@@ -199,6 +200,8 @@ public record PipeAnchor(Kind kind, BlockPos cell, @Nullable Direction joint, @N
                 anchor = new PipeAnchor(Kind.PIPE, next, face.getOpposite(), clicked, 0, edit, face, -1, fit, null);
             } else anchor = new PipeAnchor(Kind.DEVICE, next, face.getOpposite(), clicked, 0, -1, face, -1, Fit.ANY, null);
         } else if (state.getBlock() instanceof EquipmentShellBlock && level.getBlockEntity(clicked) instanceof EquipmentShellBlockEntity shell && shell.nozzleFacing(face) != null) {
+            // A nozzle takes a pipe up to the largest its place clears (NozzleBore).
+            if (outside > PipeSizes.outside(shell.largestBore(face)) + 1e-9) return new Resolved(null, Refusal.NOZZLE_SIZE);
             anchor = new PipeAnchor(Kind.NOZZLE, next, face.getOpposite(), clicked, 0, -1, face, -1, Fit.ANY, null);
         } else {
             boolean inside = state.canBeReplaced();

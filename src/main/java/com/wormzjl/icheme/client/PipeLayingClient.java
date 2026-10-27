@@ -396,7 +396,9 @@ public final class PipeLayingClient {
         var role = nozzle.role().name().toLowerCase(Locale.ROOT);
         var roleName = Component.translatableWithFallback("message.icheme.pipe_laying.role." + role, humanize(role));
         boolean connected = connected(level, hit.clicked(), hit.face());
-        var label = PipeLaying.message("port", roleName, PipeLaying.message(connected ? "port.connected" : "port.free"), String.format(Locale.ROOT, "%.1f", PipeSizes.MAX_BORE));
+        // The largest bore, down to the centimetre (a column's nozzle takes what its place clears, NozzleBore).
+        var largest = java.math.BigDecimal.valueOf(Math.floor(shell.largestBore(hit.face()) * 100 + 1e-9) / 100).stripTrailingZeros().toPlainString();
+        var label = PipeLaying.message("port", roleName, PipeLaying.message(connected ? "port.connected" : "port.free"), largest);
         // A watched assembly's port: its line too (plan section 9).
         var line = AssemblyToolClient.line(shell, hit.face());
         return line == null ? label : label.copy().append(" · ").append(line);

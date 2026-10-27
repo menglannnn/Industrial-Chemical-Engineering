@@ -12,9 +12,16 @@ import com.wormzjl.icheme.world.level.block.PipeAnchor;
 import com.wormzjl.icheme.world.level.block.PipeLaying;
 import com.wormzjl.icheme.world.level.block.PipeRackBlock;
 import com.wormzjl.icheme.world.level.block.entity.PipeRackBlockEntity;
+import com.wormzjl.icheme.science.equipment.ColumnTrays;
+import com.wormzjl.icheme.science.equipment.EquipmentShape;
+import com.wormzjl.icheme.science.equipment.NozzleBore;
 import com.wormzjl.icheme.science.equipment.Paint;
 import com.wormzjl.icheme.science.equipment.PipeRoute;
+import com.wormzjl.icheme.science.equipment.PipeSizes;
 import com.wormzjl.icheme.science.equipment.RackGeometry;
+import com.wormzjl.icheme.science.equipment.ShapeRasterizer;
+import com.wormzjl.icheme.world.level.block.EquipmentStructure;
+import com.wormzjl.icheme.world.level.block.entity.EquipmentShellBlockEntity;
 import com.wormzjl.icheme.world.level.block.entity.FluidDeviceBlockEntity;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -268,6 +275,47 @@ public final class PipeLayingGameTests {
             } finally {
                 level.removeBlock(cell, false);
             }
+        });
+    }
+
+    /**
+     * Owner decision 2026-10-27 (batch 2026-10-26-multi-machine-framework, NOZZLE_ROOM_GATE_REVIEW option (C)): a column's
+     * nozzle takes a pipe up to the largest its place clears. On a 0.5 m column the reflux's neck is wider than the cladding
+     * above 0.25 m: the tool's anchor there refuses a larger line and takes that one, and a pipe in front of the nozzle
+     * takes no more. The column comes out whole, its registration with it.
+     */
+    @GameTest(template = "empty", timeoutTicks = 100, batch = "pipe-laying")
+    public static void aColumnNozzleTakesNoLargerPipeThanItsPlaceClears(GameTestHelper helper) {
+        var level = helper.getLevel();
+        var shape = EquipmentShape.column(.5, new ColumnTrays(3, 2, List.of(), List.of(), List.of()), EquipmentShape.Heading.NORTH, EquipmentShape.minimumSkirt(.5));
+        var origin = helper.absolutePos(new BlockPos(1, 1, 1));
+        EquipmentStructure.place(level, origin, shape, Paint.DEFAULT, Integer.MAX_VALUE);
+        var vessel = new EquipmentStructure.Vessel(origin, shape);
+        try {
+            var port = ShapeRasterizer.ports(shape).stream().filter(p -> shape.nozzles().get(p.nozzle()).role() == EquipmentShape.Role.REFLUX).findFirst().orElseThrow();
+            var cell = origin.offset(port.cell().x(), port.cell().y(), port.cell().z());
+            var face = Direction.fromDelta(port.dx(), port.dy(), port.dz());
+            double largest = NozzleBore.largest(shape, port.nozzle());
+            helper.assertTrue(Math.abs(largest - .25) < 1e-9, "The 0.5 m column's reflux takes " + largest + " m, not 0.25 m");
+            var click = new PipeAnchor.Click(cell, face);
+            var refused = PipeAnchor.resolve(level, click, PipeSizes.outside(largest + NozzleBore.STEP));
+            helper.assertTrue(refused.anchor() == null && refused.refusal() == PipeAnchor.Refusal.NOZZLE_SIZE, "A larger line at the reflux: " + refused);
+            var taken = PipeAnchor.resolve(level, click, PipeSizes.outside(largest));
+            helper.assertTrue(taken.anchor() != null && taken.anchor().kind() == PipeAnchor.Kind.NOZZLE, "The reflux's own largest line: " + taken);
+            double beside = EquipmentShellBlockEntity.largestBoreBeside(level, cell.relative(face), PhysicalFluidTopology.ALL_FACES);
+            helper.assertTrue(Math.abs(beside - largest) < 1e-9, "A pipe in front of the reflux takes " + beside + " m");
+        } finally {
+            level.removeBlock(vessel.controller(), false);
+        }
+        helper.runAfterDelay(2, () -> {
+            var world = FluidWorldAuthority.find(level.getServer()).orElseThrow();
+            for (var record : world.registrations().values()) {
+                var p = record.device().position();
+                helper.assertTrue(p.x() < origin.getX() - 1 || p.x() > origin.getX() + 4 || p.z() < origin.getZ() - 1 || p.z() > origin.getZ() + 4
+                        || p.y() < origin.getY() - 1 || p.y() > origin.getY() + 32, "A registration stayed behind at " + p);
+            }
+            helper.assertTrue(!(level.getBlockEntity(vessel.controller()) instanceof EquipmentShellBlockEntity), "The column stayed");
+            helper.succeed();
         });
     }
 

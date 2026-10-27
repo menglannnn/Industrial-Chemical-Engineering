@@ -156,19 +156,23 @@ public final class PhysicalRegistry {
     }
     /** {@link #resizeLine}: a rack lane on the line is too narrow for the new bore; nothing is queued. */
     public static final int LANE_TOO_NARROW=-2;
+    /** {@link #resizeLine}: a nozzle on the line takes no pipe that large; nothing is queued. */
+    public static final int NOZZLE_TOO_SMALL=-3;
     /**
      * Resizes the pipe line through pipe {@code id} ({@link PhysicalFluidTopology#line}) to bore {@code diameter} as one
      * event, each pipe keeping its length, roughness, fittings and spec. Returns the line's length in pipes (those already
      * at that bore included), 0 when {@code id} is not a pipe, and, with nothing queued, -1 when it is longer than
      * {@code limit} or {@link #LANE_TOO_NARROW} when a rack lane on it is narrower than the bore's pipe (a lane's width
-     * follows the drawn outside diameter it was laid for, {@code RackGeometry.width}).
+     * follows the drawn outside diameter it was laid for, {@code RackGeometry.width}), or {@link #NOZZLE_TOO_SMALL} when
+     * {@code largest} (the largest bore the world lets a pipe take: the nozzles beside it, {@code NozzleBore}) is under it.
      */
-    public int resizeLine(long id,double diameter,int limit) {
+    public int resizeLine(long id,double diameter,int limit,java.util.function.ToDoubleFunction<PhysicalFluidTopology.Device> largest) {
         var start=registrations().get(id);if(start==null||start.device().kind()!=TopologyCompiler.Kind.PIPE)return 0;
         var line=PhysicalFluidTopology.line(p->{var r=topology.latestAt(p);return r==null?null:r.device();},start.device(),limit);
         if(line==null)return -1;
         int width=com.wormzjl.icheme.science.equipment.RackGeometry.width(com.wormzjl.icheme.science.equipment.PipeSizes.drawn(diameter));
         for(var pipe:line)if(pipe.slots()>0&&pipe.slots()<width)return LANE_TOO_NARROW;
+        for(var pipe:line)if(diameter>largest.applyAsDouble(pipe)+1e-9)return NOZZLE_TOO_SMALL;
         var edits=new ArrayList<WorldTopologyLedger.Edit>();
         for(var pipe:line) {
             var g=pipe.geometry();if(g.diameter()==diameter)continue;

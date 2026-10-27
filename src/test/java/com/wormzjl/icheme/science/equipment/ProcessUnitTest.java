@@ -313,23 +313,15 @@ class ProcessUnitTest {
             new Touch(Kind.KETTLE, Role.TUBE_OUTLET, List.of(.75, 1.)),
             // The smallest heater's front legs stand 0.68 m apart: the neck 0.08 m into each one's casing and footing (owner item).
             new Touch(Kind.VERTICAL_HEATER, Role.FUEL, List.of(2.5)),
-            // Columns left alone: a 3 m column's top outlet stands 0.21 m, its hub's base 0.03 m into the head.
-            new Touch(Kind.COLUMN, Role.VAPOUR_OUTLET, List.of(3.)),
-            // Columns left alone: on a 0.5 m column the neck is the wider, its hub's base 0.06 m into the cladding.
-            new Touch(Kind.COLUMN, Role.REFLUX, List.of(.5)),
-            // Columns left alone: on a 0.5 m column the neck is the wider, its hub's base 0.06 m into the cladding.
-            new Touch(Kind.COLUMN, Role.FEED, List.of(.5)),
-            // Columns left alone: on a 0.5 m column the neck is the wider, its hub's base 0.06 m into the cladding.
-            new Touch(Kind.COLUMN, Role.PUMPAROUND_DRAW, List.of(.5)),
-            // Columns left alone: on a 0.5 m column the neck is the wider, its hub's base 0.06 m into the cladding.
-            new Touch(Kind.COLUMN, Role.RETURN, List.of(.5)),
-            // Columns left alone: on a 0.5 m column the neck is the wider, its hub's base 0.06 m into the cladding.
-            new Touch(Kind.COLUMN, Role.VAPOUR_RETURN, List.of(.5)));
+            // A 3 m column's top outlet is designed at a pipe's largest, which it therefore takes: it stands 0.21 m, its hub's base 0.03 m into the head.
+            new Touch(Kind.COLUMN, Role.VAPOUR_OUTLET, List.of(3.)));
 
     /**
-     * Owner decision 2026-10-21 (a 1 m pipe has a 1 m root; other components give way): every nozzle's neck at a pipe's
-     * largest stands clear of the rest of its shape beyond {@link NozzleRoom#SURFACE} from where it leaves the vessel, on
-     * every gated size, drums, columns and storage too, but the {@link #TOUCHES}; each of those still touches (none stale).
+     * Owner decisions 2026-10-21 (a 1 m pipe has a 1 m root; other components give way) and 2026-10-27 (a column's nozzle
+     * takes the largest pipe its place clears, {@link NozzleBore}): every nozzle's neck at its own largest pipe (a pipe's
+     * largest but on a column) stands clear of the rest of its shape beyond {@link NozzleRoom#SURFACE} from where it leaves
+     * the vessel, on every gated size, drums, columns and storage too, but the {@link #TOUCHES}; each of those still
+     * touches (none stale).
      */
     @Test
     void everyNozzleNeckAtItsLargestStandsClear() {
@@ -340,7 +332,7 @@ class ProcessUnitTest {
         for (var shape : shapes)
             for (int k = 0; k < shape.nozzles().size(); k++) {
                 var nozzle = shape.nozzles().get(k);
-                if (NozzleRoom.clear(shape, k, PipeSizes.MAX_OUTSIDE)) continue;
+                if (NozzleRoom.clear(shape, k, PipeSizes.outside(NozzleBore.largest(shape, k)))) continue;
                 var at = TOUCHES.stream().mapToDouble(t -> t.at(shape, nozzle.role())).filter(d -> !Double.isNaN(d)).findFirst();
                 if (at.isPresent()) met.add(shape.kind() + " " + nozzle.role() + " " + at.getAsDouble());
                 else failures.add(shape + " " + nozzle.role());
@@ -349,6 +341,43 @@ class ProcessUnitTest {
         var accepted = new HashSet<String>();
         for (var t : TOUCHES) for (double d : t.diameters()) accepted.add(t.kind() + " " + t.role() + " " + d);
         assertEquals(accepted, met, "accepted touches that no longer touch");
+    }
+
+    /**
+     * Owner decision 2026-10-27 (batch 2026-10-26-multi-machine-framework, NOZZLE_ROOM_GATE_REVIEW option (C)): a column's
+     * nozzle takes the largest pipe, in {@link NozzleBore#STEP}s, whose neck stands clear by this test's own {@link
+     * NozzleRoom} (the next step does not), never less than its design pipe; every other kind takes a pipe's largest. On
+     * the gated columns: the 3 m column's reflux 0.55 m (a ladder beside it), the 1.5 m column's 0.7 m, the 0.5 m column's
+     * side nozzles 0.25 m (the neck wider than the column's cladding), its top outlet a pipe's largest.
+     */
+    @Test
+    void aColumnNozzleTakesTheLargestPipeItsPlaceClears() {
+        var shapes = new ArrayList<>(everySize());
+        shapes.addAll(ShapeRasterizerTest.shapes());
+        var pinned = new java.util.TreeMap<String, Double>();
+        for (var shape : shapes)
+            for (int k = 0; k < shape.nozzles().size(); k++) {
+                var nozzle = shape.nozzles().get(k);
+                double largest = NozzleBore.largest(shape, k);
+                String at = shape + " " + nozzle.role();
+                if (shape.kind() != Kind.COLUMN) {
+                    assertEquals(PipeSizes.MAX_BORE, largest, at);
+                    continue;
+                }
+                assertTrue(largest >= nozzle.defaultOd() / 1.1 - 1e-9, at + ": under its design pipe");
+                double next = Math.floor(largest / NozzleBore.STEP + 1e-9) * NozzleBore.STEP + NozzleBore.STEP;
+                if (largest < PipeSizes.MAX_BORE - 1e-9) assertFalse(NozzleRoom.clear(shape, k, PipeSizes.outside(next)), at + ": a larger pipe clears");
+                if (largest < PipeSizes.MAX_BORE - 1e-9) pinned.merge(shape.diameter() + " " + nozzle.role(), largest, Math::min);
+                if (shape.diameter() == 3. && nozzle.role() == Role.VAPOUR_OUTLET) assertEquals(PipeSizes.MAX_BORE, largest, at + ": designed at a pipe's largest");
+            }
+        assertEquals(java.util.Map.of("0.5 FEED", .25, "0.5 PUMPAROUND_DRAW", .25, "0.5 REFLUX", .25, "0.5 RETURN", .25, "0.5 VAPOUR_RETURN", .25,
+                "1.5 REFLUX", .7, "3.0 REFLUX", .55), rounded(pinned));
+    }
+
+    private static java.util.Map<String, Double> rounded(java.util.Map<String, Double> bores) {
+        var out = new java.util.TreeMap<String, Double>();
+        bores.forEach((k, v) -> out.put(k, Math.round(v * 1000) / 1000.0));
+        return out;
     }
 
     /**

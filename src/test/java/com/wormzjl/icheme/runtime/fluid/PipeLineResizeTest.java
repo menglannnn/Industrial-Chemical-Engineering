@@ -13,6 +13,8 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class PipeLineResizeTest {
     private final EventPathWorld world=new EventPathWorld(0);
+    /** No nozzle beside any pipe: each takes a pipe's largest. */
+    private static final java.util.function.ToDoubleFunction<PhysicalFluidTopology.Device> ANY=d->com.wormzjl.icheme.science.equipment.PipeSizes.MAX_BORE;
     /** Every block placed, by its "x,y,z". */
     private final Map<String,Long> ids=new TreeMap<>();
 
@@ -31,7 +33,7 @@ class PipeLineResizeTest {
     /** The cells a sneak-use on {@code cell} resizes to 0.1 m, after checking the line's length and that it came as one event. */
     private Set<String> resize(String cell,int length) {
         int events=world.registry.unapplied();
-        assertEquals(length,world.registry.resizeLine(at(cell),.1,FluidWorldAuthority.LINE_LIMIT));
+        assertEquals(length,world.registry.resizeLine(at(cell),.1,FluidWorldAuthority.LINE_LIMIT,ANY));
         assertEquals(events+1,world.registry.unapplied(),"one event");
         var resized=new TreeSet<String>();
         for(var cellAndId:ids.keySet())if(device(cellAndId).geometry().diameter()==.1)resized.add(cellAndId);
@@ -66,7 +68,7 @@ class PipeLineResizeTest {
         var header=Set.of("0,64,0","1,64,0","2,64,0","3,64,0","4,64,0","5,64,0","6,64,0");
         assertEquals(header,resize("1,64,0",7));
         // The branch stops before the tee, which keeps the header's bore.
-        world.registry.resizeLine(at("3,64,1"),.2,FluidWorldAuthority.LINE_LIMIT);
+        world.registry.resizeLine(at("3,64,1"),.2,FluidWorldAuthority.LINE_LIMIT,ANY);
         for(int z=1;z<=3;z++)assertEquals(.2,device("3,64,"+z).geometry().diameter());
         assertEquals(.1,device("3,64,0").geometry().diameter());
     }
@@ -80,7 +82,7 @@ class PipeLineResizeTest {
         pipe(10,64,0);pipe(11,64,0);pipe(12,64,0);pipe(10,64,1);pipe(10,65,0);
         assertEquals(Set.of("10,64,0"),diff(resize("10,64,0",1)));
         // Coming from its east side, the line stops before it.
-        world.registry.resizeLine(at("12,64,0"),.3,FluidWorldAuthority.LINE_LIMIT);
+        world.registry.resizeLine(at("12,64,0"),.3,FluidWorldAuthority.LINE_LIMIT,ANY);
         assertEquals(.3,device("11,64,0").geometry().diameter());
         assertEquals(.1,device("10,64,0").geometry().diameter());
     }
@@ -99,7 +101,7 @@ class PipeLineResizeTest {
         laid(0,64,0,along);lane(1,64,0,2,along);lane(2,64,0,2,along);laid(3,64,0,along);
         lane(1,64,0,3,along);lane(2,64,0,3,along);
         int events=world.registry.unapplied();
-        assertEquals(PhysicalRegistry.LANE_TOO_NARROW,world.registry.resizeLine(at("0,64,0"),.3,FluidWorldAuthority.LINE_LIMIT));
+        assertEquals(PhysicalRegistry.LANE_TOO_NARROW,world.registry.resizeLine(at("0,64,0"),.3,FluidWorldAuthority.LINE_LIMIT,ANY));
         assertEquals(events,world.registry.unapplied(),"nothing queued");
         assertEquals(Set.of("1,64,0/3","2,64,0/3"),resize("2,64,0/3",2));
         assertEquals(Set.of("1,64,0/3","2,64,0/3","0,64,0","1,64,0/2","2,64,0/2","3,64,0"),resize("0,64,0",4));
@@ -116,17 +118,31 @@ class PipeLineResizeTest {
     @Test void aLineLongerThanTheLimitIsRefusedWhole() {
         for(int x=0;x<5;x++)pipe(x,64,0);
         int events=world.registry.unapplied();
-        assertEquals(-1,world.registry.resizeLine(at("0,64,0"),.1,4));
+        assertEquals(-1,world.registry.resizeLine(at("0,64,0"),.1,4,ANY));
         assertEquals(events,world.registry.unapplied(),"nothing queued");
-        assertEquals(5,world.registry.resizeLine(at("0,64,0"),.1,5));
+        assertEquals(5,world.registry.resizeLine(at("0,64,0"),.1,5,ANY));
+    }
+
+    /**
+     * A nozzle beside a pipe of the line takes a pipe up to the largest its place clears (owner decision 2026-10-27,
+     * {@code NozzleBore}): a larger bore refuses the whole line and queues nothing; up to it, the line takes it.
+     */
+    @Test void aNozzleThatTakesASmallerPipeRefusesTheLine() {
+        for(int x=0;x<4;x++)pipe(x,64,0);
+        java.util.function.ToDoubleFunction<PhysicalFluidTopology.Device> nozzleBesideTheEnd=d->d.position().x()==3?.3:com.wormzjl.icheme.science.equipment.PipeSizes.MAX_BORE;
+        int events=world.registry.unapplied();
+        assertEquals(PhysicalRegistry.NOZZLE_TOO_SMALL,world.registry.resizeLine(at("0,64,0"),.4,FluidWorldAuthority.LINE_LIMIT,nozzleBesideTheEnd));
+        assertEquals(events,world.registry.unapplied(),"nothing queued");
+        assertEquals(4,world.registry.resizeLine(at("0,64,0"),.3,FluidWorldAuthority.LINE_LIMIT,nozzleBesideTheEnd));
+        assertEquals(events+1,world.registry.unapplied(),"one event");
     }
 
     @Test void aLineAlreadyAtTheBoreQueuesNothingAndATankIsNoLine() {
         for(int x=0;x<3;x++)pipe(x,64,0);
         long tank=place(3,64,0,Kind.RESERVOIR);
         int events=world.registry.unapplied();
-        assertEquals(3,world.registry.resizeLine(at("1,64,0"),.05,FluidWorldAuthority.LINE_LIMIT));
-        assertEquals(0,world.registry.resizeLine(tank,.1,FluidWorldAuthority.LINE_LIMIT));
+        assertEquals(3,world.registry.resizeLine(at("1,64,0"),.05,FluidWorldAuthority.LINE_LIMIT,ANY));
+        assertEquals(0,world.registry.resizeLine(tank,.1,FluidWorldAuthority.LINE_LIMIT,ANY));
         assertEquals(events,world.registry.unapplied());
     }
 }

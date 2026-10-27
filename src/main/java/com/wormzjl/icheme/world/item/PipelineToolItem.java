@@ -11,8 +11,10 @@ import com.wormzjl.icheme.science.fluid.network.PipeResistance;
 import com.wormzjl.icheme.science.fluid.topology.TopologyCompiler;
 import com.wormzjl.icheme.world.inventory.PipelineToolMenu;
 import com.wormzjl.icheme.world.level.block.FluidDeviceBlock;
+import com.wormzjl.icheme.world.level.block.entity.EquipmentShellBlockEntity;
 import com.wormzjl.icheme.world.level.block.entity.FluidDeviceBlockEntity;
 import net.minecraft.ChatFormatting;
+import net.minecraft.core.BlockPos;
 import io.netty.buffer.ByteBuf;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.codec.ByteBufCodecs;
@@ -64,14 +66,21 @@ public final class PipelineToolItem extends Item {
                         && record.device().kind() == TopologyCompiler.Kind.PIPE).ifPresent(record -> {
                     var device = record.device();
                     if (line) {
-                        int pipes = world.resizeLine(device.id(), settings.diameter());
+                        // A pipe beside a nozzle takes at most what the nozzle takes (NozzleBore); a rack lane meets no nozzle.
+                        int pipes = world.resizeLine(device.id(), settings.diameter(), d -> d.position().lane() > 0 ? PipeSizes.MAX_BORE
+                                : EquipmentShellBlockEntity.largestBoreBeside(level, new BlockPos(d.position().x(), d.position().y(), d.position().z()), d.joints()));
                         player.displayClientMessage(pipes == PhysicalRegistry.LANE_TOO_NARROW ? Component.translatable("item.icheme.pipeline_tool.lane_too_narrow", Double.toString(settings.diameter()))
+                                : pipes == PhysicalRegistry.NOZZLE_TOO_SMALL ? Component.translatable("item.icheme.pipeline_tool.nozzle_too_small", Double.toString(settings.diameter()))
                                 : pipes < 0 ? Component.translatable("item.icheme.pipeline_tool.line_too_long", FluidWorldAuthority.LINE_LIMIT)
                                 : Component.translatable("item.icheme.pipeline_tool.line_resized", pipes, Double.toString(settings.diameter())), true);
                         return;
                     }
                     var geometry = device.geometry();
                     if (geometry.diameter() == settings.diameter()) return;
+                    if (settings.diameter() > EquipmentShellBlockEntity.largestBoreBeside(level, pos, entity.joints()) + 1e-9) {
+                        player.displayClientMessage(Component.translatable("item.icheme.pipeline_tool.nozzle_too_small", Double.toString(settings.diameter())), true);
+                        return;
+                    }
                     var resized = new PipeResistance.Geometry(geometry.length(), settings.diameter(), geometry.roughness(), geometry.minorLoss());
                     world.edit(device.id(), record.revision(), device.withGeometry(resized), record.spec());
                 });
