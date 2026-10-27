@@ -227,7 +227,7 @@ extern "C" ICHEME_COLUMN_API icheme_column_solver_result icheme_column_solve(
     result.status = ICHEME_COLUMN_MAX_ITERATIONS;
     return result;
 }
-
+//waht is the fuck
 extern "C" ICHEME_COLUMN_API int icheme_column_pr_batch(
     std::size_t component_count, std::size_t node_count, const double* critical_temperatures_kelvin,
     const double* critical_pressures_pascal, const double* acentric_factors, const double* binary_interactions,
