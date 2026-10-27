@@ -40,8 +40,8 @@ public interface PortGraph {
     }
 
     /**
-     * A pipe fitting as an assembly reads it: a pressure control valve, an In-line Pump, or another accessory (a shutoff
-     * or check valve, a strainer, an instrument), which the structure stage passes over.
+     * A pipe fitting as an assembly reads it: a control valve (with or without its module), an In-line Pump, or another
+     * accessory (a shutoff or check valve, a strainer, an instrument), which the structure stage passes over.
      */
     enum Fitting {
         CONTROL_VALVE, INLINE_PUMP, OTHER

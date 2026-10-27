@@ -3,7 +3,6 @@ package com.wormzjl.icheme.runtime.assembly;
 import com.wormzjl.icheme.runtime.fluid.FluidWorldAuthority;
 import com.wormzjl.icheme.runtime.fluid.PhysicalFluidTopology;
 import com.wormzjl.icheme.science.assembly.PortGraph.Fitting;
-import com.wormzjl.icheme.science.fluid.network.FlowControl;
 import com.wormzjl.icheme.world.level.block.entity.EquipmentShellBlockEntity;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -44,9 +43,11 @@ final class LevelGround implements AssemblyWalker.Ground {
 
     /**
      * A registered device as the walk reads it, or null for a vessel or constructed mover, which the walk meets at its
-     * shell's nozzles. A pressure control valve or an In-line Pump on a pipe is a fitting with its outlet; another
-     * accessory (a shutoff or check valve, a strainer) or a one-block filter passes the line on. A one-block pump or
-     * compressor is an in-line mover. A one-block tank, a generator and a void are outside.
+     * shell's nozzles. A control valve or an In-line Pump on a pipe is a fitting with its outlet, read from the law
+     * the pipe compiles through ({@link PhysicalFluidTopology.Device#hydraulicKind}), whatever module or setting the
+     * valve carries: the structure stage counts the valve body. Another accessory (a shutoff or check valve, a strainer)
+     * or a one-block filter passes the line on. A one-block pump or compressor is an in-line mover. A one-block tank, a
+     * generator and a void are outside.
      */
     static AssemblyWalker.@Nullable Piece piece(PhysicalFluidTopology.Device device) {
         if (!device.ports().isEmpty()) return null;
@@ -55,9 +56,11 @@ final class LevelGround implements AssemblyWalker.Ground {
         for (var d : PhysicalFluidTopology.Direction.values()) if (device.mechanicallyConnects(d)) faces |= 1 << Direction.valueOf(d.name()).ordinal();
         return switch (device.kind()) {
             case PIPE -> {
-                Fitting fitting = device.control() instanceof FlowControl.PressureValve ? Fitting.CONTROL_VALVE
-                        : device.control() instanceof FlowControl.Mover ? Fitting.INLINE_PUMP
-                        : device.cutoff() != PhysicalFluidTopology.Cutoff.NONE || device.inlineFilter() ? Fitting.OTHER : null;
+                Fitting fitting = switch (device.hydraulicKind()) {
+                    case VALVE -> Fitting.CONTROL_VALVE;
+                    case PUMP, COMPRESSOR -> Fitting.INLINE_PUMP;
+                    default -> device.cutoff() != PhysicalFluidTopology.Cutoff.NONE || device.inlineFilter() ? Fitting.OTHER : null;
+                };
                 yield new AssemblyWalker.Piece(true, false, fitting, facing, faces);
             }
             case FILTER -> new AssemblyWalker.Piece(false, false, Fitting.OTHER, facing, faces);

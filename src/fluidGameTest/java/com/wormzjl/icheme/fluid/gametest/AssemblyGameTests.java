@@ -15,7 +15,7 @@ import com.wormzjl.icheme.science.equipment.Paint;
 import com.wormzjl.icheme.science.equipment.ProcessUnit;
 import com.wormzjl.icheme.science.equipment.ShapeRasterizer;
 import com.wormzjl.icheme.science.equipment.UnitDesign;
-import com.wormzjl.icheme.science.fluid.network.FlowControl;
+import com.wormzjl.icheme.science.fluid.topology.TopologyCompiler;
 import com.wormzjl.icheme.world.level.block.EquipmentStructure;
 import com.wormzjl.icheme.world.level.block.EquipmentStructure.Vessel;
 import com.wormzjl.icheme.world.level.block.FluidDeviceBlock;
@@ -243,7 +243,7 @@ public final class AssemblyGameTests {
             throw new IllegalStateException("No place for the reflux tee");
         }
 
-        /** A pressure control valve on the pipe at {@code at}, its outlet {@code outlet}, as the fitting item installs one. */
+        /** A control valve on the pipe at {@code at}, its outlet {@code outlet}, as the fitting item installs one. */
         void install(BlockPos at, Direction outlet) {
             var state = level.getBlockState(at).setValue(FluidDeviceBlock.FACING, outlet).setValue(FluidDeviceBlock.PRESSURE_CONTROL, true);
             level.setBlock(at, FluidDeviceBlock.connectedState(state, level, at), Block.UPDATE_ALL);
@@ -258,7 +258,7 @@ public final class AssemblyGameTests {
 
         boolean valvesInstalled() {
             for (var at : valves.keySet())
-                if (!world.at(position(at)).map(r -> r.device().control() instanceof FlowControl.PressureValve).orElse(false)) return false;
+                if (!world.at(position(at)).map(r -> r.device().hydraulicKind() == TopologyCompiler.Kind.VALVE).orElse(false)) return false;
             return true;
         }
 
