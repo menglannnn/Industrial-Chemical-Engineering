@@ -15,6 +15,12 @@ All notable changes to Industrial Chemical Engineering (IChemE, formerly CreateC
 
 ## [Unreleased]
 
+## [0.16.1] - 2026-10-27
+
+### Fixed
+
+- The column screen no longer renders a persisted `STALE` result as an accepted result; after loading an old cached solve, it requires a fresh calculation before showing profiles such as tray pressure drop.
+
 ## [0.16.0] - 2026-10-27
 
 ### Added

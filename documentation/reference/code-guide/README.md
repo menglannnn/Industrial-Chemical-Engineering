@@ -1,6 +1,6 @@
 # Industrial Chemical Engineering (IChemE) code guide
 
-**Merged:** aggressive distillation pressure-profile publication fix plus the creative-tab and solver-performance batches, release 0.16.0, main `d2e4ae40`, 2026-10-27; the published tray-pressure profile now matches the hydraulic summary on the aggressive route. [Column V3](column-v3.md). Before: constructor import fix, release 0.15.3, main `691652f9`; the equipment constructor's Import sends its draft and every import is answered (protocol `equipment-13`). [Equipment](equipment.md).
+**Merged:** stale column-result presentation fix, release 0.16.1, main `1b31ddf3`, 2026-10-27; persisted results marked `STALE` are hidden until a fresh accepted solve. [Client GUI](client-gui.md). Before: aggressive distillation pressure-profile publication fix plus the creative-tab and solver-performance batches, release 0.16.0, main `f588f56b`; the published tray-pressure profile now matches the hydraulic summary on the aggressive route. [Column V3](column-v3.md).
 
 **Merged before it:** process control (`codex/process-control` to `8523595a`, its review fixes and main 0.14.0 merged in), release 0.14.1, main `0e697177`, 2026-10-27; sensors, ideal local regulation and shared vessel geometry. [Process control](process-control.md).
 

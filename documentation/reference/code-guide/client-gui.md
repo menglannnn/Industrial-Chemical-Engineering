@@ -1,5 +1,7 @@
 # Client GUI: screens, drafts, presets and the dev-client check
 
+**Snapshot:** 1b31ddf3 (main, mod 0.16.1), 2026-10-27 · **Updated:** 2026-10-27 (stale persisted column results are hidden until a fresh solve)
+
 **Creative tab (commit `188fba66`, 2026-10-27):** all registered IChemE items are listed in the mod creative tab; the mod no longer injects items into vanilla Functional Blocks.
 
 **Process control (batch 2026-10-26-process-control, 0.14.1):** sensor rows and the Control Valve on the fluid screen; the contracts are in [process-control.md](process-control.md).

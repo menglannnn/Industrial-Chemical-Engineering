@@ -13,3 +13,5 @@ Code areas:
 - `src/main/java/com/wormzjl/icheme/science/column/v3/V3ColumnCalculator.java`
 
 Open items: none for this batch; the full verification lane retains the baseline failures recorded in the task report.
+
+Follow-up: release 0.16.1 hides persisted stale results until a fresh accepted solve.
