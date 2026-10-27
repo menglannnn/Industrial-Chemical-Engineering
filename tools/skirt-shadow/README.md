@@ -30,7 +30,7 @@ The "before" images ran the same lines on `995dbd9c`'s sources (`tmp/skirt-shado
 - Before: cells holding a skirt's outer face at skylight 15; shell cells inside the skirt 14 (D 3 drum), 12 to 13 (D 6), 9 to 14 (D 10), 10 to 14 (D 8 column): a stepped diamond on the floor. After: every one at 15.
 - First reading (rejected by the owner): the skirt's darker paint. The outside of a skirt was already at skylight 15.
 - Figure: `documentation/2026-10-27-skirt-shadow/figures/floor-before-after.png`.
-- GameTest probe: the GameTest server ran 400 ticks in 143 ms; with the light engine asleep, the old poll failed as the flaky run did ("Waiting for the old shadow on the floor: 15"); the new wait saw the shadow after 129 ticks, 8,051 ms, and passed; the gate as merged passed. Rule off: the gate failed at its first reading, "the floor's skylight 12 is the sky's above the drum 15", with no timeout.
+- GameTest probe: the GameTest server ran 400 ticks in 143 ms; with the light engine asleep, the old poll failed as the flaky run did ("Waiting for the old shadow on the floor: 15"); the new wait saw the shadow after 129 ticks, 8,051 ms, and passed; the gate as merged passed. Rule off: the gate failed at its first reading, "the floor's skylight 12 is the sky's above the drum 15", with no timeout. Logs (run1, run2, the gate run): main checkout `tools/skirt-shadow/logs/skirt-shadow-gametest-logs-2026-10-27.tar.gz`, local.
 
 ## History
 
