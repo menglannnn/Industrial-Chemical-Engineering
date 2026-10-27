@@ -17,7 +17,7 @@ All notable changes to Industrial Chemical Engineering (IChemE, formerly CreateC
 
 ### Added
 
-- Process sensors and ideal local control valves (commit `0f3a569a`; batch `2026-10-26-process-control`): GUI-only pressure/temperature probes, local mass/actual-volume flowmeters and body/boot level meters; modular valves retain legacy pressure targets and regulate within the coupled fluid solve; shared vessel volume-height geometry drives levels, hydrostatics and conservative boot-weir withdrawal. Data cables and remote level control have contracts for a later batch. Fluid facts/accessory facts schema 2 and fluid state format 21 retain existing inventories and installations.
+- Process sensors and ideal local control valves (commits `0f3a569a`, `21193cbf`, `a33ec4a6`, `b92385c6`; batch `2026-10-26-process-control`): GUI-only pressure/temperature probes, local mass/actual-volume flowmeters and body/boot level meters; modular valves retain legacy pressure targets and regulate within the coupled fluid solve; shared vessel volume-height geometry drives levels, hydrostatics and conservative boot-weir withdrawal. Data cables and remote level control have contracts for a later batch. Fluid facts/accessory facts schema 2 and fluid state format 22 retain existing inventories and installations.
 
 ## [0.13.2] - 2026-10-26
 
