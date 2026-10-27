@@ -1,10 +1,13 @@
 package com.wormzjl.icheme.client;
 
+import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.wormzjl.icheme.IChemE;
 import com.wormzjl.icheme.network.FluidNetwork;
 import com.wormzjl.icheme.registry.ModItems;
 import com.wormzjl.icheme.science.equipment.EquipmentShape;
 import com.wormzjl.icheme.science.equipment.LineGeometry;
+import com.wormzjl.icheme.science.equipment.Mesh;
 import com.wormzjl.icheme.science.equipment.Paint;
 import com.wormzjl.icheme.science.equipment.PipeRoute;
 import com.wormzjl.icheme.science.equipment.PipeSizes;
@@ -23,6 +26,7 @@ import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.texture.OverlayTexture;
+import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
@@ -48,6 +52,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -76,8 +81,8 @@ public final class PipeLayingClient {
     private record Start(PipeAnchor.Click click, PipeAnchor anchor, ResourceKey<Level> dimension) {
     }
 
-    /** The route to the aimed click, or why there is none; its ghost cells, their joints, facings and arms when found. */
-    private record Plan(PipeAnchor.Click end, @Nullable PipeAnchor anchor, PipeRoute.Result route, @Nullable Component refusal, int[] joints, int[] facings, int[] arms) {
+    /** The route to the aimed click, or why there is none; its ghost cells, and how they are laid when found. */
+    private record Plan(PipeAnchor.Click end, @Nullable PipeAnchor anchor, PipeRoute.Result route, @Nullable Component refusal, @Nullable PipeRoute.Placement placement) {
     }
 
     /** The slot aimed on a rack's tier before a click ({@link PipeAnchor#aimed}): its cell, frame and lane, the face the line passes through, and whether it is refused. */
@@ -132,15 +137,16 @@ public final class PipeLayingClient {
         }
         if (hit == null) return;
         if (start == null) {
-            var resolved = PipeAnchor.resolve(mc.level, hit, PipeSizes.outside(settingsDiameter(player)));
-            var refusal = resolved.anchor() == null ? resolved.refusal() : resolved.anchor().refuses(PipeSizes.outside(settingsDiameter(player)));
+            double outside = PipeSizes.outside(settingsDiameter(player));
+            var resolved = PipeAnchor.resolve(mc.level, hit, outside);
+            var refusal = resolved.anchor() == null ? resolved.refusal() : resolved.anchor().refuses(outside);
             if (refusal != null) {
-                say(player, PipeLaying.message("anchor." + name(refusal)));
+                say(player, PipeLaying.refusal(refusal));
                 return;
             }
             start = new Start(hit, resolved.anchor(), mc.level.dimension());
             plan = null;
-            say(player, PipeLaying.message("started", describe(resolved.anchor())));
+            say(player, PipeLaying.message("started", PipeLaying.describe(resolved.anchor())));
             return;
         }
         if (sent == start) return;
@@ -150,7 +156,7 @@ public final class PipeLayingClient {
             say(player, current.refusal);
             return;
         }
-        var cells = current.route.cells().stream().map(c -> new BlockPos(c.x(), c.y(), c.z())).toList();
+        var cells = current.route.cells().stream().map(PipeAnchor::block).toList();
         FluidNetwork.layPipe(offHand, start.click, hit, cells, current.route.options());
         event.setSwingHand(true);
         sent = start;
@@ -167,7 +173,7 @@ public final class PipeLayingClient {
             if (laid) {
                 start = null;
                 plan = null;
-            } else if (plan != null) plan = refused = new Plan(plan.end, plan.anchor, plan.route, message, plan.joints, plan.facings, plan.arms);
+            } else if (plan != null) plan = refused = new Plan(plan.end, plan.anchor, plan.route, message, plan.placement);
         }
         sent = null;
     }
@@ -199,10 +205,10 @@ public final class PipeLayingClient {
             say(player, PipeLaying.message("dropped"));
         }
         var hit = mc.screen == null ? aimed(mc) : null;
-        double diameter = settingsDiameter(player);
+        double diameter = settingsDiameter(player), outside = PipeSizes.outside(diameter);
         if (start != null) {
             if (hit == null) plan = null;
-            else if (plan == null || !same(mc.level, plan.end, hit, PipeSizes.outside(diameter)) || age % RECHECK_TICKS == 0 && plan != refused) plan = plan(mc.level, hit, diameter);
+            else if (plan == null || !same(mc.level, plan.end, hit, outside) || age % RECHECK_TICKS == 0 && plan != refused) plan = plan(mc.level, hit, diameter);
             outliner.showAABB(START_SLOT, new AABB(start.anchor.cell())).colored(START_COLOUR).lineWidth(1 / 16F);
             if (plan != null && plan.refusal != null)
                 outliner.showLine(ROUTE_SLOT, start.anchor.cell().getCenter(), (plan.anchor != null ? plan.anchor.cell() : plan.end.clicked()).getCenter()).colored(REFUSED_COLOUR).lineWidth(1 / 16F);
@@ -224,7 +230,7 @@ public final class PipeLayingClient {
         }
         // Before each click, the slot aimed on a rack's tier: red where it is refused, or where the route to it is.
         boolean routeRefused = start != null && plan != null && plan.refusal != null;
-        slot = hit != null && !player.isShiftKeyDown() && (start == null || plan == null || routeRefused) ? slot(mc.level, hit, PipeSizes.outside(diameter), routeRefused) : null;
+        slot = hit != null && !player.isShiftKeyDown() && (start == null || plan == null || routeRefused) ? slot(mc.level, hit, outside, routeRefused) : null;
         var shown = new HashSet<Object>();
         ports(mc.level, player, outliner, shown);
         openEnds(mc.level, player, outliner, shown);
@@ -296,7 +302,7 @@ public final class PipeLayingClient {
 
     /** Two clicks that give the same anchor: the same block and face, and on a rack the same lane and arm, or the same aimed slot. */
     private static boolean same(Level level, PipeAnchor.Click a, PipeAnchor.Click b, double outside) {
-        return a.clicked().equals(b.clicked()) && a.face() == b.face() && java.util.Objects.equals(rackPick(level, a, outside), rackPick(level, b, outside));
+        return a.clicked().equals(b.clicked()) && a.face() == b.face() && Objects.equals(rackPick(level, a, outside), rackPick(level, b, outside));
     }
 
     /** The slot {@code click} aims at on a rack's tier, as a ghost lane open at its far face; red where it does not fit, or where {@code refused}. */
@@ -321,37 +327,40 @@ public final class PipeLayingClient {
         return level.getBlockState(at).getBlock() instanceof FluidDeviceBlock block && block.kind() == TopologyCompiler.Kind.PIPE ? List.of(new AABB(at)) : null;
     }
 
+    /** The laying tool the player holds: the main hand's, else the off hand's. */
+    private static ItemStack held(LocalPlayer player) {
+        return tool(player.getMainHandItem()) ? player.getMainHandItem() : player.getOffhandItem();
+    }
+
     private static double settingsDiameter(LocalPlayer player) {
-        var stack = tool(player.getMainHandItem()) ? player.getMainHandItem() : player.getOffhandItem();
-        var settings = stack.get(ModItems.PIPE_LAYING_SETTINGS.get());
+        var settings = held(player).get(ModItems.PIPE_LAYING_SETTINGS.get());
         return settings == null ? .05 : settings.diameter();
     }
 
     /** The route from the start to {@code end}, searched now on this thread within the search limits. */
     private static Plan plan(Level level, PipeAnchor.Click end, double diameter) {
-        var none = new int[0];
+        double outside = PipeSizes.outside(diameter);
         var nothing = new PipeRoute.Result(List.of(), List.of(), null);
-        var resolved = PipeAnchor.resolve(level, end, PipeSizes.outside(diameter));
-        if (resolved.anchor() == null) return new Plan(end, null, nothing, PipeLaying.message("anchor." + name(resolved.refusal())), none, none, none);
+        var resolved = PipeAnchor.resolve(level, end, outside);
+        if (resolved.anchor() == null) return new Plan(end, null, nothing, PipeLaying.refusal(resolved.refusal()), null);
         var from = start.anchor;
-        for (var anchor : List.of(from, resolved.anchor()))
-            if (anchor.refuses(PipeSizes.outside(diameter)) != null)
-                return new Plan(end, resolved.anchor(), nothing, PipeLaying.message("anchor." + name(anchor.refuses(PipeSizes.outside(diameter)))), none, none, none);
+        var to = resolved.anchor();
+        var refused = PipeAnchor.refuses(from, to, outside);
+        if (refused != null) return new Plan(end, to, nothing, PipeLaying.refusal(refused), null);
         int heading = from.leaving();
-        var route = PipeRoute.search(from.end(), heading, resolved.anchor().end(), PipeSizes.outside(diameter), PipeAnchor.space(level), PipeRoute.Limits.DEFAULT);
-        if (!route.found()) return new Plan(end, resolved.anchor(), route, PipeLaying.message("route." + name(route.refusal())), none, none, none);
-        var joints = PipeRoute.laidJoints(route.cells(), from.end(), resolved.anchor().end());
-        return new Plan(end, resolved.anchor(), route, null, joints, PipeRoute.facings(route.cells(), heading), PipeRoute.arms(route.cells(), from.end(), heading, resolved.anchor().end()));
+        var route = PipeRoute.search(from.end(), heading, to.end(), outside, PipeAnchor.space(level), PipeRoute.Limits.DEFAULT);
+        if (!route.found()) return new Plan(end, to, route, PipeLaying.refusal(route.refusal()), null);
+        return new Plan(end, to, route, null, PipeRoute.placement(route.cells(), from.end(), heading, to.end()));
     }
 
     /** Start → end, the length, the elbows, the size and the pipes needed; or why the aimed spot takes no line. */
     private static Component hud(LocalPlayer player) {
-        if (plan == null) return PipeLaying.message("hud.aim", describe(start.anchor));
+        if (plan == null) return PipeLaying.message("hud.aim", PipeLaying.describe(start.anchor));
         if (plan.refusal != null) return plan.refusal;
         int cells = plan.route.cells().size();
         double diameter = settingsDiameter(player);
         int elbows = PipeRoute.elbows(plan.route.cells(), start.anchor.end(), plan.anchor.end());
-        return PipeLaying.message("hud.route", describe(start.anchor), describe(plan.anchor), cells, elbows, String.format(Locale.ROOT, "%.3f", diameter),
+        return PipeLaying.message("hud.route", PipeLaying.describe(start.anchor), PipeLaying.describe(plan.anchor), cells, elbows, String.format(Locale.ROOT, "%.3f", diameter),
                 player.getAbilities().instabuild ? Component.literal("—") : Component.literal(Integer.toString(cells)));
     }
 
@@ -365,7 +374,7 @@ public final class PipeLayingClient {
         for (int j : new int[]{i - 1, i + 1}) {
             if (j < 0 || j >= cells.size() || !cells.get(j).equals(next)) continue;
             int option = shown.route.options().get(j);
-            if (option < 0 || !(level.getBlockEntity(new BlockPos(next.x(), next.y(), next.z())) instanceof PipeRackBlockEntity rack)) return null;
+            if (option < 0 || !(level.getBlockEntity(PipeAnchor.block(next)) instanceof PipeRackBlockEntity rack)) return null;
             double standard = PipeSizes.outsideOf(PipeSizes.code(outside));
             return RackGeometry.steps(RackGeometry.point(rack.rack(), option, RackGeometry.width(standard), standard, face ^ 1));
         }
@@ -376,10 +385,6 @@ public final class PipeLayingClient {
             for (var lane : rack.lanes()) if (lane.option() == anchor.hostLane() - 1) return RackGeometry.steps(rack.point(lane, face ^ 1));
         }
         return null;
-    }
-
-    private static Component describe(PipeAnchor anchor) {
-        return PipeLaying.message("end." + name(anchor.kind()));
     }
 
     /** The aimed nozzle: its role, whether a pipe is on it, and the largest bore it takes. */
@@ -520,40 +525,40 @@ public final class PipeLayingClient {
         var pose = event.getPoseStack();
         var buffers = mc.renderBuffers().bufferSource();
         var consumer = buffers.getBuffer(TYPE);
-        double diameter = settingsDiameter(mc.player);
-        int code = PipeSizes.code(PipeSizes.outside(diameter)), width = RackGeometry.width(PipeSizes.outsideOf(code));
+        double outside = PipeSizes.outside(settingsDiameter(mc.player));
+        int code = PipeSizes.code(outside), width = RackGeometry.width(PipeSizes.outsideOf(code));
         // A painted line's ghost shows its paint on the neutral plate sprite, as a vessel's ghost does; a bare one the ghost blue.
-        int paint = PipeLayingToolItem.paint(tool(mc.player.getMainHandItem()) ? mc.player.getMainHandItem() : mc.player.getOffhandItem());
+        int paint = PipeLayingToolItem.paint(held(mc.player));
         int colour = paint == Paint.BARE ? GHOST : Paint.tint(paint);
         if (aimed != null) ghost(consumer, pose, camera, sprite, aimed.cell, RackGeometry.lane(aimed.frame, aimed.lane), aimed.refused ? REFUSED_COLOUR : colour);
         var cells = shown == null ? List.<PipeRoute.Cell>of() : shown.route.cells();
         for (int i = 0; i < cells.size(); i++) {
-            var cell = cells.get(i);
+            var cell = PipeAnchor.block(cells.get(i));
             int option = shown.route.options().get(i);
-            List<com.wormzjl.icheme.science.equipment.Mesh.Polygon> polygons;
+            int joints = shown.placement.joints()[i];
+            List<Mesh.Polygon> polygons;
             // A lane is drawn where the rack will draw it, welded at every joint.
             if (option >= 0) {
-                if (!(mc.level.getBlockEntity(new BlockPos(cell.x(), cell.y(), cell.z())) instanceof PipeRackBlockEntity rack)) continue;
-                polygons = RackGeometry.lane(rack.frame(), new RackGeometry.Lane(option, width, shown.arms[i], shown.joints[i], code));
+                if (!(mc.level.getBlockEntity(cell) instanceof PipeRackBlockEntity rack)) continue;
+                polygons = RackGeometry.lane(rack.frame(), new RackGeometry.Lane(option, width, shown.placement.arms()[i], joints, code));
             } else {
                 long faces = 0, offsets = 0;
                 for (int face = 0; face < 6; face++) {
-                    if ((shown.joints[i] >> face & 1) == 0) continue;
+                    if ((joints >> face & 1) == 0) continue;
                     faces |= (long) code << 7 * face;
                     // A plain cell beside a lane is a transition pipe to the lane's off-centre point.
-                    var at = lanePoint(mc.level, shown, i, face, PipeSizes.outside(diameter));
+                    var at = lanePoint(mc.level, shown, i, face, outside);
                     if (at != null) offsets |= LineGeometry.Key.offsets(face, at[0], at[1]);
                 }
-                polygons = LineGeometry.polygons(new LineGeometry.Key(TopologyCompiler.Kind.PIPE, shown.facings[i], shown.joints[i], code, faces, 0, false, offsets));
+                polygons = LineGeometry.polygons(new LineGeometry.Key(TopologyCompiler.Kind.PIPE, shown.placement.facings()[i], joints, code, faces, 0, false, offsets));
             }
-            ghost(consumer, pose, camera, sprite, new BlockPos(cell.x(), cell.y(), cell.z()), polygons, colour);
+            ghost(consumer, pose, camera, sprite, cell, polygons, colour);
         }
         buffers.endBatch(TYPE);
     }
 
     /** One cell's polygons drawn translucent in {@code colour} on the plate sprite, at {@code cell}. */
-    private static void ghost(com.mojang.blaze3d.vertex.VertexConsumer consumer, com.mojang.blaze3d.vertex.PoseStack pose, Vec3 camera, net.minecraft.client.renderer.texture.TextureAtlasSprite sprite,
-                              BlockPos cell, List<com.wormzjl.icheme.science.equipment.Mesh.Polygon> polygons, int colour) {
+    private static void ghost(VertexConsumer consumer, PoseStack pose, Vec3 camera, TextureAtlasSprite sprite, BlockPos cell, List<Mesh.Polygon> polygons, int colour) {
         pose.pushPose();
         pose.translate(cell.getX() - camera.x, cell.getY() - camera.y, cell.getZ() - camera.z);
         var last = pose.last();
@@ -573,9 +578,5 @@ public final class PipeLayingClient {
 
     private static void say(LocalPlayer player, Component message) {
         player.displayClientMessage(message, true);
-    }
-
-    private static String name(Enum<?> value) {
-        return value.name().toLowerCase(Locale.ROOT);
     }
 }

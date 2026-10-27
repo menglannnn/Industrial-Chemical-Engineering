@@ -47,17 +47,18 @@ public final class PipeLaying {
         var endClicked = endClick.clicked();
         if (!player.canInteractWithBlock(endClicked, 1) || startClicked.getCenter().distanceToSqr(player.position()) > START_RANGE * START_RANGE) return message("out_of_reach");
         if (!level.hasChunkAt(startClicked) || !level.hasChunkAt(endClicked)) return message("anchor.outside");
-        var start = PipeAnchor.resolve(level, startClick, PipeSizes.outside(settings.diameter()));
-        if (start.anchor() == null) return message("anchor." + name(start.refusal()));
-        var end = PipeAnchor.resolve(level, endClick, PipeSizes.outside(settings.diameter()));
-        if (end.anchor() == null) return message("anchor." + name(end.refusal()));
-        for (var anchor : List.of(start.anchor(), end.anchor()))
-            if (anchor.refuses(PipeSizes.outside(settings.diameter())) != null) return message("anchor." + name(anchor.refuses(PipeSizes.outside(settings.diameter()))));
+        double outside = PipeSizes.outside(settings.diameter());
+        var start = PipeAnchor.resolve(level, startClick, outside);
+        if (start.anchor() == null) return refusal(start.refusal());
+        var end = PipeAnchor.resolve(level, endClick, outside);
+        if (end.anchor() == null) return refusal(end.refusal());
+        var refused = PipeAnchor.refuses(start.anchor(), end.anchor(), outside);
+        if (refused != null) return refusal(refused);
         var cells = path.stream().map(PipeAnchor::cell).toList();
-        var refusal = PipeRoute.check(cells, options, start.anchor().end(), end.anchor().end(), PipeRoute.Limits.DEFAULT.cells());
-        if (refusal != null) return message("route." + name(refusal));
+        var broken = PipeRoute.check(cells, options, start.anchor().end(), end.anchor().end(), PipeRoute.Limits.DEFAULT.cells());
+        if (broken != null) return refusal(broken);
         int heading = start.anchor().leaving();
-        int blocked = PipeRoute.blocked(cells, options, start.anchor().end(), heading, end.anchor().end(), PipeSizes.outside(settings.diameter()), PipeAnchor.space(level));
+        int blocked = PipeRoute.blocked(cells, options, start.anchor().end(), heading, end.anchor().end(), outside, PipeAnchor.space(level));
         if (blocked >= 0) return message("occupied", path.get(blocked).toShortString());
         for (var cell : path) if (!level.mayInteract(player, cell)) return message("occupied", cell.toShortString());
         var world = FluidWorldAuthority.find(player.server).orElse(null);
@@ -76,9 +77,8 @@ public final class PipeLaying {
             hosts.put(record.device().id(), joints);
         }
         if (!player.getAbilities().instabuild && !take(player, path.size())) return message("items", path.size());
-        var joints = PipeRoute.laidJoints(cells, start.anchor().end(), end.anchor().end());
-        var facings = PipeRoute.facings(cells, heading);
-        var arms = PipeRoute.arms(cells, start.anchor().end(), heading, end.anchor().end());
+        var placement = PipeRoute.placement(cells, start.anchor().end(), heading, end.anchor().end());
+        int[] joints = placement.joints(), facings = placement.facings(), arms = placement.arms();
         int width = RackGeometry.width(PipeSizes.drawn(settings.diameter()));
         // Each lane as its rack will hold it: its option, width, arms and joints; it registers with its face points, and a
         // facing that gives back its open end.
@@ -187,6 +187,21 @@ public final class PipeLaying {
 
     private static String name(Enum<?> value) {
         return value.name().toLowerCase(Locale.ROOT);
+    }
+
+    /** The player message of an anchor refusal. */
+    public static Component refusal(PipeAnchor.Refusal refusal) {
+        return message("anchor." + name(refusal));
+    }
+
+    /** The player message of a route refusal. */
+    public static Component refusal(PipeRoute.Refusal refusal) {
+        return message("route." + name(refusal));
+    }
+
+    /** What a line's end meets, for the player. */
+    public static Component describe(PipeAnchor anchor) {
+        return message("end." + name(anchor.kind()));
     }
 
     public static Component message(String key, Object... arguments) {

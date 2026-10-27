@@ -634,6 +634,15 @@ public final class PipeRoute {
         return joints;
     }
 
+    /** How a checked line's cells are laid, one entry per cell: their {@link #laidJoints}, {@link #facings} and {@link #arms}. */
+    public record Placement(int[] joints, int[] facings, int[] arms) {
+    }
+
+    /** The {@link Placement} of a checked line from {@code start}, leaving along {@code heading}, to {@code end}. */
+    public static Placement placement(List<Cell> cells, End start, int heading, End end) {
+        return new Placement(laidJoints(cells, start, end), facings(cells, heading), arms(cells, start, heading, end));
+    }
+
     /** A search state: the cell, the heading it was entered along, and in a rack the lane options still possible (0 in a plain cell). */
     private record State(Cell cell, int heading, int options) {
     }

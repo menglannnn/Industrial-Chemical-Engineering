@@ -98,6 +98,10 @@ public record PipeAnchor(Kind kind, BlockPos cell, @Nullable Direction joint, @N
         return new PipeRoute.Cell(position.getX(), position.getY(), position.getZ());
     }
 
+    public static BlockPos block(PipeRoute.Cell cell) {
+        return new BlockPos(cell.x(), cell.y(), cell.z());
+    }
+
     /** The host's ledger position. */
     public PhysicalFluidTopology.Position hostPosition(String dimension) {
         return new PhysicalFluidTopology.Position(dimension, host.getX(), host.getY(), host.getZ(), hostLane);
@@ -106,6 +110,12 @@ public record PipeAnchor(Kind kind, BlockPos cell, @Nullable Direction joint, @N
     /** Why a line of outside diameter {@code outside} cannot start or end here, or null. */
     public @Nullable Refusal refuses(double outside) {
         return fit.refuses(outside);
+    }
+
+    /** Why a line of outside diameter {@code outside} cannot run from {@code start} to {@code end}: the start's refusal, else the end's, or null. */
+    public static @Nullable Refusal refuses(PipeAnchor start, PipeAnchor end, double outside) {
+        var refusal = start.refuses(outside);
+        return refusal != null ? refusal : end.refuses(outside);
     }
 
     /**
