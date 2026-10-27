@@ -11,11 +11,13 @@ import com.wormzjl.icheme.world.level.block.EquipmentStructure;
 import com.wormzjl.icheme.world.level.block.entity.EquipmentShellBlockEntity;
 import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.*;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.LightLayer;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.neoforged.neoforge.gametest.*;
 import java.util.*;
+import java.util.concurrent.*;
 
 /**
  * Backward compatibility of placed equipment (batch 2026-10-26-backward-compat, owner decision D6): a structure whose
@@ -146,26 +148,57 @@ public final class EquipmentCompatGameTests {
             var state=level.getBlockState(origin.offset(c.x(),c.y(),c.z()));
             return state.is(ModBlocks.EQUIPMENT_INTERIOR.get())&&state.getValue(EquipmentInteriorBlock.SKYLIGHT)==sky;
         });
+        // Each light reading follows the light engine's run of the work queued before it, read once: not a wait for a value.
+        var high=origin.offset(shape.sizeX()-1,shape.sizeY(),shape.sizeZ()-1);
+        CompletableFuture<?>[] light={null};Runnable queued=()->light[0]=lightQueued(level,origin,high);
         helper.startSequence().thenWaitUntil(()->helper.assertTrue(world.at(position).isPresent(),"Waiting for the drum's registration"))
-        .thenExecute(()->helper.assertTrue(interior.test(true),"a placed skirted drum's interior cells let skylight through"))
-        .thenWaitUntil(()->helper.assertTrue(level.getBrightness(LightLayer.SKY,floor)==level.getBrightness(LightLayer.SKY,above),
-                "Waiting for the floor's skylight "+level.getBrightness(LightLayer.SKY,floor)+" to reach the sky's above the drum "+level.getBrightness(LightLayer.SKY,above)))
+        .thenExecute(()->{helper.assertTrue(interior.test(true),"a placed skirted drum's interior cells let skylight through");queued.run();})
+        .thenWaitUntil(()->waitForLight(level,light[0]))
         .thenExecute(()->{
+            helper.assertTrue(level.getBrightness(LightLayer.SKY,floor)==level.getBrightness(LightLayer.SKY,above),
+                    "the floor's skylight "+level.getBrightness(LightLayer.SKY,floor)+" is the sky's above the drum "+level.getBrightness(LightLayer.SKY,above));
             // The interior as a save from before the property holds it: opaque.
             for(var c:layout.interior()) {
                 var at=origin.offset(c.x(),c.y(),c.z());
                 level.setBlock(at,level.getBlockState(at).setValue(EquipmentInteriorBlock.SKYLIGHT,false),Block.UPDATE_CLIENTS|Block.UPDATE_KNOWN_SHAPE);
             }
-        }).thenWaitUntil(()->helper.assertTrue(level.getBrightness(LightLayer.SKY,floor)<level.getBrightness(LightLayer.SKY,above),
-                "Waiting for the old shadow on the floor: "+level.getBrightness(LightLayer.SKY,floor)))
-        .thenExecute(()->((EquipmentShellBlockEntity)level.getBlockEntity(controllerAt)).onLoad())
-        .thenWaitUntil(()->{
-            helper.assertTrue(interior.test(true),"Waiting for the load to restate the interior cells");
-            helper.assertTrue(level.getBrightness(LightLayer.SKY,floor)==level.getBrightness(LightLayer.SKY,above),"Waiting for the floor's skylight: "+level.getBrightness(LightLayer.SKY,floor));
-        }).thenExecute(()->{
+            queued.run();
+        }).thenWaitUntil(()->waitForLight(level,light[0]))
+        .thenExecute(()->{
+            helper.assertTrue(level.getBrightness(LightLayer.SKY,floor)<level.getBrightness(LightLayer.SKY,above),"the old shadow on the floor: "+level.getBrightness(LightLayer.SKY,floor));
+            ((EquipmentShellBlockEntity)level.getBlockEntity(controllerAt)).onLoad();
+        }).thenWaitUntil(()->helper.assertTrue(interior.test(true),"Waiting for the load to restate the interior cells"))
+        .thenExecute(queued)
+        .thenWaitUntil(()->waitForLight(level,light[0]))
+        .thenExecute(()->{
+            helper.assertTrue(level.getBrightness(LightLayer.SKY,floor)==level.getBrightness(LightLayer.SKY,above),"the floor's skylight comes back: "+level.getBrightness(LightLayer.SKY,floor));
             helper.assertTrue(world.at(position).isPresent(),"the drum keeps its registration");
             level.removeBlock(nodeAt,false);
         }).thenWaitUntil(()->helper.assertTrue(world.at(position).isEmpty(),"Waiting for the drum's registration to leave"))
         .thenSucceed();
+    }
+
+    /**
+     * A future that completes when the light engine has run the work queued so far in every chunk from {@code low} to
+     * {@code high}. The engine runs on its own thread: the light lags the blocks set by as long as the machine takes to
+     * give it a turn.
+     */
+    private static CompletableFuture<?> lightQueued(ServerLevel level,BlockPos low,BlockPos high) {
+        var engine=level.getChunkSource().getLightEngine();var chunks=new ArrayList<CompletableFuture<?>>();
+        for(int x=low.getX()>>4;x<=high.getX()>>4;x++)for(int z=low.getZ()>>4;z<=high.getZ()>>4;z++)chunks.add(engine.waitForPendingTasks(x,z));
+        return CompletableFuture.allOf(chunks.toArray(CompletableFuture[]::new));
+    }
+
+    /**
+     * Throws until {@code light} completes, holding each waiting tick up to the nominal 50 ms for it. A GameTest server does
+     * not pace its ticks: on a loaded machine a 400-tick budget ran out within a second, before the engine had a turn
+     * (batch 2026-10-27-skirt-shadow). The engine's update is scheduled first, as the server's task loop does between
+     * ticks, so the held tick can see it run.
+     */
+    private static void waitForLight(ServerLevel level,CompletableFuture<?> light) {
+        level.getChunkSource().getLightEngine().tryScheduleUpdate();
+        try{light.get(50,TimeUnit.MILLISECONDS);}
+        catch(TimeoutException e){throw new GameTestAssertException("Waiting for the light engine");}
+        catch(InterruptedException|ExecutionException e){throw new IllegalStateException("the light engine's wait",e);}
     }
 }
