@@ -65,14 +65,9 @@ public final class PipeRackBlockEntity extends BlockEntity {
                 throw new IllegalArgumentException("Invalid rack lane " + option + "+" + width);
         }
 
-        /** A lane in one paint, its flanges as its pipe. */
-        public Lane(long identity, int option, int width, int arms, int joints, double bore, int paint) {
-            this(identity, option, width, arms, joints, bore, paint, paint);
-        }
-
         /** A bare lane. */
         public Lane(long identity, int option, int width, int arms, int joints, double bore) {
-            this(identity, option, width, arms, joints, bore, Paint.BARE);
+            this(identity, option, width, arms, joints, bore, Paint.BARE, Paint.BARE);
         }
 
         public Lane painted(int rgb) {

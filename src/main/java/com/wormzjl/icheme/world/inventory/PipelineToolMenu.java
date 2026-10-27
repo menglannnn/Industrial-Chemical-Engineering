@@ -6,7 +6,6 @@ import com.wormzjl.icheme.science.equipment.Paint;
 import com.wormzjl.icheme.world.item.PipeLayingToolItem;
 import com.wormzjl.icheme.world.item.PipelineToolItem;
 import net.minecraft.network.RegistryFriendlyByteBuf;
-import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.SimpleMenuProvider;

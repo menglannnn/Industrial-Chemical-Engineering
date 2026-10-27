@@ -1,7 +1,10 @@
 package com.wormzjl.icheme.science.equipment;
 
+import org.jetbrains.annotations.Nullable;
+
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Predicate;
 
 import static com.wormzjl.icheme.science.equipment.Mesh.*;
 
@@ -14,9 +17,9 @@ import static com.wormzjl.icheme.science.equipment.Mesh.*;
  * from the back face; a {@link Rack} maps them to block coordinates. Every tier line rests on the beam, whose top lies at
  * {@link #BEAM_TOP}: a line's centre stands its radius above it, rounded up to the 1/32 m grid ({@link #height}); a line
  * too large to rest there within the block (a four-position line) sits at mid-height on a beam lowered beneath it, as
- * support P1 has it (owner, 2026-10-26). So every
- * point where a lane meets a face lies on the transition pipes' grid ({@link LineGeometry#OFFSET}). Lines turn and leave
- * at mid-block, between the bents, which stand in the block's face planes.</p>
+ * support P1 has it (owner, 2026-10-26). So every point where a lane meets a face lies on the transition pipes' grid
+ * ({@link LineGeometry#OFFSET}). Lines turn and leave at mid-block, between the bents, which stand in the block's face
+ * planes.</p>
  *
  * <p>A lane's option says where it lies: a tier lane by its first position p and the level l its side arm leaves at
  * (option p + 4 l), a crossing lane by its level (option 12 above the tier, 13 below). In a tee the level is the lane's
@@ -336,16 +339,16 @@ public final class RackGeometry {
         boolean up = rack.facing == 3 || rack.facing == 5;
         if (Math.floorMod(along, 3) == 0) out |= up ? BENT_BACK : BENT_FRONT;
         if (Math.floorMod(along, 3) == 2) out |= up ? BENT_FRONT : BENT_BACK;
-        java.util.function.Predicate<Rack> end = r -> r == null || r.junction() || LineGeometry.axis(r.facing) != LineGeometry.axis(rack.facing);
+        Predicate<Rack> end = r -> r == null || r.junction() || LineGeometry.axis(r.facing) != LineGeometry.axis(rack.facing);
         out |= bit(around, rack.back(), BENT_BACK | END_BACK, previous, end);
         out |= bit(around, rack.front(), BENT_FRONT | END_FRONT, previous, end);
-        java.util.function.Predicate<Rack> beside = r -> r != null && !r.junction() && LineGeometry.axis(r.facing) == LineGeometry.axis(rack.facing);
+        Predicate<Rack> beside = r -> r != null && !r.junction() && LineGeometry.axis(r.facing) == LineGeometry.axis(rack.facing);
         out |= bit(around, rack.left(), LEFT_JOINED, previous, beside);
         out |= bit(around, rack.right(), RIGHT_JOINED, previous, beside);
         return out;
     }
 
-    private static int bit(Neighbours around, int face, int mask, int previous, java.util.function.Predicate<Rack> test) {
+    private static int bit(Neighbours around, int face, int mask, int previous, Predicate<Rack> test) {
         if (!around.known(face)) return previous & mask;
         return test.test(around.rack(face)) ? mask : 0;
     }
@@ -544,7 +547,7 @@ public final class RackGeometry {
      * free, the nearest that suits the cell, not fitting. Exits over, under or out of the side stay the route's. Null
      * where the cell takes no lane that wide.
      */
-    public static @org.jetbrains.annotations.Nullable Aim aim(Rack rack, List<Lane> lanes, double outside, double[] point) {
+    public static @Nullable Aim aim(Rack rack, List<Lane> lanes, double outside, double[] point) {
         int code = PipeSizes.code(outside), width = width(PipeSizes.outsideOf(code)), runs = runs(rack), through = -1;
         double most = -Double.MAX_VALUE;
         for (int face = 2; face < 6; face++) {

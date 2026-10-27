@@ -70,8 +70,8 @@ public final class PipeRackModel implements IDynamicBakedModel {
         var drawn = data.get(PipeRackBlockEntity.DRAWN);
         long painted = 0;
         if (drawn != null) for (int i = 0; i < drawn.paints().size(); i++)
-            painted |= (long) ((drawn.paints().get(i) != Paint.BARE ? 1 << Paint.BODY : 0) | (drawn.secondaries().get(i) != Paint.BARE ? 1 << Paint.STRUCTURE : 0)) << 2 * i;
-        var key = drawn == null ? new Look(new RackGeometry.Rack(bare.facing(), bare.corner(), PipeRackBlockEntity.BARE, RackGeometry.BEAM_TOP), List.of(), 0, 0)
+            painted |= (long) EquipmentShellModel.painted(drawn.paints().get(i), drawn.secondaries().get(i)) << 2 * i;
+        var key = drawn == null ? new Look(RackGeometry.framed(bare, PipeRackBlockEntity.BARE, RackGeometry.BEAM_TOP), List.of(), 0, 0)
                 : new Look(drawn.rack(), drawn.lanes(), painted, drawn.spools());
         var cached = quads.get(key);
         if (cached == null) {

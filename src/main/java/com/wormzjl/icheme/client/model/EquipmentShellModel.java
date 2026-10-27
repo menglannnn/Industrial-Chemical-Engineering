@@ -136,23 +136,23 @@ public final class EquipmentShellModel implements IDynamicBakedModel {
     }
 
     /**
-     * A painted line's sprites (batch 2026-10-26-pipe-laying-system): {@code sprites} with its painted parts swapped for
-     * the neutral sprites the line's tint colours. {@code painted}: a bit per channel with a paint, {@link Paint#BODY}
-     * the primary (the pipe, {@code painted_pipe}) and {@link Paint#STRUCTURE} the secondary (the flanges,
-     * {@code painted_flange}).
+     * A painted line's sprites for every {@link #painted} mask, indexed by it (index 0 is {@code bare}): {@code bare} with
+     * its painted parts swapped for the neutral sprites the line's tint colours, {@code painted_pipe} for the primary
+     * ({@link Paint#BODY}, the pipe) and {@code painted_flange} for the secondary ({@link Paint#STRUCTURE}, the flanges).
      */
-    public static TextureAtlasSprite[] paintedLine(IGeometryBakingContext context, Function<Material, TextureAtlasSprite> sprites, TextureAtlasSprite[] bare, int painted) {
-        var out = bare.clone();
-        if ((painted >> Paint.BODY & 1) != 0 && context.hasMaterial("painted_pipe")) out[Mesh.Material.PIPE.ordinal()] = sprites.apply(context.getMaterial("painted_pipe"));
-        if ((painted >> Paint.STRUCTURE & 1) != 0 && context.hasMaterial("painted_flange")) out[Mesh.Material.FLANGE.ordinal()] = sprites.apply(context.getMaterial("painted_flange"));
+    public static TextureAtlasSprite[][] paintedLines(IGeometryBakingContext context, Function<Material, TextureAtlasSprite> sprites, TextureAtlasSprite[] bare) {
+        var out = new TextureAtlasSprite[4][];
+        for (int painted = 0; painted < 4; painted++) {
+            out[painted] = bare.clone();
+            if ((painted >> Paint.BODY & 1) != 0 && context.hasMaterial("painted_pipe")) out[painted][Mesh.Material.PIPE.ordinal()] = sprites.apply(context.getMaterial("painted_pipe"));
+            if ((painted >> Paint.STRUCTURE & 1) != 0 && context.hasMaterial("painted_flange")) out[painted][Mesh.Material.FLANGE.ordinal()] = sprites.apply(context.getMaterial("painted_flange"));
+        }
         return out;
     }
 
-    /** {@link #paintedLine} for every {@code painted} mask, indexed by it: index 0 is {@code bare}. */
-    public static TextureAtlasSprite[][] paintedLines(IGeometryBakingContext context, Function<Material, TextureAtlasSprite> sprites, TextureAtlasSprite[] bare) {
-        var out = new TextureAtlasSprite[4][];
-        for (int painted = 0; painted < 4; painted++) out[painted] = paintedLine(context, sprites, bare, painted);
-        return out;
+    /** A line's painted mask: a bit per channel with a paint, {@link Paint#BODY} for {@code paint} and {@link Paint#STRUCTURE} for {@code secondary}. */
+    public static int painted(int paint, int secondary) {
+        return (paint != Paint.BARE ? 1 << Paint.BODY : 0) | (secondary != Paint.BARE ? 1 << Paint.STRUCTURE : 0);
     }
 
     /**

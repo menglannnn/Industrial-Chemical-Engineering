@@ -82,8 +82,6 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements com.wor
     }
     /** Bit of a face byte marking a flanged joint; the low seven bits hold the size code. */
     private static final int FLANGED = 128;
-    /** Pipes are welded in spools of this many blocks; the block at each spool end carries a flange pair. */
-    public static final int SPOOL = LineGeometry.SPOOL;
     private long identity;
     private final com.wormzjl.icheme.runtime.instrument.Instrument.Metadata instruments=new com.wormzjl.icheme.runtime.instrument.Instrument.Metadata();
     @Override public com.wormzjl.icheme.runtime.instrument.Instrument.Metadata instruments(){return instruments;}
@@ -305,13 +303,13 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements com.wor
         for(int i=0;i<6;i++){packed|=(long)(faces[i]&127)<<(7*i);if((faces[i]&FLANGED)!=0)flanged|=1<<i;}
         return ModelData.of(DRAWN,new Drawn(bore,packed,flanged,spoolEnd(),offsets,paint,secondary));
     }
-    /** A straight pipe whose coordinate along its run is a multiple of {@link #SPOOL}: it carries the flange pair between spools. */
+    /** A straight pipe whose coordinate along its run is a multiple of {@link LineGeometry#SPOOL}: it carries the flange pair between spools. */
     private boolean spoolEnd() {
         var state=getBlockState();if(!(state.getBlock() instanceof FluidDeviceBlock block)||block.kind()!=TopologyCompiler.Kind.PIPE)return false;
         for(var axis:Direction.Axis.values()) {
             var negative=Direction.fromAxisAndDirection(axis,Direction.AxisDirection.NEGATIVE);
             if(state.getValue(FluidDeviceBlock.connection(negative))&&state.getValue(FluidDeviceBlock.connection(negative.getOpposite())))
-                return Math.floorMod(worldPosition.get(axis),SPOOL)==0;
+                return Math.floorMod(worldPosition.get(axis),LineGeometry.SPOOL)==0;
         }
         return false;
     }

@@ -297,7 +297,8 @@ public final class PipeRoute {
      * the cell's lanes, and meeting one of {@code points} on that face (null: any); 0 in a plain cell, or with no face (-1).
      */
     private static int entering(Room room, int face, int[] points, Line line) {
-        if (room.admit != Admit.RACK || face < 0) return room.admit == Admit.RACK && face < 0 ? opened(room, line) : 0;
+        if (room.admit != Admit.RACK) return 0;
+        if (face < 0) return opened(room, line);
         int out = 0;
         for (int option = 0; option < RackGeometry.OPTIONS; option++) {
             int point = RackGeometry.point(room.rack, option, line.width, line.outside, face);
@@ -340,11 +341,10 @@ public final class PipeRoute {
     /** The end cell's options: those of the end's aimed slot, or any, running from {@code entry} to {@code exit} and meeting the end's point on its joint. */
     private static int finishing(Room room, int options, int entry, int exit, End end, Line line) {
         if (room.admit != Admit.RACK || exit == entry) return 0;
-        int out = 0;
-        options &= aimed(end);
-        for (int option = 0; option < RackGeometry.OPTIONS; option++)
-            if ((options >> option & 1) != 0 && fits(room, option, 1 << entry | 1 << exit, line)
-                    && (end.point < 0 || RackGeometry.point(room.rack, option, line.width, line.outside, end.joint) == end.point)) out |= 1 << option;
+        int out = leaving(room, options & aimed(end), entry, exit, line);
+        if (end.point >= 0)
+            for (int option = 0; option < RackGeometry.OPTIONS; option++)
+                if ((out >> option & 1) != 0 && RackGeometry.point(room.rack, option, line.width, line.outside, end.joint) != end.point) out &= ~(1 << option);
         return out;
     }
 
@@ -363,7 +363,7 @@ public final class PipeRoute {
      * open end straight on. A line of one cell with an aimed end is that end's lane, the start's where both are aimed: its
      * two faces, whichever half each click aimed at, as a one-block line has no route to pass on to.
      */
-    public static int[][] ends(List<Cell> cells, End start, int heading, End end) {
+    private static int[][] ends(List<Cell> cells, End start, int heading, End end) {
         int n = cells.size();
         var out = new int[n][2];
         for (int i = 0; i < n; i++) {
@@ -401,7 +401,7 @@ public final class PipeRoute {
             while (first > 0 && room.apply(cells.get(first - 1)).admit == Admit.RACK) first--;
             int towards = towards(cells, ends, first, last, lastRoom.rack, start, heading, end);
             int chosen = -1;
-            int options = valid(lastRoom, states.get(last), ends[last], line);
+            int options = leaving(lastRoom, states.get(last), ends[last][0], ends[last][1], line);
             for (int option = 0; option < RackGeometry.OPTIONS; option++)
                 if ((options >> option & 1) != 0 && (chosen < 0 || rank(lastRoom.rack, option, line, towards) < rank(lastRoom.rack, chosen, line, towards))) chosen = option;
             out.set(last, chosen);
@@ -409,7 +409,7 @@ public final class PipeRoute {
                 var here = room.apply(cells.get(i));
                 var after = room.apply(cells.get(i + 1));
                 int meet = RackGeometry.point(after.rack, out.get(i + 1), line.width, line.outside, ends[i + 1][0]);
-                int candidates = valid(here, states.get(i), ends[i], line), pick = -1;
+                int candidates = leaving(here, states.get(i), ends[i][0], ends[i][1], line), pick = -1;
                 for (int option = 0; option < RackGeometry.OPTIONS; option++)
                     if ((candidates >> option & 1) != 0 && RackGeometry.point(here.rack, option, line.width, line.outside, ends[i][1]) == meet
                             && (pick < 0 || RackGeometry.level(option) < RackGeometry.level(pick))) pick = option;
@@ -418,11 +418,6 @@ public final class PipeRoute {
             last = first;
         }
         return out;
-    }
-
-    /** The options among a cell's state whose lane suits and fits it with its arms. */
-    private static int valid(Room room, int options, int[] ends, Line line) {
-        return leaving(room, options, ends[0], ends[1], line);
     }
 
     /**
@@ -453,11 +448,6 @@ public final class PipeRoute {
             if (back == left || back == right) return back;
         }
         return -1;
-    }
-
-    /** The axis a step through {@code face} runs along, 0 x, 1 y, 2 z: faces pair up as y, z, x in {@link LineGeometry#STEPS} order. */
-    static int axis(int face) {
-        return ((face >> 1) + 1) % 3;
     }
 
     /**

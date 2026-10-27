@@ -17,6 +17,9 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
+import java.util.Collection;
+
 /**
  * Where a laid line may start or end (batch 2026-10-26-pipe-laying-system, plan sections 4.2 and 5.2), read from the
  * block the player clicked, the face they clicked and where on the block: the line's end cell, the face of that cell
@@ -111,10 +114,6 @@ public record PipeAnchor(Kind kind, BlockPos cell, @Nullable Direction joint, @N
      */
     public int leaving() {
         return aim != null ? aim.open() ^ 1 : heading.ordinal();
-    }
-
-    public static Resolved resolve(Level level, BlockPos clicked, Direction face, double outside) {
-        return resolve(level, new Click(clicked, face), outside);
     }
 
     /**
@@ -227,8 +226,7 @@ public record PipeAnchor(Kind kind, BlockPos cell, @Nullable Direction joint, @N
 
     /** The slot on {@code rack}'s tier that a click at cell-local {@code local} aims at, for a line of {@code outside} ({@link RackGeometry#aim}). */
     public static @Nullable RackGeometry.Aim aimed(PipeRackBlockEntity rack, Vec3 local, double outside) {
-        double standard = PipeSizes.outsideOf(PipeSizes.code(outside));
-        return RackGeometry.aim(rack.rack(), rack.drawnLanes(), standard, new double[]{local.x, local.y, local.z});
+        return RackGeometry.aim(rack.rack(), rack.drawnLanes(), outside, new double[]{local.x, local.y, local.z});
     }
 
     /** Whether the laid pipe at {@code pipe} with {@code joints} meets a rack lane through one of them. */
@@ -262,8 +260,8 @@ public record PipeAnchor(Kind kind, BlockPos cell, @Nullable Direction joint, @N
             }
 
             @Override
-            public java.util.Collection<PipeRoute.Cell> racks(PipeRoute.Cell low, PipeRoute.Cell high) {
-                var out = new java.util.ArrayList<PipeRoute.Cell>();
+            public Collection<PipeRoute.Cell> racks(PipeRoute.Cell low, PipeRoute.Cell high) {
+                var out = new ArrayList<PipeRoute.Cell>();
                 for (int cx = low.x() >> 4; cx <= high.x() >> 4; cx++)
                     for (int cz = low.z() >> 4; cz <= high.z() >> 4; cz++) {
                         var chunk = level.getChunkSource().getChunk(cx, cz, false);

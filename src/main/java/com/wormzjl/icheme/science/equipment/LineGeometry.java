@@ -303,7 +303,7 @@ public final class LineGeometry {
      * and look opposite ways, so only one is ever towards the viewer, and it lies inside the other flange. Without a hub
      * (the line starts within the flange) its back is a whole disc.
      */
-    static void flange(Mesh m, Frame f, double od, double z, int sides, boolean joined) {
+    private static void flange(Mesh m, Frame f, double od, double z, int sides, boolean joined) {
         double t = PipeSizes.flangeThickness(od), flange = PipeSizes.flange(od) / 2, hubR = PipeSizes.hubOutside(od) / 2;
         boolean hub = .5 - t > z + EPS;
         if (hub) m.frustum(f, od / 2, hubR, z, .5 - t, sides, Material.PIPE);

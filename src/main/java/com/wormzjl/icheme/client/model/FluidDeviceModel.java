@@ -90,7 +90,7 @@ public final class FluidDeviceModel implements IDynamicBakedModel {
         var geometry=state!=null&&state.getBlock() instanceof FluidDeviceBlock?sightGlassKey(state,data):new SightGlassGeometry.Key(LineGeometry.Key.item(kind));
         var shutoff=checkAccessory?FluidDeviceBlock.Shutoff.CHECK:shutoffAccessory?FluidDeviceBlock.Shutoff.OPEN:state!=null&&FluidDeviceBlock.hasPipeValve(state)?state.getValue(FluidDeviceBlock.SHUTOFF):FluidDeviceBlock.Shutoff.NONE;
         var key = new Look(geometry,accessory||state!=null&&FluidDeviceBlock.hasSightGlass(state),shutoff,pressureAccessory||state!=null&&FluidDeviceBlock.hasPressureValve(state),state!=null&&FluidDeviceBlock.hasFilter(state),state!=null&&FluidDeviceBlock.hasMover(state)?state.getValue(FluidDeviceBlock.INLINE_MOVER).kind():moverAccessory?kind:TopologyCompiler.Kind.PIPE,
-                state!=null&&data.get(FluidDeviceBlockEntity.DRAWN) instanceof FluidDeviceBlockEntity.Drawn drawn?painted(drawn):0);
+                state!=null&&data.get(FluidDeviceBlockEntity.DRAWN) instanceof FluidDeviceBlockEntity.Drawn drawn?EquipmentShellModel.painted(drawn.paint(),drawn.secondary()):0);
         var cached = quads.get(key);
         if(cached==null){if(quads.size()>=CACHE)quads.clear();cached=quads.computeIfAbsent(key,this::bake);}
         if(renderType==RenderType.translucent())return cached.glass;
@@ -112,11 +112,6 @@ public final class FluidDeviceModel implements IDynamicBakedModel {
     /** A pipeline device is never painted, but a painted line's pipe and flanges take its paints through the block tint (tint index: the paint's channel). */
     private List<BakedQuad> quads(Look look,List<com.wormzjl.icheme.science.equipment.Mesh.Polygon> polygons) {
         return EquipmentShellModel.bake(polygons,paintedSprites[look.painted],EquipmentShellModel.lineTints(look.painted,0));
-    }
-
-    /** The painted mask of a drawn line: {@link Paint#BODY} with a primary paint, {@link Paint#STRUCTURE} with a secondary one. */
-    private static int painted(FluidDeviceBlockEntity.Drawn drawn) {
-        return (drawn.paint()!=Paint.BARE?1<<Paint.BODY:0)|(drawn.secondary()!=Paint.BARE?1<<Paint.STRUCTURE:0);
     }
 
     /** Installation orientation is part of both the chunk-model and liquid-surface cache key. */
