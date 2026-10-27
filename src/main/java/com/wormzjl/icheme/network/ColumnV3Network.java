@@ -147,7 +147,8 @@ public final class ColumnV3Network {
         try {
             ProcessSolveServices.AdmissionResult admission = ProcessSolveServices.submitV3Column(
                     player.getServer(),
-                    new V3ColumnRequest(requestId, target, acceptedOperation, System.nanoTime()));
+                    new V3ColumnRequest(requestId, target, acceptedOperation, System.nanoTime()),
+                    calculator.warmSeed());
             if (!admission.accepted()) {
                 calculator.failOperation(acceptedOperation, "Admission rejected: " + admission.admission().name());
             }

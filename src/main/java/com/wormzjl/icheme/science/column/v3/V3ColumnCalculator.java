@@ -779,6 +779,19 @@ public final class V3ColumnCalculator {
                 liquidSupplyScreenRatio));
     }
 
+    /** Re-solves a request using one of the repeat-request warm-start policies. */
+    public static V3ColumnOutcome calculateWithStrategy(
+            V3ColumnInput input, V3SolveControl control, V3SolveStrategy strategy,
+            V3NeuralSeed warmStart, double liquidSupplyScreenRatio) {
+        Objects.requireNonNull(input, "input");
+        Objects.requireNonNull(control, "control");
+        Objects.requireNonNull(strategy, "strategy");
+        V3LiquidSupplyScreen.requireRatio(liquidSupplyScreenRatio);
+        return com.wormzjl.icheme.science.material.MaterialRuntime.pinned(input.packageId(),
+                () -> calculateInCatalog(input, control, SolvePolicy.OFF, liquidSupplyScreenRatio,
+                        strategy, warmStart));
+    }
+
     /**
      * Converts an authored closure request into the tolerance every gate uses.
      *
@@ -796,18 +809,22 @@ public final class V3ColumnCalculator {
     private static V3ColumnOutcome calculate(
             V3ColumnInput input, V3SolveControl control, SolvePolicy policy, double liquidSupplyScreenRatio) {
         return com.wormzjl.icheme.science.material.MaterialRuntime.pinned(input.packageId(),
-                () -> calculateInCatalog(input, control, policy, liquidSupplyScreenRatio));
+                () -> calculateInCatalog(input, control, policy, liquidSupplyScreenRatio,
+                        V3SolveStrategy.DRIFT_SPEC, null));
     }
 
     private static V3ColumnOutcome calculateInCatalog(
-            V3ColumnInput input, V3SolveControl control, SolvePolicy policy, double liquidSupplyScreenRatio) {
+            V3ColumnInput input, V3SolveControl control, SolvePolicy policy, double liquidSupplyScreenRatio,
+            V3SolveStrategy strategy, V3NeuralSeed warmStart) {
         Objects.requireNonNull(input, "input");
         Objects.requireNonNull(control, "control");
         RequestAdmission admission = requestOnlyAdmission(input, liquidSupplyScreenRatio);
         if (admission.typed()) return admission.failure();
         CondenserAttempts condenserAttempts = new CondenserAttempts();
-        V3CondenserPhaseBranch preferred = preferredCondenserBranch(input, control);
-        V3ColumnOutcome outcome = calculateBranch(input, control, preferred, policy, condenserAttempts);
+        V3CondenserPhaseBranch preferred = warmStart != null
+                && (input.equals(warmStart.input()) || warmCompatible(input, warmStart.input(), strategy))
+                ? warmStart.branch() : preferredCondenserBranch(input, control);
+        V3ColumnOutcome outcome = calculateBranch(input, control, preferred, policy, condenserAttempts, strategy, warmStart);
         if (outcome instanceof V3ColumnOutcome.Success
                 || outcome instanceof V3ColumnOutcome.Failure failure
                 && (failure.code() == V3SolverFailureCode.INVALID_INPUT
@@ -818,7 +835,7 @@ public final class V3ColumnCalculator {
         // A known phase mismatch has its bounded same-rung warm correction. Restarting either branch
         // from the smallest grid discards that useful profile and can revisit an inappropriate phase.
         if (!condenserAttempts.allowsColdRecovery() || condenserAttempts.hasAttempted(alternate)) return outcome;
-        V3ColumnOutcome alternative = calculateBranch(input, control, alternate, policy, condenserAttempts);
+        V3ColumnOutcome alternative = calculateBranch(input, control, alternate, policy, condenserAttempts, strategy, warmStart);
         return alternative instanceof V3ColumnOutcome.Success ? alternative : outcome;
     }
 
@@ -957,7 +974,8 @@ public final class V3ColumnCalculator {
     }
 
     private static V3ColumnOutcome calculateBranch(V3ColumnInput input, V3SolveControl control,
-            V3CondenserPhaseBranch condenserBranch, SolvePolicy policy, CondenserAttempts condenserAttempts) {
+            V3CondenserPhaseBranch condenserBranch, SolvePolicy policy, CondenserAttempts condenserAttempts,
+            V3SolveStrategy strategy, V3NeuralSeed warmStart) {
         List<String> advisoryEvidence = List.of();
         boolean admitted = false;
         try {
@@ -972,9 +990,14 @@ public final class V3ColumnCalculator {
             }
             admitted = true;
             V3SolvePass pass;
-            pass = requiresPressureContinuation(admission)
-                    ? solvePressureContinuation(input, thermo, control, condenserBranch, policy, condenserAttempts)
-                    : solveStageContinuation(input, thermo, control, condenserBranch, policy, condenserAttempts);
+            pass = warmStartPass(input, problem, thermo, control, policy, strategy, warmStart);
+            if (pass == null) {
+                pass = requiresPressureContinuation(admission)
+                        ? solvePressureContinuation(input, thermo, control, condenserBranch, policy, condenserAttempts,
+                                strategy)
+                        : solveStageContinuation(input, thermo, control, condenserBranch, policy, condenserAttempts,
+                                strategy);
+            }
             if (!publishesSuccess(pass.attempt(), pass.audit())
                     && !hasCondenserPhaseMismatch(pass)
                     && condenserAttempts.allowsColdRecovery()
@@ -1123,6 +1146,91 @@ public final class V3ColumnCalculator {
         }
     }
 
+    /** Attempts a direct correction from the previous accepted state; a rejected candidate never replaces cold solve. */
+    private static V3SolvePass warmStartPass(V3ColumnInput input, V3ColumnProblem problem,
+            V3PengRobinsonThermo thermo, V3SolveControl control, SolvePolicy policy,
+            V3SolveStrategy strategy, V3NeuralSeed warmStart) {
+        if (warmStart == null || warmStart.branch() != problem.topology().condenserPhaseBranch()
+                || !(input.equals(warmStart.input()) || warmCompatible(input, warmStart.input(), strategy))) {
+            return null;
+        }
+        V3DryMeshState seed;
+        try {
+            seed = retargetWarmSeed(input, problem, warmStart);
+            int iterations = strategy == V3SolveStrategy.AGGRESSIVE ? 8 : 16;
+            V3SolvePass pass = solveSingleProblem(problem, thermo, seed, control,
+                    strategy == V3SolveStrategy.AGGRESSIVE ? "warm/aggressive" : "warm/drift-spec",
+                    ContinuationJacobianPolicy.STAGE_LOCAL_BLOCKS, iterations, policy);
+            if (publishesSuccess(pass.attempt(), pass.audit())) return pass;
+        } catch (V3ThermoException | IllegalArgumentException | IllegalStateException ignored) {
+            // Warm starts are an optional cache. Any shape, property or trust-region mismatch uses cold recovery.
+        }
+        return null;
+    }
+
+    private static V3DryMeshState retargetWarmSeed(V3ColumnInput input, V3ColumnProblem problem,
+            V3NeuralSeed source) {
+        double[] temperature = source.temperatures();
+        temperature[0] = input.specifications().stream()
+                .filter(V3ColumnSpecification.CondenserOutletTemperature.class::isInstance)
+                .map(V3ColumnSpecification.CondenserOutletTemperature.class::cast).findFirst().orElseThrow().kelvin();
+        double[] water = source.freeWater();
+        for (double value : water) if (value != 0.0) throw new IllegalArgumentException("wet warm seed requires wet continuation");
+        V3NeuralSeed retargeted = new V3NeuralSeed(input, source.propertyRevision(), source.branch(),
+                source.liquid(), source.vapor(), temperature, water, new boolean[input.stageCount() + 2]);
+        return retargeted.stateFor(problem);
+    }
+
+    private static boolean warmCompatible(V3ColumnInput target, V3ColumnInput source, V3SolveStrategy strategy) {
+        if (!target.packageId().equals(source.packageId()) || !target.componentBasis().equals(source.componentBasis())
+                || target.stageCount() != source.stageCount() || target.feedStageNumber() != source.feedStageNumber()
+                || !sameFeatureShape(target, source)) {
+            return false;
+        }
+        double limit = strategy == V3SolveStrategy.AGGRESSIVE ? 0.50 : 0.15;
+        if (relativeDrift(target.topPressurePascal(), source.topPressurePascal()) > limit
+                || relativeDrift(target.feedTemperatureKelvin(), source.feedTemperatureKelvin()) > limit
+                || relativeDrift(specValue(target, V3ColumnSpecification.CondenserOutletTemperature.class),
+                        specValue(source, V3ColumnSpecification.CondenserOutletTemperature.class)) > limit) {
+            return false;
+        }
+        double[] a = target.feedComponentMolarFlowsMolPerSecond(), b = source.feedComponentMolarFlowsMolPerSecond();
+        for (int i = 0; i < a.length; i++) if (relativeDrift(a[i], b[i]) > limit) {
+            return false;
+        }
+        return relativeDrift(reboilerDuty(target), reboilerDuty(source)) <= limit;
+    }
+
+    private static boolean sameFeatureShape(V3ColumnInput a, V3ColumnInput b) {
+        if (a.sideDraws().size() != b.sideDraws().size() || a.steamFeeds().size() != b.steamFeeds().size()
+                || a.pumparounds().size() != b.pumparounds().size()) return false;
+        for (int i = 0; i < a.sideDraws().size(); i++)
+            if (a.sideDraws().get(i).trayNumber() != b.sideDraws().get(i).trayNumber()) return false;
+        for (int i = 0; i < a.steamFeeds().size(); i++)
+            if (a.steamFeeds().get(i).stageNumber() != b.steamFeeds().get(i).stageNumber()) return false;
+        for (int i = 0; i < a.pumparounds().size(); i++)
+            if (a.pumparounds().get(i).drawTray() != b.pumparounds().get(i).drawTray()
+                    || a.pumparounds().get(i).returnTray() != b.pumparounds().get(i).returnTray()) return false;
+        return true;
+    }
+
+    private static double specValue(V3ColumnInput input,
+            Class<? extends V3ColumnSpecification> type) {
+        return input.specifications().stream().filter(type::isInstance).findFirst()
+                .map(spec -> spec instanceof V3ColumnSpecification.CondenserOutletTemperature t ? t.kelvin()
+                        : spec instanceof V3ColumnSpecification.ReboilerDuty q ? q.watts()
+                        : spec instanceof V3ColumnSpecification.OrganicRefluxRatio r ? r.ratio() : 0.0)
+                .orElse(0.0);
+    }
+
+    private static double reboilerDuty(V3ColumnInput input) {
+        return specValue(input, V3ColumnSpecification.ReboilerDuty.class);
+    }
+
+    private static double relativeDrift(double a, double b) {
+        return Math.abs(a - b) / Math.max(1.0, Math.max(Math.abs(a), Math.abs(b)));
+    }
+
     private static boolean requiresPressureContinuation(V3OperatingDomainValidator.Assessment admission) {
         return admission instanceof V3OperatingDomainValidator.Assessment.Eligible eligible
                 && eligible.minimumNodePressurePascal() <= PRESSURE_CONTINUATION_TRIGGER_PASCAL;
@@ -1137,8 +1245,9 @@ public final class V3ColumnCalculator {
      */
     private static V3SolvePass solveStageContinuation(
             V3ColumnInput input, V3PengRobinsonThermo thermo, V3SolveControl control,
-            V3CondenserPhaseBranch condenserBranch, SolvePolicy policy, CondenserAttempts condenserAttempts) {
-        List<Integer> stageCounts = continuationStageCounts(input.stageCount());
+            V3CondenserPhaseBranch condenserBranch, SolvePolicy policy, CondenserAttempts condenserAttempts,
+            V3SolveStrategy strategy) {
+        List<Integer> stageCounts = continuationStageCounts(input.stageCount(), strategy);
         String stagePath = continuationStagePath(stageCounts);
         V3DryMeshState previousState = null;
         V3SolvePass lastPass = null;
@@ -1214,7 +1323,8 @@ public final class V3ColumnCalculator {
      */
     private static V3SolvePass solvePressureContinuation(
             V3ColumnInput input, V3PengRobinsonThermo thermo, V3SolveControl control,
-            V3CondenserPhaseBranch condenserBranch, SolvePolicy policy, CondenserAttempts condenserAttempts) {
+            V3CondenserPhaseBranch condenserBranch, SolvePolicy policy, CondenserAttempts condenserAttempts,
+            V3SolveStrategy strategy) {
         if (input.topPressurePascal() > PRESSURE_CONTINUATION_TRIGGER_PASCAL) {
             throw new IllegalArgumentException("V3 pressure continuation was requested outside its low-pressure lane");
         }
@@ -1223,7 +1333,8 @@ public final class V3ColumnCalculator {
                 ? withoutPumparounds(withoutSideDraws(withoutSteamWithSurrogateDuty(input))) : input;
         boolean finePressureSteps = !input.sideDraws().isEmpty() || steamRampRequired;
         V3ColumnInput anchorInput = withTopPressure(continuationInput, PRESSURE_CONTINUATION_ANCHOR_PASCAL);
-        V3SolvePass pass = solveStageContinuation(anchorInput, thermo, control, condenserBranch, policy, condenserAttempts);
+        V3SolvePass pass = solveStageContinuation(anchorInput, thermo, control, condenserBranch, policy,
+                condenserAttempts, strategy);
         List<String> pressureEvents = new ArrayList<>();
         String pressurePath = continuationPressurePath(input.topPressurePascal(), finePressureSteps);
         if (!publishesSuccess(pass.attempt(), pass.audit())) {
@@ -2873,7 +2984,16 @@ public final class V3ColumnCalculator {
      * 287 s. With the intermediate 30-stage grid the same column converges in 5.4 s.</p>
      */
     static List<Integer> continuationStageCounts(int requestedStageCount) {
+        return continuationStageCounts(requestedStageCount, V3SolveStrategy.DRIFT_SPEC);
+    }
+
+    static List<Integer> continuationStageCounts(int requestedStageCount, V3SolveStrategy strategy) {
         List<Integer> result = new java.util.ArrayList<>();
+        if (strategy == V3SolveStrategy.AGGRESSIVE && requestedStageCount >= 32) {
+            result.add(Math.min(15, requestedStageCount - 1));
+            result.add(requestedStageCount);
+            return List.copyOf(result);
+        }
         for (int stageCount : new int[] {4, 8, 15}) {
             if (stageCount < requestedStageCount) result.add(stageCount);
         }
