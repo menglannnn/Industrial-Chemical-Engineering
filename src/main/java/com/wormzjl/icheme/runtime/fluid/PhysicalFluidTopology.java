@@ -171,10 +171,15 @@ public final class PhysicalFluidTopology {
          * the other there and at least one of them is a pipe block. Two pieces of equipment side by side (a tank, generator,
          * void, pump, compressor, valve or filter against another) exchange nothing.
          */
-        boolean joins(Device other,Position from,Direction direction) {
+        boolean joins(Device other,Position from,Direction direction){return joins(other,from,direction,false);}
+        /** As {@link #joins}, as built: whatever its valves', cutoffs' or switches' state (a pipe line, {@link #line}). */
+        boolean mechanicallyJoins(Device other,Position from,Direction direction){return joins(other,from,direction,true);}
+        private boolean joins(Device other,Position from,Direction direction,boolean built) {
             // Across a rack face (see across) the other device stands on another lane of the next cell: it meets there.
             var to=from.offset(direction);if(to.lane()!=other.position.lane())to=other.position;
-            return meets(from,direction)&&other.meets(to,opposite(direction))&&(kind==TopologyCompiler.Kind.PIPE||other.kind==TopologyCompiler.Kind.PIPE)&&lanesMeet(other,direction);
+            var back=opposite(direction);
+            return (built?mechanicallyMeets(from,direction)&&other.mechanicallyMeets(to,back):meets(from,direction)&&other.meets(to,back))
+                    &&(kind==TopologyCompiler.Kind.PIPE||other.kind==TopologyCompiler.Kind.PIPE)&&lanesMeet(other,direction);
         }
         /**
          * Two lanes meet where their points on the shared face coincide. A lane meets a plain cell only through a transition pipe there (plan
@@ -428,35 +433,40 @@ public final class PhysicalFluidTopology {
      * equipment to the next: the pipes its runs reach through mechanical joints, its valves open or closed. A tee belongs
      * to the run it continues: the line goes straight through a junction (a pipe of three or more joints) and stops before
      * one it would enter from the side, so a branch is a line of its own. An inline pump or compressor is a machine between
-     * two lines and belongs to neither. From a junction the line takes each straight run through it. Returns the pipes in
-     * walk order, {@code start} first, or null when there are more than {@code limit}.
+     * two lines and belongs to neither. From a junction the line takes each straight run through it. A rack lane is a
+     * pipe like any other: the line meets its neighbours as the network does ({@link #across}, {@link Device#joins}), so
+     * it runs along its lane and through a transition pipe, and parallel lanes stay apart. Returns the pipes in walk
+     * order, {@code start} first, or null when there are more than {@code limit}.
      */
     static List<Device> line(java.util.function.Function<Position,Device> at,Device start,int limit) {
         var line=new ArrayList<Device>(List.of(start));
         if(start.control() instanceof FlowControl.Mover)return line;
         var seen=new HashSet<>(Set.of(start.id()));
-        // Each step: a pipe of the line and a direction the line goes on in from it.
+        // Each step: the next device of the line and the direction the line goes on in to reach it.
         var steps=new ArrayDeque<Map.Entry<Device,Direction>>();
         var first=joints(at,start);
-        for(var d:first)if(first.size()<3||first.contains(opposite(d)))steps.add(Map.entry(start,d));
+        for(var e:first.entrySet())if(first.size()<3||first.containsKey(opposite(e.getKey())))steps.add(Map.entry(e.getValue(),e.getKey()));
         while(!steps.isEmpty()) {
-            var step=steps.poll();var d=step.getValue();var next=at.apply(step.getKey().position().offset(d));
-            if(next==null||next.kind!=TopologyCompiler.Kind.PIPE||next.control() instanceof FlowControl.Mover||seen.contains(next.id()))continue;
+            var step=steps.poll();var next=step.getKey();var d=step.getValue();
+            if(next.kind!=TopologyCompiler.Kind.PIPE||next.control() instanceof FlowControl.Mover||seen.contains(next.id()))continue;
             var joints=joints(at,next);boolean junction=joints.size()>2;
-            if(junction&&!joints.contains(d))continue;
+            if(junction&&!joints.containsKey(d))continue;
             seen.add(next.id());line.add(next);if(line.size()>limit)return null;
-            if(junction)steps.add(Map.entry(next,d));
-            else for(var e:joints)if(e!=opposite(d))steps.add(Map.entry(next,e));
+            if(junction)steps.add(Map.entry(joints.get(d),d));
+            else for(var e:joints.entrySet())if(e.getKey()!=opposite(d))steps.add(Map.entry(e.getValue(),e.getKey()));
         }
         return line;
     }
-    /** The faces pipe {@code pipe} meets a neighbour through mechanically, whatever its valves' or switches' state. */
-    private static EnumSet<Direction> joints(java.util.function.Function<Position,Device> at,Device pipe) {
-        var joints=EnumSet.noneOf(Direction.class);
+    /** The neighbours pipe {@code pipe} meets mechanically, by face, whatever its valves' or switches' state. */
+    private static Map<Direction,Device> joints(java.util.function.Function<Position,Device> at,Device pipe) {
+        var joints=new EnumMap<Direction,Device>(Direction.class);
         for(var d:Direction.values()) {
             if(!pipe.mechanicallyConnects(d))continue;
-            var cell=pipe.position().offset(d);var other=at.apply(cell);
-            if(other!=null&&other.mechanicallyMeets(cell,opposite(d)))joints.add(d);
+            var other=across(at,x->x,pipe,pipe.position(),d);
+            if(other==null||!pipe.mechanicallyJoins(other,pipe.position(),d))continue;
+            // Each must meet the other: a plain pipe meets one lane across a rack face (across), not every lane jointed to it.
+            var back=across(at,x->x,other,other.ports().isEmpty()?other.position():pipe.position().offset(d),opposite(d));
+            if(back!=null&&back.id()==pipe.id())joints.put(d,other);
         }
         return joints;
     }

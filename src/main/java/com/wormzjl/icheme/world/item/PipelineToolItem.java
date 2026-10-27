@@ -5,6 +5,7 @@ import com.mojang.serialization.DataResult;
 import com.wormzjl.icheme.registry.ModItems;
 import com.wormzjl.icheme.runtime.fluid.FluidWorldAuthority;
 import com.wormzjl.icheme.runtime.fluid.PhysicalFluidTopology;
+import com.wormzjl.icheme.runtime.fluid.PhysicalRegistry;
 import com.wormzjl.icheme.science.equipment.PipeSizes;
 import com.wormzjl.icheme.science.fluid.network.PipeResistance;
 import com.wormzjl.icheme.science.fluid.topology.TopologyCompiler;
@@ -64,7 +65,8 @@ public final class PipelineToolItem extends Item {
                     var device = record.device();
                     if (line) {
                         int pipes = world.resizeLine(device.id(), settings.diameter());
-                        player.displayClientMessage(pipes < 0 ? Component.translatable("item.icheme.pipeline_tool.line_too_long", FluidWorldAuthority.LINE_LIMIT)
+                        player.displayClientMessage(pipes == PhysicalRegistry.LANE_TOO_NARROW ? Component.translatable("item.icheme.pipeline_tool.lane_too_narrow", Double.toString(settings.diameter()))
+                                : pipes < 0 ? Component.translatable("item.icheme.pipeline_tool.line_too_long", FluidWorldAuthority.LINE_LIMIT)
                                 : Component.translatable("item.icheme.pipeline_tool.line_resized", pipes, Double.toString(settings.diameter())), true);
                         return;
                     }

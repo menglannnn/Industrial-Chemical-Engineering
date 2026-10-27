@@ -19,6 +19,13 @@ class PipeLineResizeTest {
     private long place(int x,int y,int z,Kind kind){long id=world.place(x,y,z,kind,EAST);ids.put(x+","+y+","+z,id);return id;}
     private long pipe(int x,int y,int z){return place(x,y,z,Kind.PIPE);}
     private long at(String cell){return ids.get(cell);}
+    /** A laid pipe with {@code joints}, by its "x,y,z". */
+    private long laid(int x,int y,int z,int joints){long id=world.placeLaid(x,y,z,EAST,.05,joints);ids.put(x+","+y+","+z,id);return id;}
+    /** A rack lane one position wide on place {@code lane}, by its "x,y,z/lane"; its point on each joint face stands for its place. */
+    private long lane(int x,int y,int z,int lane,int joints) {
+        long points=0;for(int face=0;face<6;face++)if((joints>>face&1)!=0)points|=(long)(lane*8+1)<<10*face;
+        long id=world.placeLane(x,y,z,lane,1,points,EAST,.05,joints);ids.put(x+","+y+","+z+"/"+lane,id);return id;
+    }
     private PhysicalFluidTopology.Device device(String cell){return world.registry.registrations().get(at(cell)).device();}
 
     /** The cells a sneak-use on {@code cell} resizes to 0.1 m, after checking the line's length and that it came as one event. */
@@ -80,6 +87,22 @@ class PipeLineResizeTest {
     /** The cells resized after the cross of the junction test. */
     private static Set<String> diff(Set<String> resized) {
         var out=new TreeSet<>(resized);out.removeIf(cell->cell.startsWith("3,")||cell.matches("[0-6],64,0"));return out;
+    }
+
+    /**
+     * A line through a pipe rack: laid plain pipes at x 0 and 3 meet lane 2 across the rack faces. Lane 3 beside it, its
+     * ends jointed towards the same plain pipes, meets neither (a plain pipe meets one lane): it is a line of its own. A
+     * lane one position wide carries no 0.3 m pipe: that line is not resized at all.
+     */
+    @Test void aLineRunsAlongItsRackLaneAndAParallelLaneIsALineOfItsOwn() {
+        int along=1<<WEST.ordinal()|1<<EAST.ordinal();
+        laid(0,64,0,along);lane(1,64,0,2,along);lane(2,64,0,2,along);laid(3,64,0,along);
+        lane(1,64,0,3,along);lane(2,64,0,3,along);
+        int events=world.registry.unapplied();
+        assertEquals(PhysicalRegistry.LANE_TOO_NARROW,world.registry.resizeLine(at("0,64,0"),.3,FluidWorldAuthority.LINE_LIMIT));
+        assertEquals(events,world.registry.unapplied(),"nothing queued");
+        assertEquals(Set.of("1,64,0/3","2,64,0/3"),resize("2,64,0/3",2));
+        assertEquals(Set.of("1,64,0/3","2,64,0/3","0,64,0","1,64,0/2","2,64,0/2","3,64,0"),resize("0,64,0",4));
     }
 
     @Test void anInlinePumpEndsALineAndBelongsToNone() {

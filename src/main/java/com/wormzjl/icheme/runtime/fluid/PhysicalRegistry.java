@@ -154,15 +154,21 @@ public final class PhysicalRegistry {
         var d=r.device().withInlineFilter(axis,true);
         submit(List.of(new WorldTopologyLedger.Edit(id,new WorldTopologyLedger.Registration(d,r.spec(),Math.addExact(r.revision(),1)))),topology.nextIdentity(),null);return true;
     }
+    /** {@link #resizeLine}: a rack lane on the line is too narrow for the new bore; nothing is queued. */
+    public static final int LANE_TOO_NARROW=-2;
     /**
      * Resizes the pipe line through pipe {@code id} ({@link PhysicalFluidTopology#line}) to bore {@code diameter} as one
      * event, each pipe keeping its length, roughness, fittings and spec. Returns the line's length in pipes (those already
-     * at that bore included), 0 when {@code id} is not a pipe, or -1, with nothing queued, when it is longer than {@code limit}.
+     * at that bore included), 0 when {@code id} is not a pipe, and, with nothing queued, -1 when it is longer than
+     * {@code limit} or {@link #LANE_TOO_NARROW} when a rack lane on it is narrower than the bore's pipe (a lane's width
+     * follows the drawn outside diameter it was laid for, {@code RackGeometry.width}).
      */
     public int resizeLine(long id,double diameter,int limit) {
         var start=registrations().get(id);if(start==null||start.device().kind()!=TopologyCompiler.Kind.PIPE)return 0;
         var line=PhysicalFluidTopology.line(p->{var r=topology.latestAt(p);return r==null?null:r.device();},start.device(),limit);
         if(line==null)return -1;
+        int width=com.wormzjl.icheme.science.equipment.RackGeometry.width(com.wormzjl.icheme.science.equipment.PipeSizes.drawn(diameter));
+        for(var pipe:line)if(pipe.slots()>0&&pipe.slots()<width)return LANE_TOO_NARROW;
         var edits=new ArrayList<WorldTopologyLedger.Edit>();
         for(var pipe:line) {
             var g=pipe.geometry();if(g.diameter()==diameter)continue;

@@ -68,6 +68,7 @@
   "item.icheme.pipeline_tool.apply_line": "Shift + right-click a process pipe to resize its whole line",
   "item.icheme.pipeline_tool.line_resized": "Line of %s pipes set to %s m",
   "item.icheme.pipeline_tool.line_too_long": "Line longer than %s pipes: not resized",
+  "item.icheme.pipeline_tool.lane_too_narrow": "A rack lane on this line is too narrow for a %s m pipe: not resized",
   "gui.icheme.pipeline_tool.diameter": "Internal diameter (m)",
   "gui.icheme.pipeline_tool.range": "Range: 0.001 to 0.8 m",
   "gui.icheme.pipeline_tool.invalid": "Enter a number from 0.001 to 0.8",
