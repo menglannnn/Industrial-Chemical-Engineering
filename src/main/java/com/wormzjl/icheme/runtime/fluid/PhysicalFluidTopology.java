@@ -332,6 +332,43 @@ public final class PhysicalFluidTopology {
     /** A generator or a void: a boundary whose state nothing in the network changes, shared by every island that reaches it. */
     static boolean fixedBoundary(Device device){return device!=null&&device.fixed();}
     static Direction opposite(Direction d){return switch(d){case DOWN->Direction.UP;case UP->Direction.DOWN;case NORTH->Direction.SOUTH;case SOUTH->Direction.NORTH;case WEST->Direction.EAST;case EAST->Direction.WEST;};}
+    /**
+     * The pipe line through pipe {@code start} (the pipeline tool's sneak-use), as a plant's line runs from one item of
+     * equipment to the next: the pipes its runs reach through mechanical joints, its valves open or closed. A tee belongs
+     * to the run it continues: the line goes straight through a junction (a pipe of three or more joints) and stops before
+     * one it would enter from the side, so a branch is a line of its own. An inline pump or compressor is a machine between
+     * two lines and belongs to neither. From a junction the line takes each straight run through it. Returns the pipes in
+     * walk order, {@code start} first, or null when there are more than {@code limit}.
+     */
+    static List<Device> line(java.util.function.Function<Position,Device> at,Device start,int limit) {
+        var line=new ArrayList<Device>(List.of(start));
+        if(start.control() instanceof FlowControl.Mover)return line;
+        var seen=new HashSet<>(Set.of(start.id()));
+        // Each step: a pipe of the line and a direction the line goes on in from it.
+        var steps=new ArrayDeque<Map.Entry<Device,Direction>>();
+        var first=joints(at,start);
+        for(var d:first)if(first.size()<3||first.contains(opposite(d)))steps.add(Map.entry(start,d));
+        while(!steps.isEmpty()) {
+            var step=steps.poll();var d=step.getValue();var next=at.apply(step.getKey().position().offset(d));
+            if(next==null||next.kind!=TopologyCompiler.Kind.PIPE||next.control() instanceof FlowControl.Mover||seen.contains(next.id()))continue;
+            var joints=joints(at,next);boolean junction=joints.size()>2;
+            if(junction&&!joints.contains(d))continue;
+            seen.add(next.id());line.add(next);if(line.size()>limit)return null;
+            if(junction)steps.add(Map.entry(next,d));
+            else for(var e:joints)if(e!=opposite(d))steps.add(Map.entry(next,e));
+        }
+        return line;
+    }
+    /** The faces pipe {@code pipe} meets a neighbour through mechanically, whatever its valves' or switches' state. */
+    private static EnumSet<Direction> joints(java.util.function.Function<Position,Device> at,Device pipe) {
+        var joints=EnumSet.noneOf(Direction.class);
+        for(var d:Direction.values()) {
+            if(!pipe.mechanicallyConnects(d))continue;
+            var cell=pipe.position().offset(d);var other=at.apply(cell);
+            if(other!=null&&other.mechanicallyMeets(cell,opposite(d)))joints.add(d);
+        }
+        return joints;
+    }
     /** Independent edits must not renumber a different island's last-interval debug history. */
     private static long runIdentity(TopologyCompiler.Run run,Map<Long,Long> owners,int part) {
         long hash=0xcbf29ce484222325L;hash=(hash^run.first())*0x100000001b3L;hash=(hash^run.second())*0x100000001b3L;

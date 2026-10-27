@@ -135,6 +135,24 @@ public final class PhysicalRegistry {
         var d=r.device().withInlineFilter(axis,true);
         submit(List.of(new WorldTopologyLedger.Edit(id,new WorldTopologyLedger.Registration(d,r.spec(),Math.addExact(r.revision(),1)))),topology.nextIdentity(),null);return true;
     }
+    /**
+     * Resizes the pipe line through pipe {@code id} ({@link PhysicalFluidTopology#line}) to bore {@code diameter} as one
+     * event, each pipe keeping its length, roughness, fittings and spec. Returns the line's length in pipes (those already
+     * at that bore included), 0 when {@code id} is not a pipe, or -1, with nothing queued, when it is longer than {@code limit}.
+     */
+    public int resizeLine(long id,double diameter,int limit) {
+        var start=registrations().get(id);if(start==null||start.device().kind()!=TopologyCompiler.Kind.PIPE)return 0;
+        var line=PhysicalFluidTopology.line(p->{var r=topology.latestAt(p);return r==null?null:r.device();},start.device(),limit);
+        if(line==null)return -1;
+        var edits=new ArrayList<WorldTopologyLedger.Edit>();
+        for(var pipe:line) {
+            var g=pipe.geometry();if(g.diameter()==diameter)continue;
+            var r=registrations().get(pipe.id());var resized=pipe.withGeometry(new PipeResistance.Geometry(g.length(),diameter,g.roughness(),g.minorLoss()));
+            edits.add(new WorldTopologyLedger.Edit(pipe.id(),new WorldTopologyLedger.Registration(resized,r.spec(),Math.addExact(r.revision(),1))));
+        }
+        if(!edits.isEmpty())submit(edits,topology.nextIdentity(),null);
+        return line.size();
+    }
     /** Removal composes with the latest projected geometry, controls and spec. */
     public boolean removePipeAccessory(long id) {
         var r=registrations().get(id);if(r==null||r.device().kind()!=TopologyCompiler.Kind.PIPE)return false;

@@ -248,6 +248,10 @@ public final class FluidWorldAuthority implements AutoCloseable {
         if(old.device().equals(device)&&old.spec().equals(spec))return null;
         return submit(List.of(new WorldTopologyLedger.Edit(id,new WorldTopologyLedger.Registration(device,spec,Math.addExact(expectedRevision,1)))),topology.nextIdentity());
     }
+    /** The most pipes one line resize changes; a longer line is refused whole. */
+    public static final int LINE_LIMIT=4096;
+    /** Resizes the pipe line through pipe {@code id} as one event: see {@link PhysicalRegistry#resizeLine}. */
+    public int resizeLine(long id,double diameter){owned();return registry.resizeLine(id,diameter,LINE_LIMIT);}
     /** Installs against the projected revision, retaining pending diameter/configuration edits. */
     public boolean installPipeCutoff(long id,PhysicalFluidTopology.Direction facing) {
         owned();return registry.installPipeCutoff(id,facing);

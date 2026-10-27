@@ -46,11 +46,12 @@ public final class PipelineToolItem extends Item {
     public InteractionResult onItemUseFirst(ItemStack stack, UseOnContext context) {
         var player = context.getPlayer();
         if (player == null) return InteractionResult.PASS;
-        if (player.isShiftKeyDown()) return configure(player, context.getHand());
         var level = context.getLevel();
         var pos = context.getClickedPos();
+        // Sneaking resizes a pipe's whole line; anywhere else it opens the tool's menu.
+        boolean line = player.isShiftKeyDown();
         if (!(level.getBlockState(pos).getBlock() instanceof FluidDeviceBlock block)
-                || block.kind() != TopologyCompiler.Kind.PIPE) return InteractionResult.PASS;
+                || block.kind() != TopologyCompiler.Kind.PIPE) return line ? configure(player, context.getHand()) : InteractionResult.PASS;
         var settings = stack.get(ModItems.PIPELINE_TOOL_SETTINGS.get());
         if (settings == null || !player.mayBuild() || player.isSpectator() || !level.mayInteract(player, pos))
             return InteractionResult.FAIL;
@@ -61,6 +62,12 @@ public final class PipelineToolItem extends Item {
                 world.at(position).filter(record -> record.device().id() == entity.fluidIdentity()
                         && record.device().kind() == TopologyCompiler.Kind.PIPE).ifPresent(record -> {
                     var device = record.device();
+                    if (line) {
+                        int pipes = world.resizeLine(device.id(), settings.diameter());
+                        player.displayClientMessage(pipes < 0 ? Component.translatable("item.icheme.pipeline_tool.line_too_long", FluidWorldAuthority.LINE_LIMIT)
+                                : Component.translatable("item.icheme.pipeline_tool.line_resized", pipes, Double.toString(settings.diameter())), true);
+                        return;
+                    }
                     var geometry = device.geometry();
                     if (geometry.diameter() == settings.diameter()) return;
                     var resized = new PipeResistance.Geometry(geometry.length(), settings.diameter(), geometry.roughness(), geometry.minorLoss());
@@ -85,6 +92,7 @@ public final class PipelineToolItem extends Item {
                 .withStyle(ChatFormatting.AQUA));
         tooltip.add(Component.translatable("item.icheme.pipeline_tool.configure").withStyle(ChatFormatting.GRAY));
         tooltip.add(Component.translatable("item.icheme.pipeline_tool.apply").withStyle(ChatFormatting.GRAY));
+        tooltip.add(Component.translatable("item.icheme.pipeline_tool.apply_line").withStyle(ChatFormatting.GRAY));
     }
 
     /** The tool's internal diameter in metres; the same bounds govern storage, wire and editor input. */
