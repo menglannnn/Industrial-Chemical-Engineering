@@ -8,10 +8,14 @@ import org.junit.jupiter.api.Test;
 
 class FlowControlTest {
     private final FluidThermodynamics model=com.wormzjl.icheme.fluid.support.FluidTestSupport.model(MaterialCatalog.bundled(),"icheme:tjl20_methane");
-    private PassiveStepSolver.Result run(double pa,double pb,int component,FlowControl control,double dt) {
+    /** Two 1 m3 vessels of one component at 350 K and {@code pa}, {@code pb}, joined by 10 m of 5 cm pipe with {@code control}. */
+    private PassiveNetwork line(double pa,double pb,int component,FlowControl control) {
         var nodes=new ArrayList<PassiveNetwork.Reservoir>();
         for(double p:new double[]{pa,pb}){double[] n=new double[com.wormzjl.icheme.science.material.MaterialTestBasis.CRUDE+1];n[component]=1;var unit=model.flashTP(350,p,n,()->{});n[component]/=unit.volume();nodes.add(new PassiveNetwork.Reservoir(nodes.size(),0,model.flashTP(350,p,n,()->{})));}
-        return new PassiveStepSolver(model).solve(new PassiveNetwork(nodes,List.of(new PassiveNetwork.Pipe(5,0,1,new PipeResistance.Geometry(10,.05,.000045,0),control))),dt,()->{});
+        return new PassiveNetwork(nodes,List.of(new PassiveNetwork.Pipe(5,0,1,new PipeResistance.Geometry(10,.05,.000045,0),control)));
+    }
+    private PassiveStepSolver.Result run(double pa,double pb,int component,FlowControl control,double dt) {
+        return new PassiveStepSolver(model).solve(line(pa,pb,component,control),dt,()->{});
     }
     /** Now a compressor on methane (decision D2; a liquid-only pump refuses gas, decision D1; test name kept): its target is the suction volume
      * flow at inlet conditions, and its shaft work the ideal isothermal work on suction properties (decision D8). A ratio
@@ -99,6 +103,18 @@ class FlowControlTest {
     @Test void aBareValvePassesReverseFlowLikeItsPipe(){
         var plain=run(101325,300000,0,new FlowControl.Passive(),.1);var bare=run(101325,300000,0,FlowControl.ControlValve.unconfigured(),.1);
         assertTrue(bare.massFlows()[0]<0);assertEquals(plain.massFlows()[0],bare.massFlows()[0],1e-10);assertEquals(0,bare.devicePressureChanges()[0],1e-8);
+    }
+    /** A configured flow valve only throttles: its island rests when nothing drives through it, as the solve finds. */
+    @Test void aFlowValveRestsWhenNothingDrivesThroughIt(){
+        for(var source:List.of(FlowControl.ValveSource.MASS_FLOW,FlowControl.ValveSource.VOLUME_FLOW)){
+            var valve=new FlowControl.ControlValve(source,source==FlowControl.ValveSource.MASS_FLOW?.01:.001,new UUID(1,1),1);
+            assertTrue(NetworkReduction.atRest(line(200000,200000,0,valve),model),source+": no drive");
+            assertTrue(NetworkReduction.atRest(line(101325,300000,0,valve),model),source+": a drive against it");
+            assertEquals(0,run(101325,300000,0,valve,.1).massFlows()[0],1e-12,source+": it passes nothing back");
+            assertFalse(NetworkReduction.atRest(line(300000,101325,0,valve),model),source+": a drive through it");
+            assertTrue(NetworkReduction.atRest(line(300000,101325,0,valve.withTarget(0)),model),source+": a zero target holds it shut");
+            assertEquals(0,run(300000,101325,0,valve.withTarget(0),.1).massFlows()[0],1e-12,source+": the solve passes nothing at a zero target");
+        }
     }
 
 }
