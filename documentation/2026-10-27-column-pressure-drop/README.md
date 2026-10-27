@@ -1,6 +1,6 @@
 # Column pressure-drop publication
 
-Status: In progress since 2026-10-27.
+Status: Implemented 2026-10-27 (0.16.0, merge `d2e4ae40`).
 
 History:
 - Removed the aggressive-path shortcut that published a zero-drop nominal pressure profile beside a positive marched hydraulic summary.
@@ -12,4 +12,4 @@ Documents:
 Code areas:
 - `src/main/java/com/wormzjl/icheme/science/column/v3/V3ColumnCalculator.java`
 
-Open items: run the full verification lane before merging.
+Open items: none for this batch; the full verification lane retains the baseline failures recorded in the task report.

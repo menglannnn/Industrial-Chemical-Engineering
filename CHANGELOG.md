@@ -15,15 +15,23 @@ All notable changes to Industrial Chemical Engineering (IChemE, formerly CreateC
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-10-27
+
 ### Added
 
-- Chinese (`zh_cn`) language file, and a dedicated creative tab for this mod's items. Recovered-solids tooltips and the "waiting for world identity" message use translation keys (`itemGroup.icheme`, `tooltip.icheme.recovered_solids.*`, `gui.icheme.fluid.waiting_identity`).
-- Aggressive interactive distillation solves use the admitted 1e-3 closure after the existing acceptance audit; 42-stage requests now use a 15-30-42 seed ladder to avoid deadline exhaustion (batch `2026-10-26-v3-solver-performance`).
+- Chinese (`zh_cn`) language support and a dedicated creative tab keep IChemE items under the mod's own category (commit `188fba66`; batch `2026-10-27-creative-tab`).
+- Aggressive interactive distillation solves use the admitted 1e-3 closure after the existing acceptance audit; 42-stage requests now use a 15-30-42 seed ladder to avoid deadline exhaustion (commits `a52bc072`, `07a2be7d`; batch `2026-10-26-v3-solver-performance`).
 
 ### Fixed
 
-- Aggressive interactive distillation publishes the flow-marched tray pressure profile after its bounded hydraulic correction, keeping the GUI's per-tray and total dP readings consistent with the hydraulic summary (batch `2026-10-27-column-pressure-drop`).
-## [0.15.2] - 2026-10-27
+- The aggressive interactive distillation path publishes the flow-marched tray pressure profile after its bounded hydraulic correction, keeping the GUI's per-tray and total dP readings consistent with the hydraulic summary (`e54daa8`; batch `2026-10-27-column-pressure-drop`).
+
+## [0.15.3] - 2026-10-27
+
+### Fixed
+
+- The equipment constructor's Import always finishes: the screen sends its draft with the import (protocol `equipment-13`, one `ConstructorPayload` with an `Action`; `ImportPayload` deleted), the calculator's column lands on that draft, and the server answers every import (`ImportAnswer`): the screen loads the design or shows why there is none on its status line (`dbefe7f4`; batch `2026-10-27-constructor-import`).
+
 ## [0.15.2] - 2026-10-27
 
 ### Fixed

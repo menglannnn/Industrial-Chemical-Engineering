@@ -14,11 +14,12 @@ Status words:
 
 | Batch | Purpose | Status |
 |---|---|---|
-| [2026-10-27-column-pressure-drop/](2026-10-27-column-pressure-drop/README.md) | Keep published tray pressure profiles consistent on the aggressive solve path | In progress since 2026-10-27 |
+| [2026-10-27-column-pressure-drop/](2026-10-27-column-pressure-drop/README.md) | Keep published tray pressure profiles consistent on the aggressive solve path | Implemented 2026-10-27 (0.16.0) |
 | [2026-10-27-hold-class-wall-deadline/](2026-10-27-hold-class-wall-deadline/README.md) | Audit an intermittent HoldClassWorldsTest wall deadline | Implemented 2026-10-27 |
 | [2026-10-27-column-bench-audit/](2026-10-27-column-bench-audit/README.md) | Audit main-versus-fork column benchmark data | Implemented 2026-10-27 |
 | [2026-10-27-creative-tab/](2026-10-27-creative-tab/README.md) | Keep IChemE items in the mod creative tab | Implemented 2026-10-27 |
 | [2026-10-26-v3-solver-performance/](2026-10-26-v3-solver-performance/README.md) | V3 distillation solver performance and aggressive warm-start path | Implemented 2026-10-27 |
+| [2026-10-27-constructor-import/](2026-10-27-constructor-import/README.md) | Equipment Constructor import always answers and preserves the draft | Implemented 2026-10-27 (0.15.3) |
 | [2026-10-27-column-sump/](2026-10-27-column-sump/README.md) | Distillation column sump sized from engineering references | Implemented 2026-10-27 (0.15.1) |
 | [2026-10-27-skirt-shadow/](2026-10-27-skirt-shadow/README.md) | Skylight on the floor inside vessel skirts | Implemented 2026-10-27 (0.15.1; GameTest fix 0.15.2) |
 | [2026-10-26-multi-machine-framework/](2026-10-26-multi-machine-framework/README.md) | Multi-machine assemblies, first stage: the distillation column structure | Implemented 2026-10-27 |
