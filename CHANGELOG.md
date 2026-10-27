@@ -15,6 +15,12 @@ All notable changes to Industrial Chemical Engineering (IChemE, formerly CreateC
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-10-27
+
+### Added
+
+- Multi-machine framework, first stage: the distillation column as an assembly of parts (commits `660650cd`, `43e7872e`, `6648144f`, `7b31eb9d`, `69fc53ec`, `9e56ddab`, `e5f08792`, `ee3b6399`, `4676a9a8`, `9a6269a5`, `20f12268`, `152aefa3`, `5d7ffb8c`, `61d6dd2e`, `ef0ae447`, `d5710373`, `132815fd`, `11ff43ed`, `23d8a19d`; merge of 0.14.1 `e69cec50`; batch `2026-10-26-multi-machine-framework`, plan `MULTI_MACHINE_FRAMEWORK_PLAN.md`, reviews `COLUMN_NOZZLE_ROWS_REVIEW.md`, `PROCESS_CONTROL_ADAPTATION_REVIEW.md`, `MERGE_REVIEW.md`): the column calculator's Components page and Save design (a VDU feed template; a design that leaves a nozzle without a row is refused); the constructor builds a column only from an imported design, and the column carries its components (equipment shape fields 2); side nozzles stand at their stages, with automatic headings the player can override in the constructor's Nozzles page (shape fields 3; placed columns refresh to the new layout); the column GUI draws every part of the design with its ports in the pipeline tool's colours, and "Validate structure" walks the pipes from the column and binds what it finds (missing parts red, misplaced yellow; valves read by their hydraulic law, modules not checked); a break reverts the column to not validated through the registry and structure hooks, without polling (assembly store `icheme_assemblies`, state); vapour return only on a column with a kettle; direction arrows on every kind's nozzles; the pipeline tool frames the remaining ports of the assemblies within 48 blocks and names their line, and a sneak-use on a pipe resizes its whole line along its rack lane (a lane too narrow refuses); the constructor keeps every form's fields across a reload; `runReviewWorldServer` builds a review world. Package data are identified by declared revisions, no hashing; the crude packages' column floor is 1 kPa. Fluid facts schema 4 (the world's basis revision; schemas 1 to 3 still read), protocols column 13 (wire 17), `equipment-12` and `assembly-2`.
+
 ## [0.14.1] - 2026-10-27
 
 ### Added
