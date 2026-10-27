@@ -15,6 +15,10 @@ All notable changes to Industrial Chemical Engineering (IChemE, formerly CreateC
 
 ## [Unreleased]
 
+### Fixed
+
+- Vessel skirts no longer draw as a dark band under the shell (commit `c9e827ac`; batch `2026-10-27-skirt-shadow`, review `SKIRT_SHADOW_REVIEW.md`): a skirt plate (standing drums, columns, trickle-bed and ebullated-bed reactors, coker drums, adsorbers) takes the body paint through a new `SKIRT` material; its base ring, anchor chairs and sleeves keep the structure paint. Tool folder `tools/skirt-shadow/`.
+
 ## [0.15.0] - 2026-10-27
 
 ### Added
