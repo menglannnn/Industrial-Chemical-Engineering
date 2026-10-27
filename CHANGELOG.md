@@ -18,6 +18,7 @@ All notable changes to Industrial Chemical Engineering (IChemE, formerly CreateC
 ### Added
 
 - Chinese (`zh_cn`) language file, and a dedicated creative tab for this mod's items. Recovered-solids tooltips and the "waiting for world identity" message use translation keys (`itemGroup.icheme`, `tooltip.icheme.recovered_solids.*`, `gui.icheme.fluid.waiting_identity`).
+- Aggressive interactive distillation solves use the admitted 1e-3 closure after the existing acceptance audit; 42-stage requests now use a 15-30-42 seed ladder to avoid deadline exhaustion (batch `2026-10-26-v3-solver-performance`).
 
 ## [0.13.2] - 2026-10-26
 

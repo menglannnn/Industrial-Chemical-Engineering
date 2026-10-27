@@ -51,6 +51,8 @@ public final class V3ColumnCalculator {
     private static final int MAXIMUM_STEAM_SUBDIVISIONS = 2;
     public static final int MAXIMUM_NEWTON_ITERATIONS = 128;
     public static final double SCALED_RESIDUAL_TOLERANCE = 1.0e-8;
+    /** Fast interactive requests use the admitted gameplay closure; strict/offline requests retain 1e-8. */
+    private static final double AGGRESSIVE_CLOSURE_TOLERANCE = 1.0e-3;
     private static final double PRESSURE_CONTINUATION_TRIGGER_PASCAL = 100_000.0;
     private static final double PRESSURE_CONTINUATION_ANCHOR_PASCAL = 150_000.0;
     private static final double PRESSURE_CONTINUATION_STEP_PASCAL = 10_000.0;
@@ -1581,6 +1583,9 @@ public final class V3ColumnCalculator {
         int refreshes = 0;
         int stalledRefreshes = 0;
         int wetTrayRefreshes = 0;
+        // The interactive closure already tolerates the bounded floor defect; one refresh catches a stale support
+        // without paying for the repeated polish passes used by strict/offline certificates.
+        int floorRefreshLimit = policy.fastPublication() ? 1 : MAXIMUM_FLOOR_SUPPORT_REFRESHES;
         int attempts = 0;
         List<String> wetTrayEvents = new ArrayList<>();
         // The floor support is frozen for the length of one Newton solve, so it is re-derived from the
@@ -1629,7 +1634,7 @@ public final class V3ColumnCalculator {
             // rung the continuation is going to subdivide or abandon anyway, and re-solving it three times
             // triples the cost of every case that is on its way to a typed failure.
             boolean converged = attempt instanceof V3SimultaneousColumnSolver.Attempt.Converged;
-            boolean floorBudget = refreshes < MAXIMUM_FLOOR_SUPPORT_REFRESHES
+            boolean floorBudget = refreshes < floorRefreshLimit
                     && (converged || stalledRefreshes < MAXIMUM_STALLED_FLOOR_SUPPORT_REFRESHES);
             // The wet set is re-derived only from a state that solved its own equations, and carries its own
             // small budget so it never has to compete with the support refreshes for one. How far a tray sits
@@ -2973,7 +2978,10 @@ public final class V3ColumnCalculator {
         private static final SolvePolicy OFF =
                 new SolvePolicy(0.0, 0.0, V3ConvergenceEvidence.MAXIMUM_LOG_FLOW_CHANGE, null, null, false);
         private static final SolvePolicy OFF_FAST =
-                new SolvePolicy(0.0, 0.0, V3ConvergenceEvidence.MAXIMUM_LOG_FLOW_CHANGE, null, null, true);
+                // Interactive cold requests trade the last digits of the MESH closure for a bounded response. The
+                // strict DRIFT_SPEC path keeps the 1e-8 certificate; this route uses the public 1e-3 gameplay
+                // closure while retaining the independent conservation and final-step audits.
+                new SolvePolicy(0.0, 0.0, AGGRESSIVE_CLOSURE_TOLERANCE, null, null, true);
 
         private SolvePolicy {
             V3TruncationSupport.requireCutoff(requestedCutoff);
@@ -3030,6 +3038,7 @@ public final class V3ColumnCalculator {
         List<Integer> result = new java.util.ArrayList<>();
         if (strategy == V3SolveStrategy.AGGRESSIVE && requestedStageCount >= 32) {
             result.add(Math.min(15, requestedStageCount - 1));
+            if (requestedStageCount >= 38) result.add(30);
             result.add(requestedStageCount);
             return List.copyOf(result);
         }
