@@ -16,19 +16,19 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * The laying tool's watch of the column assemblies around a player (batch 2026-10-26-multi-machine-framework, plan
  * section 9, W7; AGENTS.md "Engine schedule and player-facing updates"): taking the tool up replays the stored views in
- * range at once; changes, arrivals and departures come with the buckets; putting the tool away, or no longer holding it,
- * ends the watch; nothing is sent to a player who does not watch.
+ * range at once; changes, arrivals and departures come with the buckets; putting the tool away, or leaving, ends the
+ * watch; nothing is sent to a player who does not watch.
  */
 class AssemblyToolWatchTest {
-    /** The views in range of each player, who holds the tool, and what was sent: (player, master, view or null). */
+    /** The views in range of each player, who is in the world, and what was sent: (player, master, view or null). */
     private static final class Host implements AssemblyWatch.Host<String> {
         final Map<String, Map<Long, AssemblyView>> inRange = new HashMap<>();
-        final Set<String> holding = new HashSet<>();
+        final Set<String> present = new HashSet<>();
         final List<Sent> sent = new ArrayList<>();
 
         @Override
-        public boolean holding(String player) {
-            return holding.contains(player);
+        public boolean present(String player) {
+            return present.contains(player);
         }
 
         @Override
@@ -56,7 +56,7 @@ class AssemblyToolWatchTest {
 
     private static Host watching(String player, Map<Long, AssemblyView> views) {
         var host = new Host();
-        host.holding.add(player);
+        host.present.add(player);
         host.inRange.put(player, new HashMap<>(views));
         return host;
     }
@@ -90,16 +90,16 @@ class AssemblyToolWatchTest {
     }
 
     @Test
-    void puttingTheToolAwayOrNoLongerHoldingItEndsTheWatch() {
+    void puttingTheToolAwayOrLeavingEndsTheWatch() {
         var host = watching("a", Map.of(COLUMN, checked(1)));
-        host.holding.add("b");
+        host.present.add("b");
         host.inRange.put("b", new HashMap<>(Map.of(COLUMN, checked(1))));
         var watch = new AssemblyWatch<>(host);
         watch.start("a", 5);
         watch.start("b", 5);
         watch.stop("a");
-        // b put the tool down without a word: the next bucket drops b.
-        host.holding.remove("b");
+        // b left without a word: the next bucket drops b.
+        host.present.remove("b");
         host.sent.clear();
         host.inRange.get("a").put(COLUMN, checked(2));
         host.inRange.get("b").put(COLUMN, checked(2));

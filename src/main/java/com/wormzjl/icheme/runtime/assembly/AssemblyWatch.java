@@ -10,10 +10,12 @@ import java.util.Map;
 /**
  * The laying tool's watch of the column assemblies around a player (batch 2026-10-26-multi-machine-framework, plan
  * section 9, W7; AGENTS.md "Engine schedule and player-facing updates"). Holding the tool is the request: the client says
- * when the player takes it up and puts it away. Taking it up replays the stored view of every column in range at once,
- * a cached read that walks nothing. The watch then gets, on the engine's presentation buckets, each view that changed,
- * each column that came into range and the end of each that left it or is gone. A watcher who no longer holds the tool,
- * or has left, is dropped at the next bucket. Nothing is sent to a player who does not watch.
+ * when the player takes it up and puts it away. The client judges it: the selected slot is the client's, and the server
+ * learns of a number key a tick after the request (the carried item is sent before the keys are read), so a server check
+ * of the hand would refuse the request it answers. Taking the tool up replays the stored view of every column in range at
+ * once, a cached read that walks nothing. The watch then gets, on the engine's presentation buckets, each view that
+ * changed, each column that came into range and the end of each that left it or is gone. A watcher who has left is
+ * dropped at the next bucket. Nothing is sent to a player who does not watch.
  *
  * @param <P> a watcher: a server player, any value in tests
  */
@@ -23,8 +25,8 @@ public final class AssemblyWatch<P> {
 
     /** The world a watch reads and the watchers it answers. */
     public interface Host<P> {
-        /** Whether the watcher still holds the tool. */
-        boolean holding(P player);
+        /** Whether the watcher is still in the world: not disconnected, not removed. */
+        boolean present(P player);
 
         /** The columns in range of the watcher, by master, with their stored views: cached reads that walk nothing. */
         Map<Long, AssemblyView> inRange(P player);
@@ -54,11 +56,11 @@ public final class AssemblyWatch<P> {
         sent.remove(player);
     }
 
-    /** The engine's tick: on a bucket, each watcher still holding the tool gets what changed. */
+    /** The engine's tick: on a bucket, each watcher still present gets what changed. */
     public void tick(long now) {
         if (now < mailbox.nextTick()) return;
         mailbox.tick(now, player -> {
-            if (host.holding(player)) return true;
+            if (host.present(player)) return true;
             sent.remove(player);
             return false;
         }, this::publish);

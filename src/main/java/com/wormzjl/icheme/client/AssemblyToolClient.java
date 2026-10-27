@@ -12,7 +12,6 @@ import com.wormzjl.icheme.science.equipment.ColumnTrays;
 import com.wormzjl.icheme.science.equipment.EquipmentShape;
 import com.wormzjl.icheme.world.level.block.entity.EquipmentShellBlockEntity;
 import net.minecraft.client.player.LocalPlayer;
-import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
 import net.neoforged.neoforge.network.PacketDistributor;
@@ -99,8 +98,10 @@ public final class AssemblyToolClient {
     }
 
     /**
-     * The assembly line of the port of {@code shell} facing {@code face}, for the tool's label: "Column x, y, z: role → the
-     * part it pipes to (its state)"; null when no watched report holds the port, or its design pipes nothing to it.
+     * The assembly line of the port of {@code shell} facing {@code face}, for the tool's label: "pipes to the part (its
+     * state)"; null when no watched report holds the port, or its design pipes nothing to it. The label names the nozzle
+     * already, and a unit is in one report only: the column's coordinates would only push the action bar's one line off
+     * the screen.
      */
     static @Nullable Component line(EquipmentShellBlockEntity shell, Direction face) {
         var seen = seen(shell, face);
@@ -112,8 +113,7 @@ public final class AssemblyToolClient {
         var partner = mark == null ? null : diagram.part(mark.partner());
         if (partner == null) return null;
         var partnerReport = seen.report.slots().stream().filter(s -> s.slot().equals(mark.partner())).findFirst().orElse(null);
-        return Component.translatable(AssemblyDiagram.KEY + "tool.line", BlockPos.of(seen.master).toShortString(), AssemblyScreen.role(seen.role.name()),
-                AssemblyScreen.text(partner.name()), AssemblyScreen.word(partnerReport));
+        return Component.translatable(AssemblyDiagram.KEY + "tool.line", AssemblyScreen.text(partner.name()), AssemblyScreen.word(partnerReport));
     }
 
     /** The trays of the column at {@code master}, from a loaded shell cell of it: {@code shell} itself when it is the column's. */

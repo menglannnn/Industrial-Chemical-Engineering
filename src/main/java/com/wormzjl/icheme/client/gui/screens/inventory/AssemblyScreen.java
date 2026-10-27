@@ -490,8 +490,7 @@ public final class AssemblyScreen extends AbstractContainerScreen<AssemblyMenu> 
         return at == AssemblyReport.NONE ? "?" : BlockPos.of(at).toShortString();
     }
 
-    /** A nozzle role by name, as the vessel screens name it. */
-    public static Component role(String name) {
+    private static Component role(String name) {
         return Component.translatable("gui.icheme.vessel.role." + name.toLowerCase(Locale.ROOT));
     }
 

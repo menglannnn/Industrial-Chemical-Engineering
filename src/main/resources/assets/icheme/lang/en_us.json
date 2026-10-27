@@ -814,7 +814,7 @@
   "gui.icheme.assembly.state.branched": "%s: the line branches at %s. Remove the extra branch.",
   "gui.icheme.assembly.state.shared": "%s: part of another column's assembly.",
   "gui.icheme.assembly.port": "%s (%s port): to the %s",
-  "gui.icheme.assembly.tool.line": "Column %s: %s → %s (%s)",
+  "gui.icheme.assembly.tool.line": "pipes to %s (%s)",
   "gui.icheme.assembly.port.needed": "Needs a pipe.",
   "gui.icheme.assembly.port.connected": "Connected.",
   "gui.icheme.assembly.port.utility": "A utility: advice, not checked.",

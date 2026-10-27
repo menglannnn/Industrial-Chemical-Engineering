@@ -1,7 +1,6 @@
 package com.wormzjl.icheme.network;
 
 import com.wormzjl.icheme.IChemE;
-import com.wormzjl.icheme.registry.ModItems;
 import com.wormzjl.icheme.runtime.assembly.AssemblyPresentation;
 import com.wormzjl.icheme.runtime.assembly.AssemblyService;
 import com.wormzjl.icheme.runtime.assembly.AssemblyWatch;
@@ -238,9 +237,8 @@ public final class AssemblyNetwork {
     /** The laying tool's watches, on the server thread. */
     private static final AssemblyWatch.Host<ServerPlayer> WATCH = new AssemblyWatch.Host<>() {
         @Override
-        public boolean holding(ServerPlayer player) {
-            return !player.hasDisconnected() && !player.isRemoved()
-                    && (player.getMainHandItem().is(ModItems.PIPE_LAYING_TOOL.get()) || player.getOffhandItem().is(ModItems.PIPE_LAYING_TOOL.get()));
+        public boolean present(ServerPlayer player) {
+            return !player.hasDisconnected() && !player.isRemoved();
         }
 
         @Override
@@ -258,7 +256,7 @@ public final class AssemblyNetwork {
         return WATCHES.computeIfAbsent(server, s -> new AssemblyWatch<>(WATCH));
     }
 
-    /** The laying tool taken up or put away. A deployer's fake player watches nothing. */
+    /** The laying tool taken up or put away, as the client judges it ({@link AssemblyWatch}). A deployer's fake player watches nothing. */
     private static void watch(WatchPayload payload, IPayloadContext context) {
         if (!(context.player() instanceof ServerPlayer player) || player instanceof FakePlayer) return;
         if (!payload.on()) {
@@ -266,7 +264,6 @@ public final class AssemblyNetwork {
             if (watches != null) watches.stop(player);
             return;
         }
-        if (!WATCH.holding(player)) return;
         FluidWorldAuthority.find(player.server).ifPresent(engine -> watches(player.server).start(player, engine.onlineTick()));
     }
 
