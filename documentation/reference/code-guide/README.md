@@ -303,4 +303,4 @@ Batch `documentation/2026-10-26-multi-machine-framework/` (branch `claude/distil
 
 ## Maintaining this guide
 
-The guide is updated before every merge to `main` (AGENTS.md, "Code guide: regular task before every merge to main"). Update the chapters whose code changed, set their snapshot line to the merge commit, and add a chapter and a level 2 row for a new subsystem. The canonical copy is in the main checkout, `documentation/reference/code-guide/`. It is git-ignored, so a worktree reaches it by absolute path.
+The guide is updated before every merge to `main` (AGENTS.md, "Code guide: regular task before every merge to main"). Update the chapters whose code changed, set their snapshot line to the last code commit they describe, and add a chapter and a level 2 row for a new subsystem. The guide is tracked (since 2026-10-27, `bba47f5a`): update it on the merging branch, in its worktree.

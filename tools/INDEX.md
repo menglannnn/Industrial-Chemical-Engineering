@@ -1,6 +1,6 @@
 # Tools index
 
-Local, git-ignored offline tooling: training and evaluation harnesses, benchmark supervisors, DWSIM automation. A fresh clone builds without this folder. Documents about the work these tools served are in `documentation/<batch>/` ([../documentation/INDEX.md](../documentation/INDEX.md)); datasets are in `research/` ([../research/INDEX.md](../research/INDEX.md)).
+Offline tooling, tracked since 2026-10-27 (`bba47f5a`): training and evaluation harnesses, benchmark supervisors, DWSIM automation. Add or change a tool on the task's branch; it reaches `main` with the merge. Log archives in `<folder>/logs/` stay git-ignored and local to the main checkout. Documents about the work these tools served are in `documentation/<batch>/` ([../documentation/INDEX.md](../documentation/INDEX.md)); datasets are in `research/` ([../research/INDEX.md](../research/INDEX.md)).
 
 Keep the paths below stable: `build.gradle` applies `tools/development.gradle` when it exists, `tools/development.gradle` compiles `tools/neural` as a source directory, a tracked test cites `tools/neural/methane-qualification.md`, and many scripts address sibling folders by relative path. Add a new tool as its own folder with a `README.md` (purpose, batch, how to run, entry points, history), and add one short row here: the folder, the purpose in a few words, the batch and the status with its date. Nothing else goes in the row. The index as it stood before 2026-10-26 is frozen in [index-consolidation/INDEX_2026-10-26_ARCHIVE.md](index-consolidation/INDEX_2026-10-26_ARCHIVE.md).
 
