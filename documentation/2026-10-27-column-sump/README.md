@@ -22,5 +22,5 @@ Status: Implemented 2026-10-27 (0.15.1; branch `claude/distillation-sump-enlarge
 
 ## Open items
 
-- The skirt batch's GameTest `aSkirtsFloorTakesTheSkylightAboveTheDrum` failed once under CPU load and passed on a re-run (review section 8): its waits count fast GameTest ticks, not light-engine progress.
+- Resolved 2026-10-27, not merged: the skirt batch's GameTest `aSkirtsFloorTakesTheSkylightAboveTheDrum` (failed once under CPU load, review section 8) now waits for the light engine (`33936ffd`; batch 2026-10-27-skirt-shadow, review section 6).
 - Not looked at: a level bridle on the sump (survey section 4), a narrower bottom boot for hot residue service.

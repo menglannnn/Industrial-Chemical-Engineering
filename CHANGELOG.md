@@ -15,6 +15,10 @@ All notable changes to Industrial Chemical Engineering (IChemE, formerly CreateC
 
 ## [Unreleased]
 
+### Fixed
+
+- The skylight GameTest `EquipmentCompatGameTests.aSkirtsFloorTakesTheSkylightAboveTheDrum` waits for the light engine's run of the queued work, not a tick count: it failed once on a loaded machine (`33936ffd`; batch `2026-10-27-skirt-shadow`).
+
 ## [0.15.1] - 2026-10-27
 
 ### Changed
