@@ -115,13 +115,13 @@ public final class FluidDeviceBlockEntity extends BlockEntity implements com.wor
         var committed=world==null?null:world.committedDevice(identity).orElse(null);
         if(projected!=null&&projected.device().kind()==TopologyCompiler.Kind.PIPE){
             var d=projected.device();var state=getBlockState();
-            var updated=state.setValue(FluidDeviceBlock.PRESSURE_CONTROL,d.control() instanceof com.wormzjl.icheme.science.fluid.network.FlowControl.PressureValve)
+            var updated=state.setValue(FluidDeviceBlock.PRESSURE_CONTROL,d.control() instanceof com.wormzjl.icheme.science.fluid.network.FlowControl.Valve)
                     .setValue(FluidDeviceBlock.INLINE_FILTER,d.inlineFilter())
                     .setValue(FluidDeviceBlock.INLINE_MOVER,d.control() instanceof com.wormzjl.icheme.science.fluid.network.FlowControl.Pump?FluidDeviceBlock.InlineMover.PUMP:d.control() instanceof com.wormzjl.icheme.science.fluid.network.FlowControl.Compressor?FluidDeviceBlock.InlineMover.COMPRESSOR:FluidDeviceBlock.InlineMover.NONE);
             if(d.cutoff()==PhysicalFluidTopology.Cutoff.NONE)updated=updated.setValue(FluidDeviceBlock.SHUTOFF,FluidDeviceBlock.Shutoff.NONE);
             else if(committed!=null&&committed.cutoff()!=PhysicalFluidTopology.Cutoff.NONE)
                 updated=updated.setValue(FluidDeviceBlock.SHUTOFF,FluidDeviceBlock.Shutoff.of(committed.cutoff()));
-            if(d.inlineFilter()||d.control() instanceof com.wormzjl.icheme.science.fluid.network.FlowControl.Mover||d.control() instanceof com.wormzjl.icheme.science.fluid.network.FlowControl.PressureValve||d.cutoff()!=PhysicalFluidTopology.Cutoff.NONE)
+            if(d.inlineFilter()||d.control() instanceof com.wormzjl.icheme.science.fluid.network.FlowControl.Mover||d.control() instanceof com.wormzjl.icheme.science.fluid.network.FlowControl.Valve||d.cutoff()!=PhysicalFluidTopology.Cutoff.NONE)
                 updated=updated.setValue(FluidDeviceBlock.FACING,Direction.valueOf((d.cutoff()!=PhysicalFluidTopology.Cutoff.NONE&&committed!=null&&committed.cutoff()!=PhysicalFluidTopology.Cutoff.NONE?committed:d).facing().name()));
             updated=FluidDeviceBlock.connectedState(updated,level,worldPosition);
             if(updated!=state){level.setBlock(worldPosition,updated,net.minecraft.world.level.block.Block.UPDATE_ALL);neighbours=true;}
